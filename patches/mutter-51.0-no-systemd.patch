@@ -1,0 +1,190 @@
+diff -ruN a/meson.build b/meson.build
+--- a/meson.build	2026-09-14 21:48:16.000000000 +0000
++++ b/meson.build	2026-10-20 06:14:27.006202278 +0000
+@@ -222,15 +222,20 @@
+   error('Wayland support requires EGL to be enabled')
+ endif
+ 
+-logind_dep = dependency('libsystemd', required: false)
++logind_opt = get_option('logind')
++logind_dep = dependency('', required: false)
++if not logind_opt.disabled()
++  logind_dep = dependency('libsystemd', required: false)
+ 
+-if not logind_dep.found()
+-  logind_dep = dependency('libelogind', required: false)
+-endif
++  if not logind_dep.found()
++    logind_dep = dependency('libelogind', required: false)
++  endif
+ 
+-if not logind_dep.found()
+-  error('No logind provider dependency found: tried libsystemd and libelogind')
++  if not logind_dep.found() and logind_opt.enabled()
++    error('No logind provider dependency found: tried libsystemd and libelogind')
++  endif
+ endif
++have_logind = logind_dep.found()
+ 
+ libudev_dep = dependency('libudev', version: udev_req)
+ gudev_dep = dependency('gudev-1.0', version: gudev_req)
+@@ -547,6 +552,7 @@
+ cdata.set('HAVE_XWAYLAND', have_xwayland)
+ cdata.set('HAVE_REMOTE_DESKTOP', have_remote_desktop)
+ cdata.set('HAVE_DEVKIT', have_devkit)
++cdata.set('HAVE_LOGIND', have_logind)
+ cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
+ cdata.set('HAVE_SOUND_PLAYER', have_sound_player)
+ cdata.set('HAVE_LIBWACOM', have_libwacom)
+@@ -735,6 +741,7 @@
+ summary('XWayland', have_xwayland, section: 'Options')
+ summary('Remote desktop', have_remote_desktop, section: 'Options')
+ summary('Development Kit', have_devkit, section: 'Options')
++summary('logind (libsystemd/libelogind)', have_logind, section: 'Options')
+ summary('libgnome-desktop', have_gnome_desktop, section: 'Options')
+ summary('Sound player', have_sound_player, section: 'Options')
+ summary('Wacom', have_libwacom, section: 'Options')
+diff -ruN a/meson.options b/meson.options
+--- a/meson.options	2026-09-14 21:48:16.000000000 +0000
++++ b/meson.options	2026-10-20 06:14:27.006302101 +0000
+@@ -183,3 +183,9 @@
+   value: 'auto',
+   description: 'Compositor and shell software development kit'
+ )
++
++option('logind',
++  type: 'feature',
++  value: 'auto',
++  description: 'Use libsystemd or libelogind (sd-login). Without it only headless mode can run.'
++)
+diff -ruN a/src/backends/meta-launcher.c b/src/backends/meta-launcher.c
+--- a/src/backends/meta-launcher.c	2026-09-14 21:48:16.000000000 +0000
++++ b/src/backends/meta-launcher.c	2026-10-20 06:14:27.018251488 +0000
+@@ -29,7 +29,9 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <unistd.h>
++#ifdef HAVE_LOGIND
+ #include <systemd/sd-login.h>
++#endif
+ 
+ #include "backends/meta-backend-private.h"
+ #include "backends/meta-dbus-utils.h"
+@@ -157,7 +159,9 @@
+                                        GError       **error)
+ {
+   const char *xdg_session_id = NULL;
++#ifdef HAVE_LOGIND
+   int saved_errno;
++#endif
+ 
+   xdg_session_id = g_getenv ("XDG_SESSION_ID");
+   if (!xdg_session_id)
+@@ -167,6 +171,7 @@
+       return NULL;
+     }
+ 
++#ifdef HAVE_LOGIND
+   saved_errno = sd_session_is_active (xdg_session_id);
+   if (saved_errno < 0)
+     {
+@@ -175,6 +180,7 @@
+                    g_strerror (-saved_errno));
+       return NULL;
+     }
++#endif
+ 
+   return get_session_proxy_from_id (xdg_session_id, cancellable, error);
+ }
+@@ -221,6 +227,7 @@
+   return g_steal_pointer (&session_proxy);
+ }
+ 
++#ifdef HAVE_LOGIND
+ static char *
+ get_display_session (GError **error)
+ {
+@@ -353,6 +360,16 @@
+ 
+   return get_session_proxy_from_id (session_id, cancellable, error);
+ }
++#else
++static MetaDBusLogin1Session *
++get_session_proxy_from_display (GCancellable  *cancellable,
++                                GError       **error)
++{
++  g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++               "Built without logind support");
++  return NULL;
++}
++#endif
+ 
+ static MetaDBusLogin1Session *
+ get_session_proxy (GCancellable  *cancellable,
+diff -ruN a/src/core/meta-context-main.c b/src/core/meta-context-main.c
+--- a/src/core/meta-context-main.c	2026-09-14 21:48:16.000000000 +0000
++++ b/src/core/meta-context-main.c	2026-10-20 06:14:27.012521358 +0000
+@@ -25,7 +25,9 @@
+ #include <glib.h>
+ #include <gio/gio.h>
+ 
++#ifdef HAVE_LOGIND
+ #include <systemd/sd-login.h>
++#endif
+ 
+ #include "backends/meta-monitor-private.h"
+ #include "backends/meta-monitor-manager-private.h"
+@@ -130,15 +132,19 @@
+ meta_context_main_get_x11_display_policy (MetaContext *context)
+ {
+   MetaContextMain *context_main = META_CONTEXT_MAIN (context);
++#ifdef HAVE_LOGIND
+   g_autofree char *unit = NULL;
++#endif
+ 
+   if (context_main->options.no_x11)
+     return META_X11_DISPLAY_POLICY_DISABLED;
+ 
+-  if (sd_pid_get_user_unit (0, &unit) < 0)
+-    return META_X11_DISPLAY_POLICY_MANDATORY;
+-  else
++#ifdef HAVE_LOGIND
++  if (sd_pid_get_user_unit (0, &unit) >= 0)
+     return META_X11_DISPLAY_POLICY_ON_DEMAND;
++#endif
++
++  return META_X11_DISPLAY_POLICY_MANDATORY;
+ }
+ 
+ static gboolean
+diff -ruN a/src/core/window.c b/src/core/window.c
+--- a/src/core/window.c	2026-09-14 21:48:16.000000000 +0000
++++ b/src/core/window.c	2026-10-20 06:14:27.015944733 +0000
+@@ -101,7 +101,9 @@
+ #include "wayland/meta-window-xwayland.h"
+ #endif
+ 
++#ifdef HAVE_LOGIND
+ #include <systemd/sd-login.h>
++#endif
+ 
+ #include "meta-private-enum-types.h"
+ 
+@@ -7218,6 +7220,9 @@
+ GFile *
+ meta_window_get_unit_cgroup (MetaWindow *window)
+ {
++#ifndef HAVE_LOGIND
++  return NULL;
++#else
+   g_autofree char *contents = NULL;
+   g_autofree char *complete_path = NULL;
+   g_autofree char *unit_name = NULL;
+@@ -7256,6 +7261,7 @@
+   window->cgroup_path = g_file_new_for_path (complete_path);
+ 
+   return window->cgroup_path;
++#endif
+ }
+ 
+ gboolean
