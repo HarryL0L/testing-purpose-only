@@ -1,6 +1,27 @@
+diff -ruN a/config.h.meson b/config.h.meson
+--- a/config.h.meson	2026-09-14 21:48:16.000000000 +0000
++++ b/config.h.meson	2026-10-20 06:24:18.620530457 +0000
+@@ -46,6 +46,9 @@
+ /* Defined if the devkit is enabled */
+ #mesondefine HAVE_DEVKIT
+ 
++/* Defined if libsystemd or libelogind (sd-login) is available */
++#mesondefine HAVE_LOGIND
++
+ /* Defined if gnome-desktop is enabled */
+ #mesondefine HAVE_GNOME_DESKTOP
+ 
+@@ -73,6 +76,7 @@
+ /* Either <sys/random.h> or <linux/random.h> */
+ #mesondefine HAVE_SYS_RANDOM
+ #mesondefine HAVE_LINUX_RANDOM
++#mesondefine HAVE_ARC4RANDOM_BUF
+ 
+ /* Whether Xwayland has -initfd option */
+ #mesondefine HAVE_XWAYLAND_INITFD
 diff -ruN a/meson.build b/meson.build
 --- a/meson.build	2026-09-14 21:48:16.000000000 +0000
-+++ b/meson.build	2026-10-20 06:14:27.006202278 +0000
++++ b/meson.build	2026-10-20 06:24:03.531248292 +0000
 @@ -222,15 +222,20 @@
    error('Wayland support requires EGL to be enabled')
  endif
@@ -36,7 +57,17 @@ diff -ruN a/meson.build b/meson.build
  cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
  cdata.set('HAVE_SOUND_PLAYER', have_sound_player)
  cdata.set('HAVE_LIBWACOM', have_libwacom)
-@@ -735,6 +741,7 @@
+@@ -596,6 +602,9 @@
+     cdata.set('HAVE_SYS_RANDOM', 1)
+   elif cc.has_header_symbol('linux/random.h', 'getrandom')
+     cdata.set('HAVE_LINUX_RANDOM', 1)
++  elif cc.has_header_symbol('stdlib.h', 'arc4random_buf')
++    # Android before API 28 (e.g. Termux) has no getrandom
++    cdata.set('HAVE_ARC4RANDOM_BUF', 1)
+   else
+     error('Required function getrandom not found')
+   endif
+@@ -735,6 +744,7 @@
  summary('XWayland', have_xwayland, section: 'Options')
  summary('Remote desktop', have_remote_desktop, section: 'Options')
  summary('Development Kit', have_devkit, section: 'Options')
@@ -121,6 +152,19 @@ diff -ruN a/src/backends/meta-launcher.c b/src/backends/meta-launcher.c
  
  static MetaDBusLogin1Session *
  get_session_proxy (GCancellable  *cancellable,
+diff -ruN a/src/compositor/plugins/meson.build b/src/compositor/plugins/meson.build
+--- a/src/compositor/plugins/meson.build	2026-09-14 21:48:16.000000000 +0000
++++ b/src/compositor/plugins/meson.build	2026-10-20 06:29:27.972458784 +0000
+@@ -12,6 +12,9 @@
+     glib_dep,
+     gsettings_desktop_schemas_dep,
+     libmutter_clutter_dep,
++    # Needed on Android/Bionic, where dlopen()ed modules don't see the
++    # executable's library symbols
++    libmutter_dep,
+   ],
+   install_dir: pkglibdir / 'plugins',
+   install_rpath: pkglibdir,
 diff -ruN a/src/core/meta-context-main.c b/src/core/meta-context-main.c
 --- a/src/core/meta-context-main.c	2026-09-14 21:48:16.000000000 +0000
 +++ b/src/core/meta-context-main.c	2026-10-20 06:14:27.012521358 +0000
@@ -188,3 +232,53 @@ diff -ruN a/src/core/window.c b/src/core/window.c
  }
  
  gboolean
+diff -ruN a/src/meson.build b/src/meson.build
+--- a/src/meson.build	2026-09-14 21:48:16.000000000 +0000
++++ b/src/meson.build	2026-10-20 06:27:04.706843520 +0000
+@@ -163,6 +163,8 @@
+   'backends/meta-color-store.h',
+   'backends/meta-clipboard-session.c',
+   'backends/meta-clipboard-session.h',
++  'core/meta-selection-source-remote.c',
++  'core/meta-selection-source-remote.h',
+   'backends/meta-connector.c',
+   'backends/meta-connector.h',
+   'backends/meta-crtc-mode.c',
+@@ -470,8 +472,6 @@
+     'backends/meta-stream-window.h',
+     'backends/meta-stream.c',
+     'backends/meta-stream.h',
+-    'core/meta-selection-source-remote.c',
+-    'core/meta-selection-source-remote.h',
+   ]
+ endif
+ 
+diff -ruN a/src/wayland/meta-xwayland.c b/src/wayland/meta-xwayland.c
+--- a/src/wayland/meta-xwayland.c	2026-09-14 21:48:16.000000000 +0000
++++ b/src/wayland/meta-xwayland.c	2026-10-20 06:24:18.621115388 +0000
+@@ -36,6 +36,8 @@
+ #include <sys/random.h>
+ #elif defined(HAVE_LINUX_RANDOM)
+ #include <linux/random.h>
++#elif defined(HAVE_ARC4RANDOM_BUF)
++#include <stdlib.h>
+ #endif
+ #include <unistd.h>
+ #include <X11/extensions/Xrandr.h>
+@@ -689,12 +691,16 @@
+                                          ".mutter-Xwaylandauth.XXXXXX",
+                                          NULL);
+ 
++#ifdef HAVE_ARC4RANDOM_BUF
++  arc4random_buf (auth_data, sizeof (auth_data));
++#else
+   if (getrandom (auth_data, sizeof (auth_data), 0) != sizeof (auth_data))
+     {
+       g_set_error (error, G_IO_ERROR, g_io_error_from_errno (errno),
+                    "Failed to get random data: %s", g_strerror (errno));
+       return FALSE;
+     }
++#endif
+ 
+   auth_entry.family = FamilyLocal;
+   auth_entry.address = (char *) g_get_host_name ();
