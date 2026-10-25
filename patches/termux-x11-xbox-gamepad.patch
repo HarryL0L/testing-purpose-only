@@ -1,5 +1,5 @@
 diff --git a/lorie/src/main/java/com/termux/x11/MainActivity.java b/lorie/src/main/java/com/termux/x11/MainActivity.java
-index 9bba771..3608b73 100644
+index 9bba771..10c4c33 100644
 --- a/lorie/src/main/java/com/termux/x11/MainActivity.java
 +++ b/lorie/src/main/java/com/termux/x11/MainActivity.java
 @@ -68,6 +68,7 @@ import androidx.core.view.ViewCompat;
@@ -10,15 +10,16 @@ index 9bba771..3608b73 100644
  import com.termux.x11.input.InputEventSender;
  import com.termux.x11.input.InputStub;
  import com.termux.x11.input.TouchInputHandler;
-@@ -398,6 +399,7 @@ public class MainActivity extends AppCompatActivity {
+@@ -398,6 +399,8 @@ public class MainActivity extends AppCompatActivity {
  
          initStylusAuxButtons();
          initMouseAuxButtons();
 +        ((GamepadOverlayView) findViewById(R.id.gamepad_overlay)).setLorieView(lorieView);
++        findViewById(android.R.id.content).getViewTreeObserver().addOnGlobalLayoutListener(this::updateGamepadInsets);
  
          if (SDK_INT >= VERSION_CODES.TIRAMISU
                  && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PERMISSION_GRANTED
-@@ -596,6 +598,19 @@ public class MainActivity extends AppCompatActivity {
+@@ -596,6 +599,32 @@ public class MainActivity extends AppCompatActivity {
          makeSureHelpersAreVisibleAndInScreenBounds();
      }
  
@@ -31,6 +32,19 @@ index 9bba771..3608b73 100644
 +        gamepad.setVisibility(prefs.showGamepad.get() && !isInPictureInPictureMode && getLorieView().connected() ? View.VISIBLE : View.GONE);
 +    }
 +
++    private void updateGamepadInsets() {
++        GamepadOverlayView gamepad = findViewById(R.id.gamepad_overlay);
++        ViewPager pager = getTerminalToolbarViewPager();
++        int top = 0, bottom = 0;
++        if (pager.getVisibility() == View.VISIBLE && gamepad.getHeight() > 0) {
++            if (pager.getTop() > gamepad.getHeight() / 2)
++                bottom = Math.max(0, gamepad.getBottom() - pager.getTop());
++            else
++                top = Math.max(0, pager.getBottom() - gamepad.getTop());
++        }
++        gamepad.setInsets(top, bottom);
++    }
++
 +    public void toggleGamepad() {
 +        prefs.showGamepad.put(!prefs.showGamepad.get());
 +    }
@@ -38,7 +52,7 @@ index 9bba771..3608b73 100644
      public void toggleMouseAuxButtons() {
          showMouseAuxButtons(findViewById(R.id.mouse_buttons).getVisibility() != View.VISIBLE);
      }
-@@ -809,6 +824,7 @@ public class MainActivity extends AppCompatActivity {
+@@ -809,6 +838,7 @@ public class MainActivity extends AppCompatActivity {
          findViewById(R.id.mouse_buttons).setVisibility(prefs.showMouseHelper.get() && "1".equals(prefs.touchMode.get()) && getLorieView().connected() ? View.VISIBLE : View.GONE);
          showMouseAuxButtons(prefs.showMouseHelper.get());
          showStylusAuxButtons(prefs.showStylusClickOverride.get());
@@ -46,7 +60,7 @@ index 9bba771..3608b73 100644
  
          getTerminalToolbarViewPager().setAlpha(isInPictureInPictureMode ? 0.f : prefs.adjustHeightForEK.get() ? 1.f : ((float) prefs.opacityEKBar.get())/100);
  
-@@ -1237,6 +1253,7 @@ public class MainActivity extends AppCompatActivity {
+@@ -1237,6 +1267,7 @@ public class MainActivity extends AppCompatActivity {
          pager.setAlpha(isInPictureInPictureMode ? 0.f : prefs.adjustHeightForEK.get() ? 1.f : ((float) prefs.opacityEKBar.get())/100);
          findViewById(R.id.mouse_buttons).setAlpha(isInPictureInPictureMode ? 0.f : 0.7f);
          findViewById(R.id.mouse_helper_visibility).setAlpha(isInPictureInPictureMode ? 0.f : 1.f);
@@ -54,7 +68,7 @@ index 9bba771..3608b73 100644
          setTerminalToolbarView();
          if (!isInPictureInPictureMode)
              applyWindowSettings();
-@@ -1274,6 +1291,7 @@ public class MainActivity extends AppCompatActivity {
+@@ -1274,6 +1305,7 @@ public class MainActivity extends AppCompatActivity {
              setTerminalToolbarView();
              findViewById(R.id.mouse_buttons).setVisibility(prefs.showMouseHelper.get() && "1".equals(prefs.touchMode.get()) && connected ? View.VISIBLE : View.GONE);
              findViewById(R.id.stub).setVisibility(connected?View.INVISIBLE:View.VISIBLE);
@@ -76,10 +90,10 @@ index c982fcc..6f8fadb 100644
          public static final ExtraKeyDisplayMap LESS_KNOWN_CHARACTERS_DISPLAY = new ExtraKeyDisplayMap() {{
 diff --git a/lorie/src/main/java/com/termux/x11/input/GamepadOverlayView.java b/lorie/src/main/java/com/termux/x11/input/GamepadOverlayView.java
 new file mode 100644
-index 0000000..d6860e5
+index 0000000..3b1547e
 --- /dev/null
 +++ b/lorie/src/main/java/com/termux/x11/input/GamepadOverlayView.java
-@@ -0,0 +1,570 @@
+@@ -0,0 +1,585 @@
 +package com.termux.x11.input;
 +
 +import static com.termux.x11.input.InputStub.BUTTON_LEFT;
@@ -163,7 +177,8 @@ index 0000000..d6860e5
 +    private LorieView lorieView;
 +    private boolean collapsed = false, haptics = true;
 +    private String leftStickMode = "keys", rightStickMode = "mouse";
-+    private float sizeScale = 1f, mouseSpeed = 20f, mouseRemX, mouseRemY;
++    private float sizeScale = 1f, mouseSpeed = 20f, mouseRemX, mouseRemY, unit;
++    private int insetTop, insetBottom;
 +
 +    private final Runnable mouseTicker = new Runnable() {
 +        @Override public void run() {
@@ -270,12 +285,27 @@ index 0000000..d6860e5
 +        return code == KeyEvent.KEYCODE_UNKNOWN ? 0 : code;
 +    }
 +
-+    private void layoutControls(int w, int h) {
++    /** Keeps the pad clear of the extra keys bar, which is drawn over this view. */
++    public void setInsets(int top, int bottom) {
++        if (top == insetTop && bottom == insetBottom)
++            return;
++        insetTop = top;
++        insetBottom = bottom;
++        releaseAll();
++        layoutControls(getWidth(), getHeight());
++        invalidate();
++    }
++
++    private void layoutControls(int w, int fullHeight) {
 +        controls.clear();
-+        if (w == 0 || h == 0)
++        if (w == 0 || fullHeight == 0)
 +            return;
 +
-+        float u = unit(w, h);
++        // Controls are laid out from the bottom edge of the area left free by the insets.
++        int avail = fullHeight - insetTop - insetBottom, h = fullHeight - insetBottom;
++        if (avail <= 0)
++            return;
++        float u = unit = unit(w, avail), u0 = Math.min(avail / 10f, w / 17f);
 +        float br = 0.6f * u, sr = 0.42f * u;
 +
 +        Control lt = add(Kind.BUTTON, "LT", "LT", 0), lb = add(Kind.BUTTON, "LB", "LB", 0);
@@ -308,7 +338,7 @@ index 0000000..d6860e5
 +        place(add(Kind.ROUND_BUTTON, "RS", "RS", 0), mx + 3.2f * u, my, sr);
 +
 +        toggle = add(Kind.TOGGLE, "TOGGLE", "🎮", 0);
-+        place(toggle, w / 2f, 0.6f * Math.min(h / 10f, w / 17f), 0.45f * Math.min(h / 10f, w / 17f));
++        place(toggle, w / 2f, insetTop + 0.6f * u0, 0.45f * u0);
 +    }
 +
 +    /** Base size unit; the size preference can enlarge it only as long as the whole layout still fits the screen. */
@@ -534,8 +564,7 @@ index 0000000..d6860e5
 +    protected void onDraw(@NonNull Canvas canvas) {
 +        if (controls.isEmpty())
 +            return;
-+        float u = unit(getWidth(), getHeight());
-+        stroke.setStrokeWidth(Math.max(2f, u * 0.05f));
++        stroke.setStrokeWidth(Math.max(2f, unit * 0.05f));
 +
 +        drawToggle(canvas);
 +        if (collapsed)
