@@ -1,0 +1,771 @@
+diff --git a/lorie/src/main/java/com/termux/x11/MainActivity.java b/lorie/src/main/java/com/termux/x11/MainActivity.java
+index 9bba771..3608b73 100644
+--- a/lorie/src/main/java/com/termux/x11/MainActivity.java
++++ b/lorie/src/main/java/com/termux/x11/MainActivity.java
+@@ -68,6 +68,7 @@ import androidx.core.view.ViewCompat;
+ import androidx.viewpager.widget.ViewPager;
+ 
+ import com.termux.x11.extrakeys.ExtraKeysInfo;
++import com.termux.x11.input.GamepadOverlayView;
+ import com.termux.x11.input.InputEventSender;
+ import com.termux.x11.input.InputStub;
+ import com.termux.x11.input.TouchInputHandler;
+@@ -398,6 +399,7 @@ public class MainActivity extends AppCompatActivity {
+ 
+         initStylusAuxButtons();
+         initMouseAuxButtons();
++        ((GamepadOverlayView) findViewById(R.id.gamepad_overlay)).setLorieView(lorieView);
+ 
+         if (SDK_INT >= VERSION_CODES.TIRAMISU
+                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PERMISSION_GRANTED
+@@ -596,6 +598,19 @@ public class MainActivity extends AppCompatActivity {
+         makeSureHelpersAreVisibleAndInScreenBounds();
+     }
+ 
++    private void updateGamepadOverlay(boolean reconfigure) {
++        GamepadOverlayView gamepad = findViewById(R.id.gamepad_overlay);
++        if (reconfigure)
++            gamepad.configure(prefs.gamepadSize.get() / 100f, prefs.gamepadLeftStick.get(), prefs.gamepadRightStick.get(),
++                    prefs.gamepadMouseSpeed.get(), prefs.gamepadVibrate.get(), prefs.gamepadMapping.get());
++        gamepad.setAlpha(prefs.gamepadOpacity.get() / 100f);
++        gamepad.setVisibility(prefs.showGamepad.get() && !isInPictureInPictureMode && getLorieView().connected() ? View.VISIBLE : View.GONE);
++    }
++
++    public void toggleGamepad() {
++        prefs.showGamepad.put(!prefs.showGamepad.get());
++    }
++
+     public void toggleMouseAuxButtons() {
+         showMouseAuxButtons(findViewById(R.id.mouse_buttons).getVisibility() != View.VISIBLE);
+     }
+@@ -809,6 +824,7 @@ public class MainActivity extends AppCompatActivity {
+         findViewById(R.id.mouse_buttons).setVisibility(prefs.showMouseHelper.get() && "1".equals(prefs.touchMode.get()) && getLorieView().connected() ? View.VISIBLE : View.GONE);
+         showMouseAuxButtons(prefs.showMouseHelper.get());
+         showStylusAuxButtons(prefs.showStylusClickOverride.get());
++        updateGamepadOverlay(true);
+ 
+         getTerminalToolbarViewPager().setAlpha(isInPictureInPictureMode ? 0.f : prefs.adjustHeightForEK.get() ? 1.f : ((float) prefs.opacityEKBar.get())/100);
+ 
+@@ -1237,6 +1253,7 @@ public class MainActivity extends AppCompatActivity {
+         pager.setAlpha(isInPictureInPictureMode ? 0.f : prefs.adjustHeightForEK.get() ? 1.f : ((float) prefs.opacityEKBar.get())/100);
+         findViewById(R.id.mouse_buttons).setAlpha(isInPictureInPictureMode ? 0.f : 0.7f);
+         findViewById(R.id.mouse_helper_visibility).setAlpha(isInPictureInPictureMode ? 0.f : 1.f);
++        updateGamepadOverlay(false);
+         setTerminalToolbarView();
+         if (!isInPictureInPictureMode)
+             applyWindowSettings();
+@@ -1274,6 +1291,7 @@ public class MainActivity extends AppCompatActivity {
+             setTerminalToolbarView();
+             findViewById(R.id.mouse_buttons).setVisibility(prefs.showMouseHelper.get() && "1".equals(prefs.touchMode.get()) && connected ? View.VISIBLE : View.GONE);
+             findViewById(R.id.stub).setVisibility(connected?View.INVISIBLE:View.VISIBLE);
++            updateGamepadOverlay(false);
+             findViewById(R.id.no_server_signal).setVisibility(View.GONE);
+             getLorieView().setVisibility(connected?View.VISIBLE:View.INVISIBLE);
+ 
+diff --git a/lorie/src/main/java/com/termux/x11/extrakeys/ExtraKeysConstants.java b/lorie/src/main/java/com/termux/x11/extrakeys/ExtraKeysConstants.java
+index c982fcc..6f8fadb 100644
+--- a/lorie/src/main/java/com/termux/x11/extrakeys/ExtraKeysConstants.java
++++ b/lorie/src/main/java/com/termux/x11/extrakeys/ExtraKeysConstants.java
+@@ -92,6 +92,7 @@ public class ExtraKeysConstants {
+             put("EXIT", "╳"); // U+2573 BOX DRAWINGS LIGHT DIAGONAL CROSS not well known but easy to understand
+             put("MOUSE_HELPER", "\uD83D\uDDB1"); // U+1F5B1 THREE BUTTON MOUSE
+             put("STYLUS_HELPER", "\uD83D\uDD8C"); // U+1F58C LOWER LEFT PAINTBRUSH
++            put("GAMEPAD", "\uD83C\uDFAE"); // U+1F3AE VIDEO GAME
+         }};
+ 
+         public static final ExtraKeyDisplayMap LESS_KNOWN_CHARACTERS_DISPLAY = new ExtraKeyDisplayMap() {{
+diff --git a/lorie/src/main/java/com/termux/x11/input/GamepadOverlayView.java b/lorie/src/main/java/com/termux/x11/input/GamepadOverlayView.java
+new file mode 100644
+index 0000000..d6860e5
+--- /dev/null
++++ b/lorie/src/main/java/com/termux/x11/input/GamepadOverlayView.java
+@@ -0,0 +1,570 @@
++package com.termux.x11.input;
++
++import static com.termux.x11.input.InputStub.BUTTON_LEFT;
++import static com.termux.x11.input.InputStub.BUTTON_MIDDLE;
++import static com.termux.x11.input.InputStub.BUTTON_RIGHT;
++import static com.termux.x11.input.InputStub.BUTTON_UNDEFINED;
++
++import android.annotation.SuppressLint;
++import android.content.Context;
++import android.graphics.Canvas;
++import android.graphics.Color;
++import android.graphics.Paint;
++import android.graphics.Path;
++import android.graphics.RectF;
++import android.util.AttributeSet;
++import android.util.SparseArray;
++import android.view.HapticFeedbackConstants;
++import android.view.KeyEvent;
++import android.view.MotionEvent;
++import android.view.View;
++
++import androidx.annotation.NonNull;
++
++import com.termux.x11.LorieView;
++
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Onscreen gamepad drawn in the Xbox controller layout: two analog sticks (with LS/RS clicks),
++ * D-pad, A/B/X/Y, LB/RB, LT/RT, View, Menu and Guide buttons.
++ * X server has no virtual joystick device, so every control is translated to keyboard keys,
++ * mouse buttons, mouse wheel or relative mouse motion. Mapping is user configurable.
++ * Touches that do not hit any control fall through to the views below.
++ */
++public class GamepadOverlayView extends View {
++    public static final String DEFAULT_MAPPING =
++            "A=SPACE B=C X=R Y=E LB=Q RB=F LT=MOUSE_RIGHT RT=MOUSE_LEFT " +
++            "VIEW=TAB MENU=ESCAPE GUIDE=ENTER LS=SHIFT_LEFT RS=V " +
++            "DPAD_UP=UP DPAD_DOWN=DOWN DPAD_LEFT=LEFT DPAD_RIGHT=RIGHT " +
++            "LS_UP=W LS_DOWN=S LS_LEFT=A LS_RIGHT=D " +
++            "RS_UP=UP RS_DOWN=DOWN RS_LEFT=LEFT RS_RIGHT=RIGHT";
++
++    private static final int MOUSE_BASE = 0x10000;
++    private static final int WHEEL_UP = 0x20001, WHEEL_DOWN = 0x20002;
++    private static final float STICK_DEADZONE = 0.3f;
++    private static final int COLOR_A = 0xFF60B700, COLOR_B = 0xFFE81E25, COLOR_X = 0xFF2D7BD8, COLOR_Y = 0xFFF5C400;
++
++    private enum Kind { BUTTON, ROUND_BUTTON, STICK, DPAD, TOGGLE }
++
++    private class Control {
++        final Kind kind;
++        final String name, label;
++        final int color;
++        float cx, cy, r;           // round controls and D-pad
++        final RectF rect = new RectF(); // rectangular buttons
++        boolean pressed;
++        float sx, sy;              // stick deflection, -1..1
++        int dirMask;               // currently pressed directions of stick or D-pad
++        Control(Kind kind, String name, String label, int color) { this.kind = kind; this.name = name; this.label = label; this.color = color; }
++
++        boolean hit(float x, float y) {
++            if (kind == Kind.BUTTON)
++                return x >= rect.left - r * 0.25f && x <= rect.right + r * 0.25f && y >= rect.top - r * 0.25f && y <= rect.bottom + r * 0.25f;
++            float rr = (kind == Kind.STICK ? r * 1.35f : r * 1.12f);
++            return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= rr * rr;
++        }
++    }
++
++    private final List<Control> controls = new ArrayList<>();
++    private final SparseArray<Control> pointers = new SparseArray<>();
++    private final Map<String, int[]> mapping = new HashMap<>();
++    private final Map<Integer, Integer> pressedCodes = new HashMap<>();
++    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), stroke = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private final Path path = new Path();
++    private final RectF tmp = new RectF();
++    private Control leftStick, rightStick, dpad, toggle;
++    private LorieView lorieView;
++    private boolean collapsed = false, haptics = true;
++    private String leftStickMode = "keys", rightStickMode = "mouse";
++    private float sizeScale = 1f, mouseSpeed = 20f, mouseRemX, mouseRemY;
++
++    private final Runnable mouseTicker = new Runnable() {
++        @Override public void run() {
++            boolean active = false;
++            for (Control c : new Control[] { leftStick, rightStick }) {
++                if (c == null || !"mouse".equals(c == leftStick ? leftStickMode : rightStickMode))
++                    continue;
++                float mag = (float) Math.hypot(c.sx, c.sy);
++                if (mag < 0.08f)
++                    continue;
++                active = true;
++                // Quadratic response curve gives precise aiming near center and fast turns at the edge.
++                float k = mouseSpeed * mag;
++                mouseRemX += c.sx * k;
++                mouseRemY += c.sy * k;
++            }
++            int dx = (int) mouseRemX, dy = (int) mouseRemY;
++            mouseRemX -= dx;
++            mouseRemY -= dy;
++            if ((dx != 0 || dy != 0) && lorieView != null)
++                lorieView.sendMouseEvent(dx, dy, BUTTON_UNDEFINED, false, true);
++            if (active)
++                postOnAnimation(this);
++            else
++                mouseRemX = mouseRemY = 0;
++        }
++    };
++
++    public GamepadOverlayView(Context context) { this(context, null); }
++    public GamepadOverlayView(Context context, AttributeSet attrs) {
++        super(context, attrs);
++        stroke.setStyle(Paint.Style.STROKE);
++        text.setTextAlign(Paint.Align.CENTER);
++        text.setFakeBoldText(true);
++        setMapping(DEFAULT_MAPPING);
++    }
++
++    public void setLorieView(LorieView view) { lorieView = view; }
++
++    public void configure(float scale, String leftMode, String rightMode, int speed, boolean vibrate, String mappingString) {
++        releaseAll();
++        sizeScale = scale;
++        leftStickMode = leftMode;
++        rightStickMode = rightMode;
++        mouseSpeed = Math.max(1, speed) * 0.5f;
++        haptics = vibrate;
++        setMapping(mappingString);
++        layoutControls(getWidth(), getHeight());
++        invalidate();
++    }
++
++    public void toggleCollapsed() {
++        releaseAll();
++        collapsed = !collapsed;
++        invalidate();
++    }
++
++    private void setMapping(String str) {
++        mapping.clear();
++        parseMapping(DEFAULT_MAPPING);
++        if (str != null)
++            parseMapping(str);
++    }
++
++    private void parseMapping(String str) {
++        for (String token : str.trim().split("[\\s,;]+")) {
++            int eq = token.indexOf('=');
++            if (eq <= 0)
++                continue;
++            String name = token.substring(0, eq).trim().toUpperCase(Locale.ROOT);
++            String[] parts = token.substring(eq + 1).split("\\+");
++            List<Integer> codes = new ArrayList<>();
++            for (String p : parts) {
++                int code = parseCode(p.trim().toUpperCase(Locale.ROOT));
++                if (code != 0)
++                    codes.add(code);
++            }
++            mapping.put(name, codes.stream().mapToInt(Integer::intValue).toArray());
++        }
++    }
++
++    private static int parseCode(String s) {
++        switch (s) {
++            case "": case "NONE": return 0;
++            case "MOUSE_LEFT": return MOUSE_BASE + BUTTON_LEFT;
++            case "MOUSE_MIDDLE": return MOUSE_BASE + BUTTON_MIDDLE;
++            case "MOUSE_RIGHT": return MOUSE_BASE + BUTTON_RIGHT;
++            case "WHEEL_UP": return WHEEL_UP;
++            case "WHEEL_DOWN": return WHEEL_DOWN;
++            case "ESC": s = "ESCAPE"; break;
++            case "SHIFT": s = "SHIFT_LEFT"; break;
++            case "CTRL": s = "CTRL_LEFT"; break;
++            case "ALT": s = "ALT_LEFT"; break;
++            case "UP": case "DOWN": case "LEFT": case "RIGHT": s = "DPAD_" + s; break;
++            case "RETURN": s = "ENTER"; break;
++            case "BACKSPACE": case "BKSP": s = "DEL"; break;
++            case "DELETE": s = "FORWARD_DEL"; break;
++            case "PGUP": s = "PAGE_UP"; break;
++            case "PGDN": s = "PAGE_DOWN"; break;
++            case "END": s = "MOVE_END"; break;
++            case "HOME": s = "MOVE_HOME"; break;
++        }
++        int code = KeyEvent.keyCodeFromString(s.startsWith("KEYCODE_") ? s : "KEYCODE_" + s);
++        return code == KeyEvent.KEYCODE_UNKNOWN ? 0 : code;
++    }
++
++    private void layoutControls(int w, int h) {
++        controls.clear();
++        if (w == 0 || h == 0)
++            return;
++
++        float u = unit(w, h);
++        float br = 0.6f * u, sr = 0.42f * u;
++
++        Control lt = add(Kind.BUTTON, "LT", "LT", 0), lb = add(Kind.BUTTON, "LB", "LB", 0);
++        Control rt = add(Kind.BUTTON, "RT", "RT", 0), rb = add(Kind.BUTTON, "RB", "RB", 0);
++        lt.rect.set(0.5f * u, h - 8.8f * u, 3.0f * u, h - 7.8f * u);
++        lb.rect.set(0.5f * u, h - 7.5f * u, 3.7f * u, h - 6.5f * u);
++        rt.rect.set(w - 3.0f * u, h - 8.8f * u, w - 0.5f * u, h - 7.8f * u);
++        rb.rect.set(w - 3.7f * u, h - 7.5f * u, w - 0.5f * u, h - 6.5f * u);
++        lt.r = lb.r = rt.r = rb.r = u;
++
++        leftStick = add(Kind.STICK, "LS", "", 0);
++        place(leftStick, 2.6f * u, h - 4.4f * u, 1.5f * u);
++        rightStick = add(Kind.STICK, "RS", "", 0);
++        place(rightStick, w - 6.2f * u, h - 1.9f * u, 1.3f * u);
++
++        dpad = add(Kind.DPAD, "DPAD", "", 0);
++        place(dpad, 6.2f * u, h - 1.9f * u, 1.6f * u);
++
++        float ax = w - 2.6f * u, ay = h - 4.4f * u, off = 1.15f * u;
++        place(add(Kind.ROUND_BUTTON, "Y", "Y", COLOR_Y), ax, ay - off, br);
++        place(add(Kind.ROUND_BUTTON, "X", "X", COLOR_X), ax - off, ay, br);
++        place(add(Kind.ROUND_BUTTON, "B", "B", COLOR_B), ax + off, ay, br);
++        place(add(Kind.ROUND_BUTTON, "A", "A", COLOR_A), ax, ay + off, br);
++
++        float mx = w / 2f, my = h - 4.4f * u;
++        place(add(Kind.ROUND_BUTTON, "LS", "LS", 0), mx - 3.2f * u, my, sr);
++        place(add(Kind.ROUND_BUTTON, "VIEW", "⧉", 0), mx - 1.5f * u, my, sr);
++        place(add(Kind.ROUND_BUTTON, "GUIDE", "Ⓧ", 0xFFFFFFFF), mx, my, 0.55f * u);
++        place(add(Kind.ROUND_BUTTON, "MENU", "≡", 0), mx + 1.5f * u, my, sr);
++        place(add(Kind.ROUND_BUTTON, "RS", "RS", 0), mx + 3.2f * u, my, sr);
++
++        toggle = add(Kind.TOGGLE, "TOGGLE", "🎮", 0);
++        place(toggle, w / 2f, 0.6f * Math.min(h / 10f, w / 17f), 0.45f * Math.min(h / 10f, w / 17f));
++    }
++
++    /** Base size unit; the size preference can enlarge it only as long as the whole layout still fits the screen. */
++    private float unit(int w, int h) {
++        return Math.min(Math.min(h / 10f, w / 17f) * sizeScale, Math.min(h / 9.4f, w / 16f));
++    }
++
++    private Control add(Kind kind, String name, String label, int color) {
++        Control c = new Control(kind, name, label, color);
++        controls.add(c);
++        return c;
++    }
++
++    private static void place(Control c, float x, float y, float r) {
++        c.cx = x; c.cy = y; c.r = r;
++    }
++
++    @Override
++    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
++        releaseAll();
++        layoutControls(w, h);
++    }
++
++    @Override
++    protected void onVisibilityChanged(@NonNull View changedView, int visibility) {
++        super.onVisibilityChanged(changedView, visibility);
++        if (visibility != VISIBLE)
++            releaseAll();
++    }
++
++    @Override
++    protected void onDetachedFromWindow() {
++        releaseAll();
++        super.onDetachedFromWindow();
++    }
++
++    private Control findControl(float x, float y) {
++        if (toggle != null && toggle.hit(x, y))
++            return toggle;
++        if (collapsed)
++            return null;
++        Control best = null;
++        float bestDist = Float.MAX_VALUE;
++        for (Control c : controls) {
++            if (c.kind == Kind.TOGGLE || !c.hit(x, y))
++                continue;
++            float d = c.kind == Kind.BUTTON ? Math.abs(x - c.rect.centerX()) + Math.abs(y - c.rect.centerY()) : (float) Math.hypot(x - c.cx, y - c.cy);
++            if (d < bestDist) {
++                bestDist = d;
++                best = c;
++            }
++        }
++        return best;
++    }
++
++    @SuppressLint("ClickableViewAccessibility")
++    @Override
++    public boolean onTouchEvent(MotionEvent e) {
++        int action = e.getActionMasked();
++        int idx = e.getActionIndex();
++        switch (action) {
++            case MotionEvent.ACTION_DOWN:
++            case MotionEvent.ACTION_POINTER_DOWN: {
++                Control c = findControl(e.getX(idx), e.getY(idx));
++                if (c == null)
++                    return action != MotionEvent.ACTION_DOWN; // let first finger fall through to X server
++                pointers.put(e.getPointerId(idx), c);
++                if (c.kind == Kind.TOGGLE)
++                    c.pressed = true;
++                else if (c.kind == Kind.STICK || c.kind == Kind.DPAD)
++                    updateDirectional(c, e.getX(idx), e.getY(idx));
++                else
++                    setButton(c, true);
++                if (haptics)
++                    performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
++                invalidate();
++                return true;
++            }
++            case MotionEvent.ACTION_MOVE:
++                for (int i = 0; i < e.getPointerCount(); i++) {
++                    Control c = pointers.get(e.getPointerId(i));
++                    if (c != null && (c.kind == Kind.STICK || c.kind == Kind.DPAD))
++                        updateDirectional(c, e.getX(i), e.getY(i));
++                }
++                invalidate();
++                return true;
++            case MotionEvent.ACTION_UP:
++            case MotionEvent.ACTION_POINTER_UP: {
++                int id = e.getPointerId(idx);
++                Control c = pointers.get(id);
++                pointers.remove(id);
++                if (c != null) {
++                    if (c.kind == Kind.TOGGLE) {
++                        c.pressed = false;
++                        if (toggle.hit(e.getX(idx), e.getY(idx)))
++                            toggleCollapsed();
++                    } else
++                        releaseControl(c);
++                }
++                invalidate();
++                return true;
++            }
++            case MotionEvent.ACTION_CANCEL:
++                releaseAll();
++                return true;
++        }
++        return true;
++    }
++
++    private void updateDirectional(Control c, float x, float y) {
++        float dx = (x - c.cx) / c.r, dy = (y - c.cy) / c.r;
++        float mag = (float) Math.hypot(dx, dy);
++        if (mag > 1) {
++            dx /= mag;
++            dy /= mag;
++            mag = 1;
++        }
++
++        int mask = 0;
++        if (c.kind == Kind.DPAD) {
++            // 8-way D-pad, with a small dead zone in the middle.
++            if (mag > 0.2f) {
++                double angle = Math.toDegrees(Math.atan2(dy, dx));
++                if (angle > -157.5 && angle < -22.5) mask |= 1;   // up
++                if (angle > 22.5 && angle < 157.5) mask |= 2;     // down
++                if (angle > 112.5 || angle < -112.5) mask |= 4;   // left
++                if (angle > -67.5 && angle < 67.5) mask |= 8;     // right
++            }
++            setDirections(c, mask, "DPAD");
++        } else {
++            c.sx = dx;
++            c.sy = dy;
++            String mode = c == leftStick ? leftStickMode : rightStickMode;
++            if ("keys".equals(mode)) {
++                if (dy < -STICK_DEADZONE) mask |= 1;
++                if (dy > STICK_DEADZONE) mask |= 2;
++                if (dx < -STICK_DEADZONE) mask |= 4;
++                if (dx > STICK_DEADZONE) mask |= 8;
++                setDirections(c, mask, c.name);
++            } else if ("mouse".equals(mode)) {
++                removeCallbacks(mouseTicker);
++                postOnAnimation(mouseTicker);
++            }
++        }
++    }
++
++    private static final String[] DIRS = { "_UP", "_DOWN", "_LEFT", "_RIGHT" };
++
++    private void setDirections(Control c, int mask, String prefix) {
++        int changed = mask ^ c.dirMask;
++        for (int i = 0; i < 4; i++) {
++            if ((changed & (1 << i)) == 0)
++                continue;
++            boolean down = (mask & (1 << i)) != 0;
++            sendCodes(mapping.get(prefix + DIRS[i]), down);
++        }
++        if (changed != 0 && mask != 0 && haptics && c.kind == Kind.DPAD)
++            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
++        c.dirMask = mask;
++    }
++
++    private void setButton(Control c, boolean down) {
++        if (c.pressed == down)
++            return;
++        c.pressed = down;
++        sendCodes(mapping.get(c.name), down);
++    }
++
++    private void releaseControl(Control c) {
++        if (c.kind == Kind.STICK || c.kind == Kind.DPAD) {
++            setDirections(c, 0, c.kind == Kind.DPAD ? "DPAD" : c.name);
++            c.sx = c.sy = 0;
++        } else
++            setButton(c, false);
++        c.pressed = false;
++    }
++
++    private void releaseAll() {
++        removeCallbacks(mouseTicker);
++        pointers.clear();
++        for (Control c : controls) {
++            if (c.kind != Kind.TOGGLE)
++                releaseControl(c);
++            c.pressed = false;
++        }
++        // Anything still held (should not happen) is released too, so no key gets stuck in X server.
++        for (Integer code : new ArrayList<>(pressedCodes.keySet()))
++            sendRaw(code, false);
++        pressedCodes.clear();
++        invalidate();
++    }
++
++    private void sendCodes(int[] codes, boolean down) {
++        if (codes == null)
++            return;
++        // Press modifiers first and release them last.
++        for (int i = 0; i < codes.length; i++) {
++            int code = codes[down ? i : codes.length - 1 - i];
++            // Several controls can share one key, it is released only after the last of them.
++            int count = pressedCodes.getOrDefault(code, 0) + (down ? 1 : -1);
++            if (count <= 0)
++                pressedCodes.remove(code);
++            else
++                pressedCodes.put(code, count);
++            if ((down && count == 1) || (!down && count == 0))
++                sendRaw(code, down);
++        }
++    }
++
++    private void sendRaw(int code, boolean down) {
++        if (lorieView == null)
++            return;
++        if (code == WHEEL_UP || code == WHEEL_DOWN) {
++            if (down)
++                lorieView.sendMouseWheelEvent(0, code == WHEEL_UP ? -100 : 100);
++        } else if (code > MOUSE_BASE && code < MOUSE_BASE + 8)
++            lorieView.sendMouseEvent(0, 0, code - MOUSE_BASE, down, true);
++        else
++            lorieView.sendKeyEvent(0, code, down);
++    }
++
++    @Override
++    protected void onDraw(@NonNull Canvas canvas) {
++        if (controls.isEmpty())
++            return;
++        float u = unit(getWidth(), getHeight());
++        stroke.setStrokeWidth(Math.max(2f, u * 0.05f));
++
++        drawToggle(canvas);
++        if (collapsed)
++            return;
++
++        for (Control c : controls) {
++            switch (c.kind) {
++                case BUTTON: drawRectButton(canvas, c); break;
++                case ROUND_BUTTON: drawRoundButton(canvas, c); break;
++                case STICK: drawStick(canvas, c); break;
++                case DPAD: drawDpad(canvas, c); break;
++            }
++        }
++    }
++
++    private void setFill(boolean pressed) {
++        fill.setColor(pressed ? 0xCCFFFFFF : 0x88000000);
++        stroke.setColor(0xDDFFFFFF);
++    }
++
++    private void drawLabel(Canvas canvas, String label, float x, float y, float size, int color) {
++        text.setTextSize(size);
++        text.setColor(color);
++        canvas.drawText(label, x, y - (text.descent() + text.ascent()) / 2, text);
++    }
++
++    private void drawToggle(Canvas canvas) {
++        fill.setColor(toggle.pressed ? 0xCCFFFFFF : 0x66000000);
++        stroke.setColor(collapsed ? 0x88FFFFFF : 0xDDFFFFFF);
++        canvas.drawCircle(toggle.cx, toggle.cy, toggle.r, fill);
++        canvas.drawCircle(toggle.cx, toggle.cy, toggle.r, stroke);
++        drawLabel(canvas, toggle.label, toggle.cx, toggle.cy, toggle.r, Color.WHITE);
++    }
++
++    private void drawRectButton(Canvas canvas, Control c) {
++        setFill(c.pressed);
++        float rad = c.rect.height() / 2;
++        // Triggers have a rounded top like on the real controller, bumpers are pills.
++        if (c.name.endsWith("T")) {
++            tmp.set(c.rect);
++            path.reset();
++            path.addRoundRect(tmp, new float[] { rad * 1.5f, rad * 1.5f, rad * 1.5f, rad * 1.5f, rad * 0.4f, rad * 0.4f, rad * 0.4f, rad * 0.4f }, Path.Direction.CW);
++            canvas.drawPath(path, fill);
++            canvas.drawPath(path, stroke);
++        } else {
++            canvas.drawRoundRect(c.rect, rad, rad, fill);
++            canvas.drawRoundRect(c.rect, rad, rad, stroke);
++        }
++        drawLabel(canvas, c.label, c.rect.centerX(), c.rect.centerY(), c.rect.height() * 0.5f, c.pressed ? Color.BLACK : Color.WHITE);
++    }
++
++    private void drawRoundButton(Canvas canvas, Control c) {
++        int accent = c.color == 0 ? Color.WHITE : c.color;
++        fill.setColor(c.pressed ? accent : 0x88000000);
++        stroke.setColor(c.color == 0 ? 0xDDFFFFFF : accent);
++        canvas.drawCircle(c.cx, c.cy, c.r, fill);
++        canvas.drawCircle(c.cx, c.cy, c.r, stroke);
++        float size = c.label.length() > 1 ? c.r * 0.8f : c.r * 1.1f;
++        drawLabel(canvas, c.label, c.cx, c.cy, size, c.pressed ? Color.BLACK : accent);
++    }
++
++    private void drawStick(Canvas canvas, Control c) {
++        boolean active = pointers.indexOfValue(c) >= 0;
++        fill.setColor(0x66000000);
++        stroke.setColor(0xAAFFFFFF);
++        canvas.drawCircle(c.cx, c.cy, c.r, fill);
++        canvas.drawCircle(c.cx, c.cy, c.r, stroke);
++        float kr = c.r * 0.45f, kx = c.cx + c.sx * (c.r - kr * 0.5f), ky = c.cy + c.sy * (c.r - kr * 0.5f);
++        fill.setColor(active ? 0xCCFFFFFF : 0xAA333333);
++        stroke.setColor(0xDDFFFFFF);
++        canvas.drawCircle(kx, ky, kr, fill);
++        canvas.drawCircle(kx, ky, kr, stroke);
++        canvas.drawCircle(kx, ky, kr * 0.7f, stroke);
++        drawLabel(canvas, c.name, kx, ky, kr * 0.6f, active ? Color.BLACK : Color.WHITE);
++    }
++
++    private void drawDpad(Canvas canvas, Control c) {
++        float a = c.r * 0.36f, l = c.r;
++        float[][] arms = {
++                { c.cx - a, c.cy - l, c.cx + a, c.cy - a }, // up
++                { c.cx - a, c.cy + a, c.cx + a, c.cy + l }, // down
++                { c.cx - l, c.cy - a, c.cx - a, c.cy + a }, // left
++                { c.cx + a, c.cy - a, c.cx + l, c.cy + a }, // right
++        };
++        fill.setColor(0x88000000);
++        path.reset();
++        path.addRect(c.cx - a, c.cy - l, c.cx + a, c.cy + l, Path.Direction.CW);
++        path.addRect(c.cx - l, c.cy - a, c.cx + l, c.cy + a, Path.Direction.CW);
++        path.setFillType(Path.FillType.WINDING);
++        canvas.drawPath(path, fill);
++        for (int i = 0; i < 4; i++) {
++            float[] r = arms[i];
++            if ((c.dirMask & (1 << i)) != 0) {
++                fill.setColor(0xCCFFFFFF);
++                canvas.drawRect(r[0], r[1], r[2], r[3], fill);
++            }
++        }
++        // Outline of the cross.
++        stroke.setColor(0xDDFFFFFF);
++        path.reset();
++        path.moveTo(c.cx - a, c.cy - l); path.lineTo(c.cx + a, c.cy - l); path.lineTo(c.cx + a, c.cy - a);
++        path.lineTo(c.cx + l, c.cy - a); path.lineTo(c.cx + l, c.cy + a); path.lineTo(c.cx + a, c.cy + a);
++        path.lineTo(c.cx + a, c.cy + l); path.lineTo(c.cx - a, c.cy + l); path.lineTo(c.cx - a, c.cy + a);
++        path.lineTo(c.cx - l, c.cy + a); path.lineTo(c.cx - l, c.cy - a); path.lineTo(c.cx - a, c.cy - a);
++        path.close();
++        canvas.drawPath(path, stroke);
++        // Arrows.
++        float t = a * 0.55f, o = l - a * 0.95f;
++        String[] glyphs = { "▲", "▼", "◀", "▶" };
++        float[][] pos = { { c.cx, c.cy - o }, { c.cx, c.cy + o }, { c.cx - o, c.cy }, { c.cx + o, c.cy } };
++        for (int i = 0; i < 4; i++)
++            drawLabel(canvas, glyphs[i], pos[i][0], pos[i][1], t * 1.6f, (c.dirMask & (1 << i)) != 0 ? Color.BLACK : 0xDDFFFFFF);
++    }
++}
+diff --git a/lorie/src/main/java/com/termux/x11/input/TouchInputHandler.java b/lorie/src/main/java/com/termux/x11/input/TouchInputHandler.java
+index ec1323a..121ff41 100644
+--- a/lorie/src/main/java/com/termux/x11/input/TouchInputHandler.java
++++ b/lorie/src/main/java/com/termux/x11/input/TouchInputHandler.java
+@@ -520,6 +520,7 @@ public class TouchInputHandler {
+             case "open preferences": return (key, down) -> { if (down) mActivity.startActivity(new Intent(mActivity, LoriePreferences.class) {{ setAction(Intent.ACTION_MAIN); }}); };
+             case "release pointer and keyboard capture": return (key, down) -> { if (down) setCapturingEnabled(false); };
+             case "toggle fullscreen": return (key, down) -> { if (down) mActivity.prefs.fullscreen.put(!mActivity.prefs.fullscreen.get()); };
++            case "toggle onscreen gamepad": return (key, down) -> { if (down) mActivity.toggleGamepad(); };
+             case "exit": return (key, down) -> { if (down) mActivity.finish(); };
+             case "send volume up": return (key, down) -> mActivity.getLorieView().sendKeyEvent(0, KEYCODE_VOLUME_UP, down);
+             case "send volume down": return (key, down) -> mActivity.getLorieView().sendKeyEvent(0, KEYCODE_VOLUME_DOWN, down);
+diff --git a/lorie/src/main/java/com/termux/x11/utils/TermuxX11ExtraKeys.java b/lorie/src/main/java/com/termux/x11/utils/TermuxX11ExtraKeys.java
+index 37bdd5c..6e33731 100644
+--- a/lorie/src/main/java/com/termux/x11/utils/TermuxX11ExtraKeys.java
++++ b/lorie/src/main/java/com/termux/x11/utils/TermuxX11ExtraKeys.java
+@@ -208,6 +208,8 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
+             mActivity.toggleMouseAuxButtons();
+         else if ("STYLUS_HELPER".equals(key))
+             mActivity.toggleStylusAuxButtons();
++        else if ("GAMEPAD".equals(key))
++            mActivity.toggleGamepad();
+         else if ("ZOOM_IN".equals(key))
+             mActivity.getLorieView().adjustRendererZoom(25);
+         else if ("ZOOM_OUT".equals(key))
+diff --git a/lorie/src/main/res/layout/main_activity.xml b/lorie/src/main/res/layout/main_activity.xml
+index 4ea66b6..e825e09 100644
+--- a/lorie/src/main/res/layout/main_activity.xml
++++ b/lorie/src/main/res/layout/main_activity.xml
+@@ -124,6 +124,12 @@
+ 
+     </FrameLayout>
+ 
++    <com.termux.x11.input.GamepadOverlayView
++        android:id="@+id/gamepad_overlay"
++        android:layout_width="match_parent"
++        android:layout_height="match_parent"
++        android:visibility="gone" />
++
+     <LinearLayout
+         android:id="@+id/mouse_helper_visibility"
+         android:layout_width="wrap_content"
+diff --git a/lorie/src/main/res/values/arrays.xml b/lorie/src/main/res/values/arrays.xml
+index b34086f..67cf330 100644
+--- a/lorie/src/main/res/values/arrays.xml
++++ b/lorie/src/main/res/values/arrays.xml
+@@ -86,8 +86,14 @@
+         <item>release pointer and keyboard capture</item>
+         <item>toggle fullscreen</item>
+         <item>restart activity</item>
++        <item>toggle onscreen gamepad</item>
+         <item>exit</item>
+     </string-array>
++    <string-array name="gamepadStickModes">
++        <item>keys</item>
++        <item>mouse</item>
++        <item>none</item>
++    </string-array>
+     <string-array name="userActionsVolumeDownValues">
+         <item>@array/userActionsValues</item>
+         <item>send volume down</item>
+diff --git a/lorie/src/main/res/values/strings.xml b/lorie/src/main/res/values/strings.xml
+index 07954e0..9255202 100644
+--- a/lorie/src/main/res/values/strings.xml
++++ b/lorie/src/main/res/values/strings.xml
+@@ -20,6 +20,7 @@ E.g. <b>META</b> for <i>META key</i>, \n
+ <b>PREFERENCES</b> for <i>preferences opening key</i>, \n
+ <b>MOUSE_HELPER</b> for <i>mouse helper toggling key</i>, \n
+ <b>STYLUS_HELPER</b> for <i>stylus click override overlay toggling key</i>, \n
++<b>GAMEPAD</b> for <i>onscreen gamepad toggling key</i>, \n
+ <b>ZOOM_IN</b> for <i>zoom in key</i>, \n
+ <b>ZOOM_OUT</b> for <i>zoom out key</i>, \n
+ <b>ZOOM_RESET</b> for <i>zoom reset key</i>, \n
+@@ -38,6 +39,16 @@ E.g. <b>META</b> for <i>META key</i>, \n
+     <string name="lorie_pref_pointer">Pointer</string>
+     <string name="lorie_pref_kbd">Keyboard</string>
+     <string name="lorie_pref_other">Other</string>
++    <string name="lorie_pref_gamepad">Onscreen gamepad</string>
++    <string name="lorie_pref_showGamepad">Show onscreen gamepad</string>
++    <string name="lorie_pref_showGamepad_summary">Xbox layout controller overlay. Buttons and sticks are sent to X server as keyboard keys and mouse input</string>
++    <string name="lorie_pref_gamepadSize">Gamepad size, %</string>
++    <string name="lorie_pref_gamepadOpacity">Gamepad opacity, %</string>
++    <string name="lorie_pref_gamepadLeftStick">Left stick mode</string>
++    <string name="lorie_pref_gamepadRightStick">Right stick mode</string>
++    <string name="lorie_pref_gamepadMouseSpeed">Stick mouse speed</string>
++    <string name="lorie_pref_gamepadVibrate">Vibrate on button press</string>
++    <string name="lorie_pref_gamepadMapping">Button mapping</string>
+     <string name="lorie_pref_version">Version</string>
+     <string name="lorie_pref_ekbar">Extra key bar preferences</string>
+     <string name="lorie_pref_userActions">Response to user actions</string>
+diff --git a/lorie/src/main/res/xml/preferences.xml b/lorie/src/main/res/xml/preferences.xml
+index 7adb171..ad12152 100644
+--- a/lorie/src/main/res/xml/preferences.xml
++++ b/lorie/src/main/res/xml/preferences.xml
+@@ -6,6 +6,7 @@
+         <Preference app:title="@string/lorie_pref_output" app:fragment="output" />
+         <Preference app:title="@string/lorie_pref_pointer" app:fragment="pointer" />
+         <Preference app:title="@string/lorie_pref_kbd" app:fragment="kbd" />
++        <Preference app:title="@string/lorie_pref_gamepad" app:fragment="gamepad" />
+         <Preference app:title="@string/lorie_pref_other" app:fragment="other" />
+         <Preference app:key="version" app:title="@string/lorie_pref_version" />
+     </PreferenceScreen>
+@@ -54,6 +55,16 @@
+         <SwitchPreferenceCompat app:key="filterOutWinkey" app:defaultValue="false" />
+         <SwitchPreferenceCompat app:key="enforceCharBasedInput" app:defaultValue="false" />
+     </PreferenceScreen>
++    <PreferenceScreen app:key="gamepad">
++        <SwitchPreferenceCompat app:key="showGamepad" app:defaultValue="false" />
++        <SeekBarPreference app:key="gamepadSize" app:defaultValue="100" app:min="50" android:max="200" app:seekBarIncrement="5" app:showSeekBarValue="true" app:updatesContinuously="true" />
++        <SeekBarPreference app:key="gamepadOpacity" app:defaultValue="70" app:min="10" android:max="100" app:seekBarIncrement="5" app:showSeekBarValue="true" app:updatesContinuously="true" />
++        <ListPreference app:key="gamepadLeftStick" app:defaultValue="keys" app:entries="@array/gamepadStickModes" app:entryValues="@array/gamepadStickModes" />
++        <ListPreference app:key="gamepadRightStick" app:defaultValue="mouse" app:entries="@array/gamepadStickModes" app:entryValues="@array/gamepadStickModes" />
++        <SeekBarPreference app:key="gamepadMouseSpeed" app:defaultValue="40" app:min="1" android:max="100" app:seekBarIncrement="1" app:showSeekBarValue="true" app:updatesContinuously="true" />
++        <SwitchPreferenceCompat app:key="gamepadVibrate" app:defaultValue="true" />
++        <EditTextPreference app:key="gamepadMapping" app:defaultValue="A=SPACE B=C X=R Y=E LB=Q RB=F LT=MOUSE_RIGHT RT=MOUSE_LEFT VIEW=TAB MENU=ESCAPE GUIDE=ENTER LS=SHIFT_LEFT RS=V DPAD_UP=UP DPAD_DOWN=DOWN DPAD_LEFT=LEFT DPAD_RIGHT=RIGHT LS_UP=W LS_DOWN=S LS_LEFT=A LS_RIGHT=D RS_UP=UP RS_DOWN=DOWN RS_LEFT=LEFT RS_RIGHT=RIGHT" app:useSimpleSummaryProvider="true" />
++    </PreferenceScreen>
+     <PreferenceScreen app:key="other">
+         <SwitchPreferenceCompat app:key="clipboardEnable" app:defaultValue="true" />
+         <Preference app:key="requestNotificationPermission" />
