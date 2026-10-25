@@ -27,6 +27,17 @@ You can also toggle it with a `GAMEPAD` key in the extra keys bar, or the `toggl
 Controls: LS / RS analog sticks, LS / RS click buttons, D-pad (8-way), A B X Y, LB RB, LT RT, View, Guide, Menu.
 Touches that miss the pad still go to the X desktop. The pad moves up automatically so the extra keys bar doesn't cover it.
 
+### Customizing the layout
+
+Long-press the 🎮 button (or use a `GAMEPAD_EDIT` key in the extra keys bar) to enter the layout editor:
+
+- drag any control to move it;
+- tap a control to select it, then **−** / **+** to resize it (50–250 %), **Hide** / **Show** to remove or bring it back;
+- **Reset** restores the selected control, **Reset all** (nothing selected) restores the default layout;
+- **Done** saves. The layout is kept across restarts.
+
+![layout editor](apk/screenshot-layout-editor.png)
+
 Settings: size, opacity, left/right stick mode (`keys`, `mouse`, `none`), stick mouse speed, vibration, button mapping.
 
 ## Mapping
