@@ -17,7 +17,7 @@ GPU. Running it in a VM gives it all three without any container hacks.
 3. Port **8006** is forwarded automatically and opens in a browser tab. That
    tab shows the VM's screen with the neon live session.
 4. Either use the live session directly, or run the installer to install neon
-   onto the 32 GB virtual disk. The disk lives in `.devcontainer/storage/`
+   onto the 24 GB virtual disk. The disk lives in `.devcontainer/storage/`
    and persists across Codespace restarts (it is ignored by git).
 
 ## Configuration
@@ -29,7 +29,7 @@ Edit `.devcontainer/codespaces.yml`:
 | `BOOT`      | neon User Edition 20261025 ISO | ISO or disk image URL to boot        |
 | `RAM_SIZE`  | `half`                         | RAM given to the VM (e.g. `8G`)      |
 | `CPU_CORES` | `max`                          | CPU cores given to the VM            |
-| `DISK_SIZE` | `32G`                          | Size of the virtual disk             |
+| `DISK_SIZE` | `24G`                          | Size of the virtual disk             |
 
 To track the newest neon build instead of the pinned one, set `BOOT` to
 `https://files.kde.org/neon/images/desk/user/current/neon-user-desk-current.iso`.

@@ -24,9 +24,10 @@
   // cache before the VM image is pulled so the virtual disk has room.
   "initializeCommand": "docker system prune --all --force",
 
+  // Minimum machine. Any Codespaces machine type qualifies; pick the
+  // 4-core (16 GB) type or larger when creating the Codespace for a usable VM.
   "hostRequirements": {
-    "cpus": 4,
-    "memory": "16gb",
-    "storage": "64gb"
+    "cpus": 2,
+    "memory": "8gb"
   }
 }

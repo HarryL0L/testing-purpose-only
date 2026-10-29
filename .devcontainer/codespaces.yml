@@ -13,7 +13,8 @@ services:
       RAM_SIZE: "half"
       CPU_CORES: "max"
       # Virtual disk for the installed system (qcow2, grows on demand).
-      DISK_SIZE: "32G"
+      # Standard Codespaces machines have 32 GB of storage, so keep this modest.
+      DISK_SIZE: "24G"
     devices:
       - /dev/kvm
       - /dev/net/tun
