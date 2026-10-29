@@ -10,12 +10,17 @@ services:
       # Replace with https://files.kde.org/neon/images/desk/user/current/neon-user-desk-current.iso
       # to always boot the newest neon build instead.
       BOOT: "https://files.kde.org/neon/images/desk/user/20261025-1825/neon-user-desk-20261025-1825.iso"
-      RAM_SIZE: "4G"
+      # 3G leaves headroom on an 8 GB Codespace; a bigger guest can get the
+      # whole container OOM-killed, which shows up as endless restarts.
+      RAM_SIZE: "3G"
       CPU_CORES: "2"
       DISK_SIZE: "20G"
       # The Docker bridge in Codespaces has DNS problems; user-mode
       # networking uses the Codespace host's working DNS path.
       NETWORK: "user"
+      # Emulated Intel NIC instead of virtio, as in the working Windows
+      # Codespaces setups; more robust under software emulation.
+      ADAPTER: "e1000e"
       # start.sh sets KVM=N when the host has no /dev/kvm.
       KVM: "${KVM:-Y}"
 

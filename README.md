@@ -57,7 +57,7 @@ Edit `compose.yml`:
 | Variable    | Default                        | Meaning                              |
 |-------------|--------------------------------|--------------------------------------|
 | `BOOT`      | neon User Edition 20261025 ISO | ISO or disk image URL to boot        |
-| `RAM_SIZE`  | `4G`                           | RAM given to the VM                  |
+| `RAM_SIZE`  | `3G`                           | RAM given to the VM                  |
 | `CPU_CORES` | `2`                            | CPU cores given to the VM            |
 | `DISK_SIZE` | `20G`                          | Size of the virtual disk             |
 | `NETWORK`   | `user`                         | User-mode networking (works in Codespaces) |
@@ -66,6 +66,23 @@ To track the newest neon build instead of the pinned one, set `BOOT` to
 `https://files.kde.org/neon/images/desk/user/current/neon-user-desk-current.iso`.
 Any other Plasma 6.8 ISO works too, for example Arch Linux or openSUSE
 Tumbleweed.
+
+## If the VM keeps restarting
+
+Find out why before changing anything:
+
+```bash
+docker inspect plasma --format 'exit={{.State.ExitCode}} oom={{.State.OOMKilled}}'
+docker logs plasma --tail 40
+```
+
+`oom=true` means the host ran out of memory: lower `RAM_SIZE` in
+`compose.yml`. An error line in the log names the real problem. After editing
+`compose.yml`, apply it with:
+
+```bash
+docker compose down && ./start.sh
+```
 
 ## Notes
 
