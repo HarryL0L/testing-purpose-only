@@ -15,9 +15,15 @@ services:
       # Virtual disk for the installed system (qcow2, grows on demand).
       # Standard Codespaces machines have 32 GB of storage, so keep this modest.
       DISK_SIZE: "24G"
-    devices:
-      - /dev/kvm
-      - /dev/net/tun
+      # Most Codespaces machines have no /dev/kvm. Without DEBUG the qemus
+      # image exits when KVM is unavailable, which leaves Codespaces stuck on
+      # "Building codespace". DEBUG=Y makes it fall back to software emulation
+      # (TCG) instead. KVM is still used automatically when it exists.
+      DEBUG: "Y"
+    # privileged exposes /dev/kvm and /dev/net/tun when the host has them,
+    # without failing container creation when it does not (a "devices:" entry
+    # for a missing /dev/kvm aborts the build).
+    privileged: true
     cap_add:
       - NET_ADMIN
     ports:

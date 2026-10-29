@@ -37,21 +37,29 @@ To track the newest neon build instead of the pinned one, set `BOOT` to
 Any other Plasma 6.8 ISO works too, for example an Arch Linux or openSUSE
 Tumbleweed image.
 
-## Checking KVM
+## KVM and speed
 
-If the viewer shows a very slow boot, confirm that the Codespace exposes KVM:
+Most Codespaces machines do **not** expose `/dev/kvm`. The container detects
+this and falls back to QEMU software emulation (TCG), which is roughly ten
+times slower than hardware virtualization. Expect the live session to take
+10 to 20 minutes to reach the desktop and to feel sluggish once there. On the
+rare machine that does expose KVM, it is used automatically and the VM is fast.
+
+To see which mode you got, open a terminal and run:
 
 ```sh
-ls -l /dev/kvm
+docker logs plasma 2>&1 | grep -i kvm
 ```
 
-If the device is missing, QEMU falls back to software emulation. Try a
-different machine type or region.
+A line saying KVM acceleration is not available means software emulation.
 
 ## Notes
 
 - Rendering inside the guest is software-based (no GPU is passed through), so
   desktop effects will not be smooth.
+- `DEBUG: "Y"` is set on purpose: it is what lets the qemus image continue
+  without KVM instead of exiting. It also prints the QEMU command line in the
+  container log.
 - `initializeCommand` prunes unused Docker images on the Codespace host to
   free disk space before the VM image is pulled.
 - This is intended for development and testing. Keep usage within the
