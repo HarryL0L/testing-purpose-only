@@ -1,0 +1,27 @@
+# QEMU virtual machine that boots the KDE neon User Edition ISO.
+# KDE neon 20261025 ships Plasma 6.8.1.
+services:
+  plasma:
+    container_name: plasma
+    image: ghcr.io/qemus/qemu
+    environment:
+      # Pinned KDE neon User Edition ISO (Plasma 6.8.1).
+      # Replace with https://files.kde.org/neon/images/desk/user/current/neon-user-desk-current.iso
+      # to always boot the newest neon build instead.
+      BOOT: "https://files.kde.org/neon/images/desk/user/20261025-1825/neon-user-desk-20261025-1825.iso"
+      # Give the VM half the Codespace's RAM and all its cores.
+      RAM_SIZE: "half"
+      CPU_CORES: "max"
+      # Virtual disk for the installed system (qcow2, grows on demand).
+      DISK_SIZE: "32G"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 8006:8006
+    volumes:
+      - ./storage:/storage
+    restart: on-failure
+    stop_grace_period: 2m

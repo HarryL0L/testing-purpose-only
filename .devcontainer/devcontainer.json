@@ -1,0 +1,32 @@
+// KDE Plasma 6.8 in GitHub Codespaces.
+//
+// Boots a KDE neon virtual machine (Plasma 6.8.1) inside the Codespace with
+// QEMU + KVM, using the qemus/qemu image. The desktop is shown through the
+// browser viewer on port 8006.
+{
+  "name": "KDE Plasma 6.8 (KDE neon VM)",
+  "dockerComposeFile": "codespaces.yml",
+  "service": "plasma",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+
+  "forwardPorts": [8006],
+  "portsAttributes": {
+    "8006": {
+      "label": "KDE Plasma desktop (web viewer)",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "otherPortsAttributes": {
+    "onAutoForward": "ignore"
+  },
+
+  // Codespaces hosts are short on disk. Drop cached Docker images and build
+  // cache before the VM image is pulled so the virtual disk has room.
+  "initializeCommand": "docker system prune --all --force",
+
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "16gb",
+    "storage": "64gb"
+  }
+}
