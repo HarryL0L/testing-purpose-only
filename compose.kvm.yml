@@ -1,0 +1,6 @@
+# Overlay used by start.sh when the Codespace host exposes /dev/kvm.
+services:
+  plasma:
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
