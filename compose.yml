@@ -6,7 +6,9 @@ services:
     container_name: plasma
 
     environment:
-      RAM_SIZE: "4G"
+      # Standard 2-core Codespaces have 8 GB with about 5 GB free; 4G is
+      # too tight for the host.
+      RAM_SIZE: "3G"
       CPU_CORES: "2"
       # Keep well under the free space in ./storage (a standard Codespace
       # has about 15 GB left after the 3.4 GB ISO).
@@ -24,7 +26,7 @@ services:
       - ./storage:/storage
       # The ISO is downloaded by start.sh on the Codespace (where DNS works)
       # and mounted here; qemus boots /boot.iso and ignores BOOT.
-      - ./storage/neon.iso:/boot.iso:ro
+      - ./storage/neon.iso:/boot.iso
 
     devices:
       - "/dev/kvm:/dev/kvm"

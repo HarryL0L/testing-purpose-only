@@ -63,7 +63,7 @@ Edit `compose.yml`:
 
 | Variable    | Default | Meaning                                                    |
 |-------------|---------|------------------------------------------------------------|
-| `RAM_SIZE`  | `4G`    | RAM given to the VM                                        |
+| `RAM_SIZE`  | `3G`    | RAM given to the VM                                        |
 | `CPU_CORES` | `2`     | CPU cores given to the VM                                  |
 | `DISK_SIZE` | `12G`   | Size of the virtual disk                                   |
 | `NETWORK`   | `user`  | User-mode networking; bridge mode has no DNS in Codespaces |
