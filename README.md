@@ -23,7 +23,10 @@ GPU. Running it in a VM gives it all three.
    ./start.sh
    ```
 
-3. Watch the VM come up (the first boot downloads the 3.4 GB neon ISO):
+   The first run downloads the 3.4 GB neon ISO into `./storage/` before
+   starting the VM; the script shows the progress.
+
+3. Watch the VM come up:
 
    ```bash
    docker logs -f plasma
@@ -58,18 +61,22 @@ No warning about KVM being unavailable means hardware acceleration is on.
 
 Edit `compose.yml`:
 
-| Variable    | Default                        | Meaning                              |
-|-------------|--------------------------------|--------------------------------------|
-| `BOOT`      | neon User Edition 20261025 ISO | ISO or disk image URL to boot        |
-| `RAM_SIZE`  | `4G`                           | RAM given to the VM                  |
-| `CPU_CORES` | `2`                            | CPU cores given to the VM            |
-| `DISK_SIZE` | `20G`                          | Size of the virtual disk             |
-| `NETWORK`   | `user`                         | User-mode networking; bridge mode has no DNS in Codespaces |
+| Variable    | Default | Meaning                                                    |
+|-------------|---------|------------------------------------------------------------|
+| `RAM_SIZE`  | `4G`    | RAM given to the VM                                        |
+| `CPU_CORES` | `2`     | CPU cores given to the VM                                  |
+| `DISK_SIZE` | `20G`   | Size of the virtual disk                                   |
+| `NETWORK`   | `user`  | User-mode networking; bridge mode has no DNS in Codespaces |
 
-To track the newest neon build instead of the pinned one, set `BOOT` to
-`https://files.kde.org/neon/images/desk/user/current/neon-user-desk-current.iso`.
-Any other Plasma 6.8 ISO works too, for example Arch Linux or openSUSE
-Tumbleweed.
+The ISO URL is set at the top of `start.sh`. To track the newest neon build
+instead of the pinned one, change it to
+`https://files.kde.org/neon/images/desk/user/current/neon-user-desk-current.iso`
+and delete `storage/neon.iso`. Any other Plasma 6.8 ISO works too, for
+example Arch Linux or openSUSE Tumbleweed.
+
+The container runs on the host network because Docker's bridge network in
+Codespaces cannot resolve DNS names. The ISO is downloaded by `start.sh` on
+the Codespace for the same reason.
 
 ## If the VM keeps restarting
 

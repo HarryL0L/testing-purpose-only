@@ -1,35 +1,30 @@
 # KDE Plasma 6.8 VM for GitHub Codespaces, using the qemus/qemu image.
-# Started by ./start.sh (or run it by hand: docker compose up -d).
+# Started by ./start.sh, which first downloads the ISO into ./storage.
 services:
   plasma:
     image: ghcr.io/qemus/qemu
     container_name: plasma
 
     environment:
-      # Pinned KDE neon User Edition ISO (Plasma 6.8.1).
-      # Replace with https://files.kde.org/neon/images/desk/user/current/neon-user-desk-current.iso
-      # to always boot the newest neon build instead.
-      BOOT: "https://files.kde.org/neon/images/desk/user/20261025-1825/neon-user-desk-20261025-1825.iso"
       RAM_SIZE: "4G"
       CPU_CORES: "2"
       DISK_SIZE: "20G"
-      # Docker bridge networking in Codespaces cannot resolve DNS names
-      # (the ISO download fails with "unable to resolve host"). User-mode
-      # networking uses the Codespace host's working DNS path.
+      # User-mode networking: no bridge, no TUN device needed.
       NETWORK: "user"
+
+    # Host networking: the Docker bridge in Codespaces has no working DNS
+    # path, so the container shares the Codespace's network instead.
+    # Port 8006 is then served directly on the Codespace.
+    network_mode: "host"
 
     cap_add:
       - NET_ADMIN
 
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
-
-    ports:
-      - "8006:8006"
-
     volumes:
       - ./storage:/storage
+      # The ISO is downloaded by start.sh on the Codespace (where DNS works)
+      # and mounted here; qemus boots /boot.iso and ignores BOOT.
+      - ./storage/neon.iso:/boot.iso:ro
 
     devices:
       - "/dev/kvm:/dev/kvm"
