@@ -13,9 +13,17 @@ services:
       RAM_SIZE: "4G"
       CPU_CORES: "2"
       DISK_SIZE: "20G"
+      # Docker bridge networking in Codespaces cannot resolve DNS names
+      # (the ISO download fails with "unable to resolve host"). User-mode
+      # networking uses the Codespace host's working DNS path.
+      NETWORK: "user"
 
     cap_add:
       - NET_ADMIN
+
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
 
     ports:
       - "8006:8006"

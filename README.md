@@ -64,6 +64,7 @@ Edit `compose.yml`:
 | `RAM_SIZE`  | `4G`                           | RAM given to the VM                  |
 | `CPU_CORES` | `2`                            | CPU cores given to the VM            |
 | `DISK_SIZE` | `20G`                          | Size of the virtual disk             |
+| `NETWORK`   | `user`                         | User-mode networking; bridge mode has no DNS in Codespaces |
 
 To track the newest neon build instead of the pinned one, set `BOOT` to
 `https://files.kde.org/neon/images/desk/user/current/neon-user-desk-current.iso`.
