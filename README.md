@@ -34,7 +34,7 @@ GPU. Running it in a VM gives it all three.
 
 4. Open forwarded port **8006** from the **Ports** tab. That page shows the
    VM's screen with the neon live session. You can use the live session, or
-   run the installer to install neon onto the 20 GB virtual disk.
+   run the installer to install neon onto the 12 GB virtual disk.
 
 ## Stop / start
 
@@ -65,7 +65,7 @@ Edit `compose.yml`:
 |-------------|---------|------------------------------------------------------------|
 | `RAM_SIZE`  | `4G`    | RAM given to the VM                                        |
 | `CPU_CORES` | `2`     | CPU cores given to the VM                                  |
-| `DISK_SIZE` | `20G`   | Size of the virtual disk                                   |
+| `DISK_SIZE` | `12G`   | Size of the virtual disk                                   |
 | `NETWORK`   | `user`  | User-mode networking; bridge mode has no DNS in Codespaces |
 
 The ISO URL is set at the top of `start.sh`. To track the newest neon build
@@ -74,9 +74,9 @@ instead of the pinned one, change it to
 and delete `storage/neon.iso`. Any other Plasma 6.8 ISO works too, for
 example Arch Linux or openSUSE Tumbleweed.
 
-The container runs on the host network because Docker's bridge network in
-Codespaces cannot resolve DNS names. The ISO is downloaded by `start.sh` on
-the Codespace for the same reason.
+Docker's bridge network in Codespaces cannot resolve DNS names, so the ISO
+is downloaded by `start.sh` on the Codespace and handed to the container as
+a file. The qemus image does not support host networking.
 
 ## If the VM keeps restarting
 
