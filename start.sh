@@ -1,21 +1,11 @@
 #!/usr/bin/env bash
-# Start the KDE Plasma VM.
+# Build (first time) and start the Android 17 emulator container.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Pinned KDE neon User Edition ISO (Plasma 6.8.1). For the newest neon build
-# use https://files.kde.org/neon/images/desk/user/current/neon-user-desk-current.iso
-ISO_URL="${ISO_URL:-https://files.kde.org/neon/images/desk/user/20261025-1825/neon-user-desk-20261025-1825.iso}"
-ISO="storage/neon.iso"
-
-mkdir -p storage
-
-# Download the ISO on the Codespace itself: DNS does not work inside the
-# VM container, but it does here. Resumes if interrupted.
-if [ ! -s "$ISO" ]; then
-  echo "Downloading KDE neon ISO (about 3.4 GB)..."
-  curl -L --fail --retry 5 -C - -o "$ISO.part" "$ISO_URL"
-  mv "$ISO.part" "$ISO"
+if [ ! -e /dev/kvm ]; then
+  echo "No /dev/kvm on this machine: the emulator cannot run here." >&2
+  exit 1
 fi
 
 # Wait for the Docker daemon (it starts shortly after the Codespace does).
@@ -24,8 +14,14 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-docker compose up -d
+mkdir -p data
+
+if ! docker image inspect android17-codespaces >/dev/null 2>&1; then
+  echo "Building the emulator image (downloads about 2.5 GB, takes several minutes)..."
+fi
+docker compose up -d --build
 
 echo
-echo "VM starting. Open forwarded port 8006 in the Ports tab."
-echo "Follow progress with:  docker logs -f plasma"
+echo "Emulator starting. Open port 6080 in the Ports tab (add it with"
+echo "'Forward a Port' if it is not listed). Follow progress with:"
+echo "  docker logs -f android"

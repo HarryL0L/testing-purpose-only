@@ -1,16 +1,15 @@
-// KDE Plasma 6.8 in GitHub Codespaces.
+// Android 17 in GitHub Codespaces.
 //
 // No image is named here on purpose: Codespaces then uses its cached default
-// image and starts in about a minute. Naming an image forces a multi-GB pull
-// on every new Codespace. The Plasma VM is a separate Docker container
-// started by ./start.sh once the Codespace is up.
+// image and starts in about a minute. The emulator runs in a separate Docker
+// container started by ./start.sh once the Codespace is up.
 {
-  "name": "KDE Plasma 6.8 (KDE neon VM)",
+  "name": "Android 17 emulator",
 
-  "forwardPorts": [8006],
+  "forwardPorts": [6080],
   "portsAttributes": {
-    "8006": {
-      "label": "KDE Plasma desktop (web viewer)",
+    "6080": {
+      "label": "Android 17 (noVNC)",
       "onAutoForward": "openBrowser"
     }
   },
@@ -18,6 +17,6 @@
     "onAutoForward": "ignore"
   },
 
-  // Start (or restart) the VM every time the Codespace starts.
+  // Build and start the emulator every time the Codespace starts.
   "postStartCommand": "bash ./start.sh"
 }

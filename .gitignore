@@ -1,2 +1,2 @@
-# VM disk image and cached ISO created by the Plasma container
-storage/
+# Android virtual device data created by the emulator container
+data/

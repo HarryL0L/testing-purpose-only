@@ -1,36 +1,38 @@
-# KDE Plasma 6.8 VM for GitHub Codespaces, using the qemus/qemu image.
-# Started by ./start.sh, which first downloads the ISO into ./storage.
+# Android 17 emulator for GitHub Codespaces. Started by ./start.sh.
 services:
-  plasma:
-    image: ghcr.io/qemus/qemu
-    container_name: plasma
+  android:
+    build:
+      context: .
+      # Docker's bridge network in Codespaces cannot resolve DNS names, so
+      # build (apt + SDK downloads) on the host network.
+      network: host
+      args:
+        # Android 17.0 (API 37) with Google APIs. Alternatives:
+        #   system-images;android-37.2;google_apis_ps16k;x86_64      (17.2 QPR)
+        #   system-images;android-37.0;google_apis_playstore;x86_64  (Play Store)
+        SYSTEM_IMAGE: "system-images;android-37.0;google_apis;x86_64"
+    image: android17-codespaces
+    container_name: android
 
     environment:
-      # Standard 2-core Codespaces have 8 GB with about 5 GB free; 4G is
-      # too tight for the host.
-      RAM_SIZE: "3G"
-      CPU_CORES: "2"
-      # Keep well under the free space in ./storage (a standard Codespace
-      # has about 15 GB left after the 3.4 GB ISO).
-      DISK_SIZE: "12G"
-      # User-mode networking: no bridge, no TUN device needed.
-      NETWORK: "user"
+      AVD_NAME: "android17"
+      DEVICE_PROFILE: "pixel_7"
+      # Emulator window size (phone portrait) and the X screen that holds it.
+      SKIN: "540x1200"
+      SCREEN: "640x1280"
+      NOVNC_PORT: "6080"
 
-    cap_add:
-      - NET_ADMIN
-
-    ports:
-      - "8006:8006"
-
-    volumes:
-      - ./storage:/storage
-      # The ISO is downloaded by start.sh on the Codespace (where DNS works)
-      # and mounted here; qemus boots /boot.iso and ignores BOOT.
-      - ./storage/neon.iso:/boot.iso
+    # Host networking for the same DNS reason: the emulator's user-mode
+    # network resolves through the Codespace's resolver, so Android has
+    # internet. noVNC listens on port 6080 of the Codespace.
+    network_mode: "host"
 
     devices:
       - "/dev/kvm:/dev/kvm"
-      - "/dev/net/tun:/dev/net/tun"
 
-    stop_grace_period: 2m
-    restart: always
+    volumes:
+      # AVD (Android's disk, settings, installed apps) persists here.
+      - ./data:/data
+
+    stop_grace_period: 1m
+    restart: unless-stopped
