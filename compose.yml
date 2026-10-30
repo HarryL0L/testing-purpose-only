@@ -18,9 +18,6 @@ services:
       # The Docker bridge in Codespaces has DNS problems; user-mode
       # networking uses the Codespace host's working DNS path.
       NETWORK: "user"
-      # Emulated Intel NIC instead of virtio, as in the working Windows
-      # Codespaces setups; more robust under software emulation.
-      ADAPTER: "e1000e"
       # start.sh sets KVM=N when the host has no /dev/kvm.
       KVM: "${KVM:-Y}"
 
