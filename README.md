@@ -2,9 +2,13 @@
 
 This repository runs a full **KDE neon** virtual machine (Plasma 6.8.1) inside
 a GitHub Codespace. It follows the same pattern as the "Windows in Codespaces"
-repos: the Codespace boots on GitHub's standard image, and the VM is a separate
+repos: the Codespace boots on GitHub's default image, and the VM is a separate
 Docker container built from the [qemus/qemu](https://github.com/qemus/qemu)
 image, with its screen streamed to your browser on port 8006.
+
+The devcontainer deliberately names no image. Codespaces then uses its cached
+default image and starts in about a minute; naming the image forces a
+multi-gigabyte pull on every new Codespace.
 
 Plasma 6.8 is Wayland-only, so it needs a real kernel, systemd and a virtual
 GPU. Running it in a VM gives it all three.

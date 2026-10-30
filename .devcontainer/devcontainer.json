@@ -1,11 +1,11 @@
 // KDE Plasma 6.8 in GitHub Codespaces.
 //
-// The Codespace itself runs on GitHub's standard image (Docker included).
-// The Plasma VM is a separate Docker container started by ./start.sh once
-// the Codespace is up, so Codespace creation never waits on the VM.
+// No image is named here on purpose: Codespaces then uses its cached default
+// image and starts in about a minute. Naming an image forces a multi-GB pull
+// on every new Codespace. The Plasma VM is a separate Docker container
+// started by ./start.sh once the Codespace is up.
 {
   "name": "KDE Plasma 6.8 (KDE neon VM)",
-  "image": "mcr.microsoft.com/devcontainers/universal:2",
 
   "forwardPorts": [8006],
   "portsAttributes": {
