@@ -39,16 +39,16 @@ docker compose start
 The disk image and cached ISO live in `./storage/` (ignored by Git) and
 persist across Codespace restarts.
 
-## KVM and speed
+## KVM
 
-`start.sh` checks for `/dev/kvm`. Codespaces machines normally expose it, so
-the VM runs with hardware acceleration. If the device is missing, the VM runs
-in QEMU software emulation, roughly ten times slower. The script prints which
-mode it picked. To confirm what QEMU actually used:
+The VM needs `/dev/kvm`, which Codespaces machines expose. To confirm QEMU is
+using it:
 
 ```bash
 docker logs plasma 2>&1 | grep -i kvm
 ```
+
+No warning about KVM being unavailable means hardware acceleration is on.
 
 ## Configuration
 
@@ -76,7 +76,8 @@ docker logs plasma --tail 40
 ```
 
 `oom=true` means the host ran out of memory: lower `RAM_SIZE` in
-`compose.yml`. An error line in the log names the real problem. After editing
+`compose.yml`. An error line in the log names the real problem. An error
+about `/dev/kvm` means this machine has no KVM. After editing
 `compose.yml`, apply it with:
 
 ```bash

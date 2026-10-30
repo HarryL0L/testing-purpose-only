@@ -13,8 +13,6 @@ services:
       RAM_SIZE: "4G"
       CPU_CORES: "2"
       DISK_SIZE: "20G"
-      # start.sh sets KVM=N when the host has no /dev/kvm.
-      KVM: "${KVM:-Y}"
 
     cap_add:
       - NET_ADMIN
@@ -24,6 +22,10 @@ services:
 
     volumes:
       - ./storage:/storage
+
+    devices:
+      - "/dev/kvm:/dev/kvm"
+      - "/dev/net/tun:/dev/net/tun"
 
     stop_grace_period: 2m
     restart: always
