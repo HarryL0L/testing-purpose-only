@@ -13,7 +13,7 @@ built from the `Dockerfile` here.
 1. Create a Codespace on this branch. A **4-core** machine is recommended.
 2. The emulator starts automatically when the Codespace is ready. The first
    run builds the image, which downloads the Android SDK and the Android 17
-   system image (about 2.5 GB) and takes several minutes. To start it by
+   system image (about 6 GB installed) and takes 10 to 15 minutes. To start it by
    hand, or after stopping it:
 
    ```bash
@@ -78,6 +78,8 @@ docker compose down && rm -rf data && ./start.sh
   emulator does not start.
 - Graphics are rendered in software (SwiftShader), so animations are not
   smooth, but the UI is usable.
+- The emulator suggests 16 GB of host RAM for this image. It runs on the
+  8 GB machine with a 2 GB guest, but a 4-core/16 GB Codespace is better.
 - Networking: the container uses the host network so Android has working
   DNS; Docker's bridge network in Codespaces cannot resolve names.
 - This is intended for development and testing. Keep usage within the

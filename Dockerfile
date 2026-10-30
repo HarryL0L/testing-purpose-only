@@ -11,8 +11,9 @@ ENV ANDROID_HOME=/opt/android-sdk \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates openjdk-17-jre-headless unzip curl \
-      xvfb x11vnc novnc websockify x11-utils \
-      libgl1 libegl1 libgbm1 libpulse0 libnss3 libasound2t64 \
+      xvfb x11vnc novnc websockify x11-utils xdotool \
+      libgl1 libgl1-mesa-dri libglx-mesa0 libegl1 libgbm1 \
+      libpulse0 libnss3 libasound2t64 \
       libxcomposite1 libxcursor1 libxi6 libxtst6 libxkbcommon0 libxkbfile1 \
       libxdamage1 libxrandr2 libxfixes3 libxrender1 libxcb-cursor0 \
       libdbus-1-3 libfontconfig1 \
@@ -26,18 +27,14 @@ RUN mkdir -p "$ANDROID_HOME/cmdline-tools" \
 
 ENV PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"
 
-# Emulator, adb and the Android 17 system image (about 2.5 GB).
+# Emulator, adb and the Android 17 system image (about 6 GB installed).
 RUN yes | sdkmanager --licenses >/dev/null \
  && sdkmanager "platform-tools" "emulator" "$SYSTEM_IMAGE"
 
 ENV SYSTEM_IMAGE="$SYSTEM_IMAGE" \
     ANDROID_AVD_HOME=/data/avd \
+    HOME=/root \
     DISPLAY=:0
-
-# Silence the emulator's "nested virtualization" warning dialog.
-RUN mkdir -p "/root/.config/Android Open Source Project" \
- && printf '[General]\nshowNestedWarning=false\n' \
-      > "/root/.config/Android Open Source Project/Emulator.conf"
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

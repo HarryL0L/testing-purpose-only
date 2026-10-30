@@ -23,6 +23,22 @@ disk.dataPartition.size=6G
 CFG
 fi
 
+# Emulator UI settings: no "nested virtualization" dialog, no "host RAM is
+# below the suggested 16 GB" dialog for this AVD, no crash-report consent.
+mkdir -p "$HOME/.config/Android Open Source Project"
+cat > "$HOME/.config/Android Open Source Project/Emulator.conf" <<CONF
+[General]
+showNestedWarning=false
+showCompatibilityWarning_${AVD_NAME}=false
+
+[set]
+crashReportPreference=2
+autoFindAdb=true
+CONF
+# An unclean stop leaves a crash record that triggers a consent dialog on
+# the next start; drop it.
+find /tmp -maxdepth 1 -name 'android-*' -type d -exec rm -rf {} + 2>/dev/null || true
+
 # Virtual X display that the emulator window renders into.
 Xvfb :0 -screen 0 "${SCREEN}x24" -nolisten tcp >/tmp/xvfb.log 2>&1 &
 for _ in $(seq 1 50); do xdpyinfo -display :0 >/dev/null 2>&1 && break; sleep 0.2; done
@@ -31,8 +47,25 @@ for _ in $(seq 1 50); do xdpyinfo -display :0 >/dev/null 2>&1 && break; sleep 0.
 x11vnc -display :0 -forever -shared -nopw -quiet -localhost -rfbport 5900 >/tmp/x11vnc.log 2>&1 &
 websockify --web=/usr/share/novnc "$NOVNC_PORT" localhost:5900 >/tmp/novnc.log 2>&1 &
 
+# The emulator opens its window at a small scale; once it appears, move it
+# to the top-left corner and enlarge it to fill the screen (the toolbar
+# sits to the right of the window).
+(
+  W=${SCREEN%x*}; H=${SCREEN#*x}
+  for _ in $(seq 1 300); do
+    sleep 1
+    id=$(xdotool search --name '^Android Emulator - ' 2>/dev/null | head -1) || true
+    if [ -n "$id" ]; then
+      xdotool windowmove "$id" 0 0 windowsize "$id" $((W - 80)) $((H - 40)) 2>/dev/null || true
+      break
+    fi
+  done
+) &
+
+adb start-server >/dev/null 2>&1 || true
+
 echo "Starting emulator (KVM: $([ -w /dev/kvm ] && echo yes || echo NO))"
 exec emulator "@$AVD_NAME" \
   -gpu swiftshader_indirect -accel on \
-  -skin "$SKIN" -no-audio -no-boot-anim -no-snapshot \
+  -skin "$SKIN" -no-audio -no-boot-anim -no-snapshot -no-metrics \
   $EMULATOR_ARGS
