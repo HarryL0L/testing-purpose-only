@@ -40,7 +40,30 @@ Long-press the 🎮 button (or use a `GAMEPAD_EDIT` key in the extra keys bar) t
 
 Settings: size, opacity, left/right stick mode (`keys`, `mouse`, `none`), stick mouse speed, vibration, button mapping.
 
-## Mapping
+## Real Xbox controller mode (Wine games)
+
+Games running in Wine can see the onscreen pad as a **real Xbox 360 controller**: analog sticks, every button
+including Guide, and the game's rumble vibrating the phone. It works without root through
+[`xinput-bridge`](xinput-bridge/), replacement `xinput1_3/1_4/9_1_0.dll`s that get the pad's state from the
+app over UDP on `127.0.0.1:7949`.
+
+1. In Termux (or wherever you run Wine), get the bridge and install it into your Wine prefix:
+   ```
+   curl -LO https://github.com/HarryL0L/testing-purpose-only/raw/claude/termux-x11-xbox-gamepad-imz9pn/apk/xinput-bridge.zip
+   unzip xinput-bridge.zip && cd xinput-bridge
+   ./install.sh ~/.wine            # your WINEPREFIX; with box64 e.g.: WINE="box64 wine64" ./install.sh ~/.wine
+   ```
+   It copies the 64-bit DLLs to `system32`, the 32-bit ones to `syswow64` (originals kept as `.orig`) and sets
+   the DLLs to *native, builtin*. `./install.sh --uninstall ~/.wine` undoes it. If your launcher has its own
+   DLL override setting (e.g. winecfg → Libraries), `xinput1_3`, `xinput1_4`, `xinput9_1_0` must be *native, builtin*.
+2. In Termux:X11: Preferences → **Onscreen gamepad** → **Gamepad sends** → `xbox controller`.
+3. Start the game. It finds the controller as soon as the onscreen pad is shown.
+
+In this mode the button mapping and stick modes don't apply: the game gets the controller itself, and you set
+the controls in the game. Triggers are digital (fully pressed or released).
+Only games using XInput (most games since ~2007) see it; old DirectInput-only games don't.
+
+## Mapping (keyboard and mouse mode)
 
 X11 has no virtual joystick device, so the pad sends keyboard keys and mouse input. Default (FPS style):
 

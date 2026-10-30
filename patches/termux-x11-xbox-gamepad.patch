@@ -1,5 +1,17 @@
+diff --git a/lorie/src/main/AndroidManifest.xml b/lorie/src/main/AndroidManifest.xml
+index 0ad222a..8bce7d8 100644
+--- a/lorie/src/main/AndroidManifest.xml
++++ b/lorie/src/main/AndroidManifest.xml
+@@ -5,6 +5,7 @@
+ 
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+     <uses-permission android:name="android.permission.INTERNET" />
++    <uses-permission android:name="android.permission.VIBRATE" />
+     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+ 
 diff --git a/lorie/src/main/java/com/termux/x11/MainActivity.java b/lorie/src/main/java/com/termux/x11/MainActivity.java
-index 9bba771..c00991d 100644
+index 9bba771..dd2f148 100644
 --- a/lorie/src/main/java/com/termux/x11/MainActivity.java
 +++ b/lorie/src/main/java/com/termux/x11/MainActivity.java
 @@ -68,6 +68,7 @@ import androidx.core.view.ViewCompat;
@@ -21,7 +33,7 @@ index 9bba771..c00991d 100644
  
          if (SDK_INT >= VERSION_CODES.TIRAMISU
                  && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PERMISSION_GRANTED
-@@ -596,6 +601,38 @@ public class MainActivity extends AppCompatActivity {
+@@ -596,6 +601,39 @@ public class MainActivity extends AppCompatActivity {
          makeSureHelpersAreVisibleAndInScreenBounds();
      }
  
@@ -29,7 +41,8 @@ index 9bba771..c00991d 100644
 +        GamepadOverlayView gamepad = findViewById(R.id.gamepad_overlay);
 +        if (reconfigure)
 +            gamepad.configure(prefs.gamepadSize.get() / 100f, prefs.gamepadLeftStick.get(), prefs.gamepadRightStick.get(),
-+                    prefs.gamepadMouseSpeed.get(), prefs.gamepadVibrate.get(), prefs.gamepadMapping.get(), prefs.gamepadLayout.get());
++                    prefs.gamepadMouseSpeed.get(), prefs.gamepadVibrate.get(), prefs.gamepadMapping.get(), prefs.gamepadLayout.get(),
++                    "xbox controller".equals(prefs.gamepadOutput.get()));
 +        gamepad.setAlpha(prefs.gamepadOpacity.get() / 100f);
 +        gamepad.setVisibility(prefs.showGamepad.get() && !isInPictureInPictureMode && getLorieView().connected() ? View.VISIBLE : View.GONE);
 +    }
@@ -60,7 +73,7 @@ index 9bba771..c00991d 100644
      public void toggleMouseAuxButtons() {
          showMouseAuxButtons(findViewById(R.id.mouse_buttons).getVisibility() != View.VISIBLE);
      }
-@@ -809,6 +846,7 @@ public class MainActivity extends AppCompatActivity {
+@@ -809,6 +847,7 @@ public class MainActivity extends AppCompatActivity {
          findViewById(R.id.mouse_buttons).setVisibility(prefs.showMouseHelper.get() && "1".equals(prefs.touchMode.get()) && getLorieView().connected() ? View.VISIBLE : View.GONE);
          showMouseAuxButtons(prefs.showMouseHelper.get());
          showStylusAuxButtons(prefs.showStylusClickOverride.get());
@@ -68,7 +81,7 @@ index 9bba771..c00991d 100644
  
          getTerminalToolbarViewPager().setAlpha(isInPictureInPictureMode ? 0.f : prefs.adjustHeightForEK.get() ? 1.f : ((float) prefs.opacityEKBar.get())/100);
  
-@@ -1237,6 +1275,7 @@ public class MainActivity extends AppCompatActivity {
+@@ -1237,6 +1276,7 @@ public class MainActivity extends AppCompatActivity {
          pager.setAlpha(isInPictureInPictureMode ? 0.f : prefs.adjustHeightForEK.get() ? 1.f : ((float) prefs.opacityEKBar.get())/100);
          findViewById(R.id.mouse_buttons).setAlpha(isInPictureInPictureMode ? 0.f : 0.7f);
          findViewById(R.id.mouse_helper_visibility).setAlpha(isInPictureInPictureMode ? 0.f : 1.f);
@@ -76,7 +89,7 @@ index 9bba771..c00991d 100644
          setTerminalToolbarView();
          if (!isInPictureInPictureMode)
              applyWindowSettings();
-@@ -1274,6 +1313,7 @@ public class MainActivity extends AppCompatActivity {
+@@ -1274,6 +1314,7 @@ public class MainActivity extends AppCompatActivity {
              setTerminalToolbarView();
              findViewById(R.id.mouse_buttons).setVisibility(prefs.showMouseHelper.get() && "1".equals(prefs.touchMode.get()) && connected ? View.VISIBLE : View.GONE);
              findViewById(R.id.stub).setVisibility(connected?View.INVISIBLE:View.VISIBLE);
@@ -99,10 +112,10 @@ index c982fcc..34794ab 100644
          public static final ExtraKeyDisplayMap LESS_KNOWN_CHARACTERS_DISPLAY = new ExtraKeyDisplayMap() {{
 diff --git a/lorie/src/main/java/com/termux/x11/input/GamepadOverlayView.java b/lorie/src/main/java/com/termux/x11/input/GamepadOverlayView.java
 new file mode 100644
-index 0000000..f48c112
+index 0000000..af8714d
 --- /dev/null
 +++ b/lorie/src/main/java/com/termux/x11/input/GamepadOverlayView.java
-@@ -0,0 +1,851 @@
+@@ -0,0 +1,953 @@
 +package com.termux.x11.input;
 +
 +import static com.termux.x11.input.InputStub.BUTTON_LEFT;
@@ -117,6 +130,9 @@ index 0000000..f48c112
 +import android.graphics.Paint;
 +import android.graphics.Path;
 +import android.graphics.RectF;
++import android.os.Build;
++import android.os.VibrationEffect;
++import android.os.Vibrator;
 +import android.util.AttributeSet;
 +import android.util.SparseArray;
 +import android.view.HapticFeedbackConstants;
@@ -138,8 +154,10 @@ index 0000000..f48c112
 +/**
 + * Onscreen gamepad drawn in the Xbox controller layout: two analog sticks (with LS/RS clicks),
 + * D-pad, A/B/X/Y, LB/RB, LT/RT, View, Menu and Guide buttons.
-+ * X server has no virtual joystick device, so every control is translated to keyboard keys,
-+ * mouse buttons, mouse wheel or relative mouse motion. Mapping is user configurable.
++ * By default every control is translated to keyboard keys, mouse buttons, mouse wheel or relative
++ * mouse motion (user configurable), because X server has no virtual joystick device.
++ * In controller mode the pad is instead sent to the XInput bridge DLL in Wine, where games see
++ * a real Xbox controller with analog sticks (see {@link XInputBridge}).
 + * Touches that do not hit any control fall through to the views below.
 + * Long press on the toggle button enters layout editing mode, where controls can be moved,
 + * resized and hidden.
@@ -196,6 +214,11 @@ index 0000000..f48c112
 +    private float sizeScale = 1f, mouseSpeed = 20f, mouseRemX, mouseRemY, unit;
 +    private int insetTop, insetBottom;
 +
++    // Xbox controller output.
++    private boolean controllerOutput;
++    private XInputBridge bridge;
++    private int xButtons, xLeftTrigger, xRightTrigger;
++
 +    // Layout customization: id -> { dx, dy (in size units), scale, hidden (0 or 1) }.
 +    private static final int LAYOUT_DX = 0, LAYOUT_DY = 1, LAYOUT_SCALE = 2, LAYOUT_HIDDEN = 3;
 +    private static final String[] TOOLS = { "−", "+", "Hide", "Reset", "Done" };
@@ -251,8 +274,10 @@ index 0000000..f48c112
 +
 +    public void setOnLayoutSaved(Consumer<String> listener) { onLayoutSaved = listener; }
 +
-+    public void configure(float scale, String leftMode, String rightMode, int speed, boolean vibrate, String mappingString, String layoutString) {
++    public void configure(float scale, String leftMode, String rightMode, int speed, boolean vibrate, String mappingString, String layoutString, boolean controller) {
 +        releaseAll();
++        controllerOutput = controller;
++        updateBridge();
 +        if (!editing)
 +            parseLayout(layoutString);
 +        sizeScale = scale;
@@ -484,12 +509,79 @@ index 0000000..f48c112
 +        super.onVisibilityChanged(changedView, visibility);
 +        if (visibility != VISIBLE)
 +            releaseAll();
++        updateBridge();
++    }
++
++    @Override
++    protected void onAttachedToWindow() {
++        super.onAttachedToWindow();
++        updateBridge();
 +    }
 +
 +    @Override
 +    protected void onDetachedFromWindow() {
 +        releaseAll();
 +        super.onDetachedFromWindow();
++        updateBridge();
++    }
++
++    /** The virtual controller exists while the pad is shown in controller mode, games see it unplugged otherwise. */
++    private void updateBridge() {
++        boolean wanted = controllerOutput && getWindowToken() != null && getVisibility() == VISIBLE;
++        if (wanted && bridge == null) {
++            bridge = new XInputBridge(this::rumble);
++            bridge.start();
++            pushControllerState();
++        } else if (!wanted && bridge != null) {
++            bridge.stop();
++            bridge = null;
++        }
++    }
++
++    private void rumble(int left, int right) {
++        Vibrator vibrator = getContext().getSystemService(Vibrator.class);
++        if (vibrator == null)
++            return;
++        int amplitude = Math.max(left, right) >> 8;
++        if (amplitude == 0 || !haptics || bridge == null) {
++            vibrator.cancel();
++            return;
++        }
++        // Games set the motor speed and leave it running until they change it again.
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
++            vibrator.vibrate(VibrationEffect.createOneShot(10000, Math.max(1, amplitude)));
++        else
++            vibrator.vibrate(10000);
++    }
++
++    private static int controllerButton(String name) {
++        switch (name) {
++            case "A": return XInputBridge.A;
++            case "B": return XInputBridge.B;
++            case "X": return XInputBridge.X;
++            case "Y": return XInputBridge.Y;
++            case "LB": return XInputBridge.LEFT_SHOULDER;
++            case "RB": return XInputBridge.RIGHT_SHOULDER;
++            case "VIEW": return XInputBridge.BACK;
++            case "MENU": return XInputBridge.START;
++            case "LS": return XInputBridge.LEFT_THUMB;
++            case "RS": return XInputBridge.RIGHT_THUMB;
++            case "GUIDE": return XInputBridge.GUIDE;
++            default: return 0;
++        }
++    }
++
++    private static int axis(float value) {
++        return Math.round(Math.max(-1f, Math.min(1f, value)) * 32767);
++    }
++
++    private void pushControllerState() {
++        if (bridge == null)
++            return;
++        // XInput's Y axes point up.
++        bridge.update(xButtons, xLeftTrigger, xRightTrigger,
++                leftStick == null ? 0 : axis(leftStick.sx), leftStick == null ? 0 : axis(-leftStick.sy),
++                rightStick == null ? 0 : axis(rightStick.sx), rightStick == null ? 0 : axis(-rightStick.sy));
 +    }
 +
 +    private Control findControl(float x, float y) {
@@ -695,6 +787,10 @@ index 0000000..f48c112
 +        } else {
 +            c.sx = dx;
 +            c.sy = dy;
++            if (controllerOutput) {
++                pushControllerState();
++                return;
++            }
 +            String mode = c == leftStick ? leftStickMode : rightStickMode;
 +            if ("keys".equals(mode)) {
 +                if (dy < -STICK_DEADZONE) mask |= 1;
@@ -713,7 +809,13 @@ index 0000000..f48c112
 +
 +    private void setDirections(Control c, int mask, String prefix) {
 +        int changed = mask ^ c.dirMask;
-+        for (int i = 0; i < 4; i++) {
++        if (controllerOutput) {
++            // Direction bits are laid out like XInput's D-pad bits.
++            if (c.kind == Kind.DPAD && changed != 0) {
++                xButtons = (xButtons & ~0xF) | mask;
++                pushControllerState();
++            }
++        } else for (int i = 0; i < 4; i++) {
 +            if ((changed & (1 << i)) == 0)
 +                continue;
 +            boolean down = (mask & (1 << i)) != 0;
@@ -728,13 +830,24 @@ index 0000000..f48c112
 +        if (c.pressed == down)
 +            return;
 +        c.pressed = down;
-+        sendCodes(mapping.get(c.name), down);
++        if (!controllerOutput) {
++            sendCodes(mapping.get(c.name), down);
++            return;
++        }
++        if ("LT".equals(c.name))
++            xLeftTrigger = down ? 255 : 0;
++        else if ("RT".equals(c.name))
++            xRightTrigger = down ? 255 : 0;
++        else
++            xButtons = down ? xButtons | controllerButton(c.name) : xButtons & ~controllerButton(c.name);
++        pushControllerState();
 +    }
 +
 +    private void releaseControl(Control c) {
 +        if (c.kind == Kind.STICK || c.kind == Kind.DPAD) {
 +            setDirections(c, 0, c.kind == Kind.DPAD ? "DPAD" : c.name);
 +            c.sx = c.sy = 0;
++            pushControllerState();
 +        } else
 +            setButton(c, false);
 +        c.pressed = false;
@@ -753,6 +866,8 @@ index 0000000..f48c112
 +        for (Integer code : new ArrayList<>(pressedCodes.keySet()))
 +            sendRaw(code, false);
 +        pressedCodes.clear();
++        xButtons = xLeftTrigger = xRightTrigger = 0;
++        pushControllerState();
 +        invalidate();
 +    }
 +
@@ -966,6 +1081,165 @@ index ec1323a..121ff41 100644
              case "exit": return (key, down) -> { if (down) mActivity.finish(); };
              case "send volume up": return (key, down) -> mActivity.getLorieView().sendKeyEvent(0, KEYCODE_VOLUME_UP, down);
              case "send volume down": return (key, down) -> mActivity.getLorieView().sendKeyEvent(0, KEYCODE_VOLUME_DOWN, down);
+diff --git a/lorie/src/main/java/com/termux/x11/input/XInputBridge.java b/lorie/src/main/java/com/termux/x11/input/XInputBridge.java
+new file mode 100644
+index 0000000..1ae18a0
+--- /dev/null
++++ b/lorie/src/main/java/com/termux/x11/input/XInputBridge.java
+@@ -0,0 +1,153 @@
++package com.termux.x11.input;
++
++import android.os.Handler;
++import android.os.Looper;
++import android.util.Log;
++
++import java.io.IOException;
++import java.net.DatagramPacket;
++import java.net.DatagramSocket;
++import java.net.InetAddress;
++import java.net.InetSocketAddress;
++import java.net.SocketAddress;
++import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.Executors;
++import java.util.concurrent.ScheduledExecutorService;
++import java.util.concurrent.TimeUnit;
++import java.util.function.BiConsumer;
++
++/**
++ * Feeds the onscreen gamepad to the XInput bridge DLL (xinput-bridge/xinput_bridge.c) running in Wine,
++ * which presents it to games as a real Xbox controller.
++ * The DLL says hello to 127.0.0.1:{@value #PORT} over UDP; every client that did so in the last
++ * few seconds gets the controller state whenever it changes and at least every 100 ms.
++ */
++public class XInputBridge {
++    private static final String TAG = "XInputBridge";
++    public static final int PORT = 7949;
++    private static final long CLIENT_TIMEOUT_MS = 5000;
++
++    // XInput button bits.
++    public static final int DPAD_UP = 0x0001, DPAD_DOWN = 0x0002, DPAD_LEFT = 0x0004, DPAD_RIGHT = 0x0008;
++    public static final int START = 0x0010, BACK = 0x0020, LEFT_THUMB = 0x0040, RIGHT_THUMB = 0x0080;
++    public static final int LEFT_SHOULDER = 0x0100, RIGHT_SHOULDER = 0x0200, GUIDE = 0x0400;
++    public static final int A = 0x1000, B = 0x2000, X = 0x4000, Y = 0x8000;
++
++    private final Map<SocketAddress, Long> clients = new ConcurrentHashMap<>();
++    private final byte[] state = { 'X', 'G', 'P', '1', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
++    private final Handler mainHandler = new Handler(Looper.getMainLooper());
++    private final BiConsumer<Integer, Integer> onRumble;
++    private DatagramSocket socket;
++    private ScheduledExecutorService sender;
++
++    /** @param onRumble called on the main thread with left and right motor speeds, 0..65535. */
++    public XInputBridge(BiConsumer<Integer, Integer> onRumble) {
++        this.onRumble = onRumble;
++    }
++
++    public synchronized void start() {
++        if (socket != null)
++            return;
++        try {
++            DatagramSocket s = new DatagramSocket(null);
++            s.setReuseAddress(true);
++            // Explicitly IPv4: Android's getLoopbackAddress() is ::1, but the DLL talks to 127.0.0.1.
++            s.bind(new InetSocketAddress(InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 }), PORT));
++            socket = s;
++        } catch (IOException e) {
++            Log.e(TAG, "Can not listen on port " + PORT, e);
++            return;
++        }
++        sender = Executors.newSingleThreadScheduledExecutor();
++        sender.scheduleWithFixedDelay(this::sendToAll, 0, 100, TimeUnit.MILLISECONDS);
++        DatagramSocket s = socket;
++        new Thread(() -> receive(s), TAG).start();
++    }
++
++    public synchronized void stop() {
++        if (socket == null)
++            return;
++        socket.close();
++        socket = null;
++        sender.shutdownNow();
++        sender = null;
++        clients.clear();
++        mainHandler.post(() -> onRumble.accept(0, 0));
++    }
++
++    public void update(int buttons, int leftTrigger, int rightTrigger, int lx, int ly, int rx, int ry) {
++        byte[] snapshot;
++        synchronized (state) {
++            putShort(4, buttons);
++            state[6] = (byte) leftTrigger;
++            state[7] = (byte) rightTrigger;
++            putShort(8, lx);
++            putShort(10, ly);
++            putShort(12, rx);
++            putShort(14, ry);
++            snapshot = state.clone();
++        }
++        // Every change is sent as it was, so a quick tap is not overwritten by its release before going out.
++        ScheduledExecutorService s = sender;
++        if (s != null && !s.isShutdown()) {
++            try {
++                s.execute(() -> sendToAll(snapshot));
++            } catch (RuntimeException ignored) {} // stopped meanwhile
++        }
++    }
++
++    private void putShort(int offset, int value) {
++        state[offset] = (byte) value;
++        state[offset + 1] = (byte) (value >> 8);
++    }
++
++    private void receive(DatagramSocket s) {
++        byte[] buf = new byte[64];
++        DatagramPacket packet = new DatagramPacket(buf, buf.length);
++        while (!s.isClosed()) {
++            try {
++                s.receive(packet);
++            } catch (IOException e) {
++                break;
++            }
++            int len = packet.getLength();
++            if (len < 4 || buf[0] != 'X' || buf[1] != 'G' || buf[2] != 'P')
++                continue;
++            if (buf[3] == 'H' && len == 4) {
++                boolean isNew = clients.put(packet.getSocketAddress(), System.currentTimeMillis()) == null;
++                if (isNew)
++                    sendToAll();
++            } else if (buf[3] == 'V' && len == 8) {
++                int left = (buf[4] & 0xFF) | (buf[5] & 0xFF) << 8, right = (buf[6] & 0xFF) | (buf[7] & 0xFF) << 8;
++                mainHandler.post(() -> onRumble.accept(left, right));
++            }
++        }
++    }
++
++    private void sendToAll() {
++        byte[] data;
++        synchronized (state) {
++            data = state.clone();
++        }
++        sendToAll(data);
++    }
++
++    private void sendToAll(byte[] data) {
++        DatagramSocket s = socket;
++        if (s == null)
++            return;
++        long now = System.currentTimeMillis();
++        for (Map.Entry<SocketAddress, Long> client : clients.entrySet()) {
++            if (now - client.getValue() > CLIENT_TIMEOUT_MS) {
++                clients.remove(client.getKey());
++                continue;
++            }
++            try {
++                s.send(new DatagramPacket(data, data.length, client.getKey()));
++            } catch (IOException e) {
++                Log.d(TAG, "send failed", e);
++            }
++        }
++    }
++}
 diff --git a/lorie/src/main/java/com/termux/x11/utils/TermuxX11ExtraKeys.java b/lorie/src/main/java/com/termux/x11/utils/TermuxX11ExtraKeys.java
 index 37bdd5c..3b295dd 100644
 --- a/lorie/src/main/java/com/termux/x11/utils/TermuxX11ExtraKeys.java
@@ -999,16 +1273,20 @@ index 4ea66b6..e825e09 100644
          android:id="@+id/mouse_helper_visibility"
          android:layout_width="wrap_content"
 diff --git a/lorie/src/main/res/values/arrays.xml b/lorie/src/main/res/values/arrays.xml
-index b34086f..67cf330 100644
+index b34086f..eea4ea0 100644
 --- a/lorie/src/main/res/values/arrays.xml
 +++ b/lorie/src/main/res/values/arrays.xml
-@@ -86,8 +86,14 @@
+@@ -86,8 +86,18 @@
          <item>release pointer and keyboard capture</item>
          <item>toggle fullscreen</item>
          <item>restart activity</item>
 +        <item>toggle onscreen gamepad</item>
          <item>exit</item>
      </string-array>
++    <string-array name="gamepadOutputModes">
++        <item>keyboard and mouse</item>
++        <item>xbox controller</item>
++    </string-array>
 +    <string-array name="gamepadStickModes">
 +        <item>keys</item>
 +        <item>mouse</item>
@@ -1018,7 +1296,7 @@ index b34086f..67cf330 100644
          <item>@array/userActionsValues</item>
          <item>send volume down</item>
 diff --git a/lorie/src/main/res/values/strings.xml b/lorie/src/main/res/values/strings.xml
-index 07954e0..e3ef5f7 100644
+index 07954e0..14ebbcb 100644
 --- a/lorie/src/main/res/values/strings.xml
 +++ b/lorie/src/main/res/values/strings.xml
 @@ -20,6 +20,8 @@ E.g. <b>META</b> for <i>META key</i>, \n
@@ -1030,13 +1308,16 @@ index 07954e0..e3ef5f7 100644
  <b>ZOOM_IN</b> for <i>zoom in key</i>, \n
  <b>ZOOM_OUT</b> for <i>zoom out key</i>, \n
  <b>ZOOM_RESET</b> for <i>zoom reset key</i>, \n
-@@ -38,6 +40,16 @@ E.g. <b>META</b> for <i>META key</i>, \n
+@@ -38,6 +40,19 @@ E.g. <b>META</b> for <i>META key</i>, \n
      <string name="lorie_pref_pointer">Pointer</string>
      <string name="lorie_pref_kbd">Keyboard</string>
      <string name="lorie_pref_other">Other</string>
 +    <string name="lorie_pref_gamepad">Onscreen gamepad</string>
 +    <string name="lorie_pref_showGamepad">Show onscreen gamepad</string>
 +    <string name="lorie_pref_showGamepad_summary">Xbox layout controller overlay. Buttons and sticks are sent to X server as keyboard keys and mouse input. Long press the 🎮 button to move, resize or hide controls</string>
++    <string name="lorie_pref_gamepadOutput">Gamepad sends</string>
++    <string name="lorie_pref_gamepadOutputHelp">About Xbox controller mode</string>
++    <string name="lorie_pref_gamepadOutputHelp_summary">Games running in Wine see a real Xbox controller with analog sticks and rumble. Needs the XInput bridge DLL installed in the Wine prefix (xinput-bridge in this build\'s repository). Stick modes and button mapping apply to keyboard and mouse mode only.</string>
 +    <string name="lorie_pref_gamepadSize">Gamepad size, %</string>
 +    <string name="lorie_pref_gamepadOpacity">Gamepad opacity, %</string>
 +    <string name="lorie_pref_gamepadLeftStick">Left stick mode</string>
@@ -1048,7 +1329,7 @@ index 07954e0..e3ef5f7 100644
      <string name="lorie_pref_ekbar">Extra key bar preferences</string>
      <string name="lorie_pref_userActions">Response to user actions</string>
 diff --git a/lorie/src/main/res/xml/preferences.xml b/lorie/src/main/res/xml/preferences.xml
-index 7adb171..628abc4 100644
+index 7adb171..f41ce4b 100644
 --- a/lorie/src/main/res/xml/preferences.xml
 +++ b/lorie/src/main/res/xml/preferences.xml
 @@ -6,6 +6,7 @@
@@ -1059,12 +1340,14 @@ index 7adb171..628abc4 100644
          <Preference app:title="@string/lorie_pref_other" app:fragment="other" />
          <Preference app:key="version" app:title="@string/lorie_pref_version" />
      </PreferenceScreen>
-@@ -54,6 +55,18 @@
+@@ -54,6 +55,20 @@
          <SwitchPreferenceCompat app:key="filterOutWinkey" app:defaultValue="false" />
          <SwitchPreferenceCompat app:key="enforceCharBasedInput" app:defaultValue="false" />
      </PreferenceScreen>
 +    <PreferenceScreen app:key="gamepad">
 +        <SwitchPreferenceCompat app:key="showGamepad" app:defaultValue="false" />
++        <ListPreference app:key="gamepadOutput" app:defaultValue="keyboard and mouse" app:entries="@array/gamepadOutputModes" app:entryValues="@array/gamepadOutputModes" />
++        <Preference app:key="gamepadOutputHelp" app:selectable="false" />
 +        <SeekBarPreference app:key="gamepadSize" app:defaultValue="100" app:min="50" android:max="200" app:seekBarIncrement="5" app:showSeekBarValue="true" app:updatesContinuously="true" />
 +        <SeekBarPreference app:key="gamepadOpacity" app:defaultValue="70" app:min="10" android:max="100" app:seekBarIncrement="5" app:showSeekBarValue="true" app:updatesContinuously="true" />
 +        <ListPreference app:key="gamepadLeftStick" app:defaultValue="keys" app:entries="@array/gamepadStickModes" app:entryValues="@array/gamepadStickModes" />
