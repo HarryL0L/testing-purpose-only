@@ -83,6 +83,23 @@ docker logs plasma --tail 40
 docker compose down && ./start.sh
 ```
 
+## Why a VM and not a container
+
+A container would be faster than an emulated VM, so it was tested with Alpine
+edge (Plasma 6.8.1). It cannot work for Plasma 6.8:
+
+- Plasma 6.8 dropped the X11 session, so the old "Xvnc + Plasma on X11" trick
+  is gone.
+- KWin 6.8 has no software-only compositing path left. Its virtual backend
+  refuses to start without a DRM render device (`/dev/dri/renderD*`), and
+  the `KWIN_COMPOSE=Q` software renderer was removed.
+- Its nested X11 backend requires DRI3 1.2+, which Xvnc and Xvfb do not offer.
+- Its nested Wayland backend exits when the host compositor has no DRM device
+  either (tested on a headless wlroots compositor with the pixman renderer).
+
+A Codespace container has no `/dev/dri`, so none of these can be satisfied.
+A VM gets a virtual GPU from its own kernel, which is why it works.
+
 ## Notes
 
 - Rendering inside the guest is software-based (no GPU is passed through), so
