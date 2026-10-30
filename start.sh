@@ -10,11 +10,14 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-if [ -e /dev/kvm ] && [ -w /dev/kvm ]; then
+# Only check that the device exists. It is root-owned on Codespaces, so a
+# writability test from the codespace user fails even though QEMU (root
+# inside the container) can use it fine.
+if [ -e /dev/kvm ]; then
   echo "KVM found: starting with hardware acceleration."
   docker compose -f compose.yml -f compose.kvm.yml up -d
 else
-  echo "No usable /dev/kvm: starting in software emulation (about 10x slower)."
+  echo "No /dev/kvm: starting in software emulation (about 10x slower)."
   KVM=N docker compose -f compose.yml up -d
 fi
 

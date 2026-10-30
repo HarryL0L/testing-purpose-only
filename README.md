@@ -41,14 +41,14 @@ persist across Codespace restarts.
 
 ## KVM and speed
 
-`start.sh` checks for `/dev/kvm`. When the Codespace host exposes it, the VM
-runs with hardware acceleration and is reasonably fast. When it does not,
-which is common, the VM runs in QEMU software emulation, roughly ten times
-slower: expect 10 to 20 minutes for the live session to reach the desktop,
-and a sluggish desktop once there. The script prints which mode it picked.
+`start.sh` checks for `/dev/kvm`. Codespaces machines normally expose it, so
+the VM runs with hardware acceleration. If the device is missing, the VM runs
+in QEMU software emulation, roughly ten times slower. The script prints which
+mode it picked. To confirm what QEMU actually used:
 
-Whether KVM is available seems to depend on the region and machine pool.
-If you get software emulation, try creating the Codespace in another region.
+```bash
+docker logs plasma 2>&1 | grep -i kvm
+```
 
 ## Configuration
 
