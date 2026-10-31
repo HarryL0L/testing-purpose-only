@@ -161,7 +161,7 @@ class Look:
     haze_gain: float = 0.42          # how much scattered light comes back as glow
     haze_sigma_px: float = 150.0
     haze_tint: np.ndarray = field(default_factory=lambda: hex_to_linear("#8fb6d9"))
-    fog_floor: float = 0.0022        # faint ambient fog brightness (linear)
+    fog_floor: float = 0.0016        # faint ambient fog brightness (linear)
     reflect_base: float = 0.58
     reflect_fresnel: float = 0.40
     reflect_height_falloff: float = 4.5   # metres: reflections of high points fade faster
@@ -585,8 +585,8 @@ class Renderer:
         lum = hz @ np.array([0.2126, 0.7152, 0.0722], np.float32)
         img += (0.5 * hz + 0.5 * lum[..., None] * look.haze_tint[None, None, :]) * look.haze_gain
         hy = cam.horizon_y(look)
-        band = np.exp(-((self.py + H / 2.0 - hy) / (0.33 * H)) ** 2).astype(np.float32)
-        img += (look.fog_floor * (0.35 + 0.65 * band))[:, None, None] * look.haze_tint[None, None, :]
+        band = np.exp(-((self.py + H / 2.0 - hy) / (0.5 * H)) ** 2).astype(np.float32)
+        img += (look.fog_floor * (0.45 + 0.55 * band))[:, None, None] * look.haze_tint[None, None, :]
 
         # ---- bloom pyramid
         bloom = np.zeros_like(img)

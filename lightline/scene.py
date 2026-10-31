@@ -329,9 +329,9 @@ def build_scene(storyboard, glyph_dir: str, look: Look | None = None, seed: int 
             a, b = sh.strokes[i].pts[-1], sh.strokes[i + 1].pts[0]
             dist = float(np.linalg.norm(b - a))
             ctrl = (a + b) / 2 + sh.normal * (0.08 + 0.16 * dist) + UP * (0.03 + 0.08 * dist)
-            lifts.append((_bezier(a, ctrl, b), float(np.clip(dist / 2.8, 0.1, 0.6))))
+            lifts.append((_bezier(a, ctrl, b), float(np.clip(dist / 2.8, 0.1, 0.6)), float(0.05 * np.clip(0.35 / max(dist, 1e-3), 0.4, 1.0))))
         lengths = [polyline_length(st.pts) / max(st.speed, 0.05) for st in sh.strokes]
-        lift_total = sum(d for _, d in lifts)
+        lift_total = sum(l[1] for l in lifts)
         pause_total = sum(st.pause_after for st in sh.strokes)
         stroke_time = max(sh.draw_seconds - lift_total - pause_total, 0.3 * len(sh.strokes))
         total_len = max(sum(lengths), 1e-6)
@@ -346,7 +346,7 @@ def build_scene(storyboard, glyph_dir: str, look: Look | None = None, seed: int 
                     bloom_step_t = seg.t
                 seg.add([st.pts[-1]], st.pause_after, "still", col, 0.0, 1.0, 1.25)
             if i < len(lifts):
-                seg.add(lifts[i][0], lifts[i][1], "lift", sh.color, 0.07, 0.55, 0.72)
+                seg.add(lifts[i][0], lifts[i][1], "lift", sh.color, lifts[i][2], 0.55, 0.72)
         sh.t_draw_end = seg.t
         if k + 1 < len(shots):
             pause = min(0.6, sh.hold_seconds * 0.3)
