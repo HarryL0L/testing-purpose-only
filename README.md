@@ -37,8 +37,10 @@ docker compose stop
 docker compose start
 ```
 
-Android's disk, settings and installed apps live in `./data/` (ignored by
-Git) and persist across Codespace restarts.
+Android's disk, settings and installed apps live in `/tmp/android-data` on
+the Codespace, which is on a separate 44 GB disk (the 32 GB disk holding
+`/workspaces` is nearly full once the SDK image is on it). It persists across
+Codespace stops and starts, but not across a Codespace rebuild.
 
 ## adb
 
@@ -50,7 +52,7 @@ docker exec android adb devices
 docker exec android adb install /data/some.apk
 ```
 
-Put APKs in `./data/` to make them visible inside the container.
+Put APKs in `/tmp/android-data/` to make them visible inside the container.
 
 ## Configuration
 
@@ -71,7 +73,7 @@ release, 16 KB page size) and
 no root). To switch, rebuild with the argument and recreate the AVD:
 
 ```bash
-docker compose down && rm -rf data
+docker compose down && rm -rf /tmp/android-data
 docker build --network host -t android17-codespaces \
   --build-arg SYSTEM_IMAGE="system-images;android-37.2;google_apis_ps16k;x86_64" .
 ./start.sh
@@ -88,7 +90,7 @@ entitlement flag, and host networking is needed for DNS during the build.
 - Disk space: the SDK image is about 6 GB and the Codespace disk is 32 GB.
   If the log says "Your device does not have enough disk space to run avd",
   free space with `docker system prune -f` or lower `DATA_PARTITION`, then
-  `docker compose down && rm -rf data && ./start.sh`.
+  `docker compose down && rm -rf /tmp/android-data && ./start.sh`.
 - Graphics are rendered in software (SwiftShader), so animations are not
   smooth, but the UI is usable.
 - The emulator suggests 16 GB of host RAM for this image. It runs on the

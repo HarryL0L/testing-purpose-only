@@ -28,8 +28,12 @@ services:
       - "/dev/kvm:/dev/kvm"
 
     volumes:
-      # AVD (Android's disk, settings, installed apps) persists here.
-      - ./data:/data
+      # AVD (Android's disk, settings, installed apps). Kept under /tmp on
+      # purpose: in Codespaces /tmp is a separate 44 GB disk with plenty of
+      # room, while the 32 GB disk holding / and /workspaces is nearly full
+      # once the SDK image is there, and the emulator refuses to start when
+      # the disk holding the AVD is low on space.
+      - /tmp/android-data:/data
 
     stop_grace_period: 1m
     restart: unless-stopped

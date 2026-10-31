@@ -14,7 +14,16 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-mkdir -p data
+mkdir -p /tmp/android-data
+
+# On a fresh Codespace, put Docker's storage on /tmp (a separate 44 GB disk)
+# before building the 10 GB image, so the 32 GB main disk is not filled.
+# Only done while no image exists yet, so an existing setup is left alone.
+if ! docker image inspect android17-codespaces >/dev/null 2>&1 \
+   && [ "$(docker info -f '{{.DockerRootDir}}' 2>/dev/null)" != "/tmp/docker-data" ] \
+   && [ -x /usr/local/share/docker-init.sh ]; then
+  ./move-docker-to-tmp.sh || echo "Could not move Docker storage; building on the main disk." >&2
+fi
 
 # Build with plain `docker build`: compose's bake builder refuses
 # --network host without an entitlement flag it cannot be given, while
