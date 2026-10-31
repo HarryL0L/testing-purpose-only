@@ -58,19 +58,27 @@ Edit `compose.yml`:
 
 | Setting          | Default                                      | Meaning                          |
 |------------------|----------------------------------------------|----------------------------------|
-| `SYSTEM_IMAGE`   | `system-images;android-37.0;google_apis;x86_64` | Android image (build argument) |
 | `DEVICE_PROFILE` | `pixel_7`                                    | AVD hardware profile             |
 | `SKIN`           | `540x1200`                                   | Emulator window size             |
 | `SCREEN`         | `640x1280`                                   | Virtual X screen size            |
 
-Other Android 17 images: `system-images;android-37.2;google_apis_ps16k;x86_64`
-(the 17.2 quarterly release, 16 KB page size) and
+The Android image is a build argument of the `Dockerfile` (default
+`system-images;android-37.0;google_apis;x86_64`). Other Android 17 images:
+`system-images;android-37.2;google_apis_ps16k;x86_64` (the 17.2 quarterly
+release, 16 KB page size) and
 `system-images;android-37.0;google_apis_playstore;x86_64` (with Play Store,
-no root). After changing the image, rebuild and recreate the AVD:
+no root). To switch, rebuild with the argument and recreate the AVD:
 
 ```bash
-docker compose down && rm -rf data && ./start.sh
+docker compose down && rm -rf data
+docker build --network host -t android17-codespaces \
+  --build-arg SYSTEM_IMAGE="system-images;android-37.2;google_apis_ps16k;x86_64" .
+./start.sh
 ```
+
+The image is built with `docker build --network host` rather than through
+compose, because compose's bake builder refuses host networking without an
+entitlement flag, and host networking is needed for DNS during the build.
 
 ## Requirements and limits
 

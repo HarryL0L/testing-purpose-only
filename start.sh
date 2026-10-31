@@ -16,10 +16,15 @@ done
 
 mkdir -p data
 
+# Build with plain `docker build`: compose's bake builder refuses
+# --network host without an entitlement flag it cannot be given, while
+# the default builder allows it. Host networking is needed because the
+# Docker bridge in Codespaces has no working DNS.
 if ! docker image inspect android17-codespaces >/dev/null 2>&1; then
-  echo "Building the emulator image (downloads about 2.5 GB, takes several minutes)..."
+  echo "Building the emulator image (downloads the SDK and Android 17 image, about 6 GB; 10-15 minutes)..."
+  docker build --network host -t android17-codespaces .
 fi
-docker compose up -d --build
+docker compose up -d
 
 echo
 echo "Emulator starting. Open port 6080 in the Ports tab (add it with"

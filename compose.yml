@@ -1,16 +1,10 @@
 # Android 17 emulator for GitHub Codespaces. Started by ./start.sh.
 services:
   android:
-    build:
-      context: .
-      # Docker's bridge network in Codespaces cannot resolve DNS names, so
-      # build (apt + SDK downloads) on the host network.
-      network: host
-      args:
-        # Android 17.0 (API 37) with Google APIs. Alternatives:
-        #   system-images;android-37.2;google_apis_ps16k;x86_64      (17.2 QPR)
-        #   system-images;android-37.0;google_apis_playstore;x86_64  (Play Store)
-        SYSTEM_IMAGE: "system-images;android-37.0;google_apis;x86_64"
+    # Built by start.sh with: docker build --network host -t android17-codespaces .
+    # To use another Android 17 image, add --build-arg SYSTEM_IMAGE=... there:
+    #   system-images;android-37.2;google_apis_ps16k;x86_64      (17.2 QPR)
+    #   system-images;android-37.0;google_apis_playstore;x86_64  (Play Store)
     image: android17-codespaces
     container_name: android
 
