@@ -143,7 +143,7 @@ def breakpoints(points, n: int, t0: float = 0.0) -> np.ndarray:
 
 def db_env(points, n: int, t0: float = 0.0) -> np.ndarray:
     """breakpoints() in dB, returned linear (use -90 for 'silence')."""
-    return db(0.0) * 10.0 ** (breakpoints(points, n, t0) / 20.0)
+    return 10.0 ** (breakpoints(points, n, t0) / 20.0)
 
 
 def slow_noise(n: int, rng: np.random.Generator, smooth_hz: float = 0.1, ctrl_hz: float = 25.0) -> np.ndarray:
