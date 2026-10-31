@@ -12,6 +12,7 @@ def main():
     ap.add_argument("--out", default="output/one_line.mp4")
     ap.add_argument("--crf", type=int, default=15)
     ap.add_argument("--preset", default="slow")
+    ap.add_argument("--maxrate", default="6500k", help="VBV cap; film grain otherwise drives the bitrate very high")
     a = ap.parse_args()
     files = sorted(glob.glob(os.path.join(a.frames, "f*.png")))
     if not files:
@@ -32,6 +33,7 @@ def main():
         cmd += ["-i", a.audio]
     cmd += ["-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p",  # convert RGB->YUV with the 709 matrix the stream is tagged with
             "-c:v", "libx264", "-preset", a.preset, "-crf", str(a.crf), "-pix_fmt", "yuv420p",
+            "-maxrate", a.maxrate, "-bufsize", str(int(a.maxrate.rstrip("k")) * 2) + "k",
             "-x264-params", "aq-mode=3:aq-strength=1.1:deblock=-1,-1:keyint=96:min-keyint=24",
             "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
             "-movflags", "+faststart"]
