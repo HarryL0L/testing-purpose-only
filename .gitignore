@@ -1,0 +1,3 @@
+output/frames/
+__pycache__/
+*.pyc

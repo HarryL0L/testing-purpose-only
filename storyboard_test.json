@@ -1,0 +1,63 @@
+{
+ "title": "One Line",
+ "subtitle": "the evolution of us, drawn in light",
+ "end_card": "One line, still being drawn.\na film in light",
+ "fps": 24,
+ "opening_seconds": 6.0,
+ "ending_seconds": 9.0,
+ "palette": {
+  "haze_hex": "#8fb6d9"
+ },
+ "shots": [
+  {
+   "id": "helix",
+   "glyph": "test_helix",
+   "caption": "A molecule learns to copy itself.",
+   "era_label": "3.8 billion years ago",
+   "height_m": 2.2,
+   "base_y": 0.35,
+   "draw_seconds": 7.0,
+   "hold_seconds": 2.6,
+   "color_hex": "#8fd3ff",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rot_y": 90.0
+  },
+  {
+   "id": "fish",
+   "glyph": "test_fish",
+   "caption": "Something with a spine swims.",
+   "era_label": "500 million years ago",
+   "height_m": 0.9,
+   "base_y": 0.9,
+   "draw_seconds": 5.0,
+   "hold_seconds": 2.4,
+   "color_hex": "#7fe0d8",
+   "pos": [
+    0.0,
+    0.0,
+    5.881
+   ],
+   "rot_y": 79.0
+  },
+  {
+   "id": "human",
+   "glyph": "test_human",
+   "caption": "We stand up and look ahead.",
+   "era_label": "300,000 years ago",
+   "height_m": 1.8,
+   "draw_seconds": 6.0,
+   "hold_seconds": 2.5,
+   "color_hex": "#ffd9a8",
+   "pos": [
+    -1.08,
+    0.0,
+    11.439
+   ],
+   "rot_y": 68.0
+  }
+ ]
+}
