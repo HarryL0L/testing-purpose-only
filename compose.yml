@@ -15,6 +15,9 @@ services:
       SKIN: "540x1200"
       SCREEN: "640x1280"
       NOVNC_PORT: "6080"
+      # Size of Android's userdata partition. Larger values need more free
+      # disk space on the Codespace; the emulator refuses to start otherwise.
+      DATA_PARTITION: "2G"
 
     # Host networking for the same DNS reason: the emulator's user-mode
     # network resolves through the Codespace's resolver, so Android has

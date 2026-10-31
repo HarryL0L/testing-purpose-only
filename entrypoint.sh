@@ -8,6 +8,10 @@ set -euo pipefail
 : "${SCREEN:=640x1280}"
 : "${EMULATOR_ARGS:=}"
 : "${NOVNC_PORT:=6080}"
+# Android's userdata partition. Keep it small: the emulator refuses to start
+# when the disk holding the AVD has less free space than it wants, and a
+# Codespace's 32 GB disk is mostly taken by the SDK image.
+: "${DATA_PARTITION:=2G}"
 
 mkdir -p "$ANDROID_AVD_HOME"
 
@@ -19,9 +23,13 @@ hw.keyboard=yes
 hw.ramSize=2048
 hw.gpu.enabled=yes
 hw.gpu.mode=swiftshader_indirect
-disk.dataPartition.size=6G
+disk.dataPartition.size=$DATA_PARTITION
 CFG
 fi
+# Apply the partition size to an existing AVD too (only grows/shrinks the
+# declared size; takes effect on the next data wipe).
+sed -i "s/^disk.dataPartition.size=.*/disk.dataPartition.size=$DATA_PARTITION/" \
+  "$ANDROID_AVD_HOME/$AVD_NAME.avd/config.ini"
 
 # Emulator UI settings: no "nested virtualization" dialog, no "host RAM is
 # below the suggested 16 GB" dialog for this AVD, no crash-report consent.

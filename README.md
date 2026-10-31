@@ -59,6 +59,7 @@ Edit `compose.yml`:
 | Setting          | Default                                      | Meaning                          |
 |------------------|----------------------------------------------|----------------------------------|
 | `DEVICE_PROFILE` | `pixel_7`                                    | AVD hardware profile             |
+| `DATA_PARTITION` | `2G`                                         | Android userdata partition size  |
 | `SKIN`           | `540x1200`                                   | Emulator window size             |
 | `SCREEN`         | `640x1280`                                   | Virtual X screen size            |
 
@@ -84,6 +85,10 @@ entitlement flag, and host networking is needed for DNS during the build.
 
 - Needs `/dev/kvm`, which Codespaces machines expose. Without it the
   emulator does not start.
+- Disk space: the SDK image is about 6 GB and the Codespace disk is 32 GB.
+  If the log says "Your device does not have enough disk space to run avd",
+  free space with `docker system prune -f` or lower `DATA_PARTITION`, then
+  `docker compose down && rm -rf data && ./start.sh`.
 - Graphics are rendered in software (SwiftShader), so animations are not
   smooth, but the UI is usable.
 - The emulator suggests 16 GB of host RAM for this image. It runs on the
