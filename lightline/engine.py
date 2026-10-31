@@ -155,10 +155,10 @@ class Look:
     vfov_deg: float = 36.0
     line_width_m: float = 0.014      # physical width of the light trail
     line_gain: float = 0.80         # energy per pixel of trail length at unit intensity
-    dof_aperture: float = 0.10       # metres; bigger = softer out-of-focus trails
+    dof_aperture: float = 0.065       # metres; bigger = softer out-of-focus trails
     dof_max_px: float = 46.0
     haze_beta: float = 0.028         # extinction per metre
-    haze_gain: float = 0.42          # how much scattered light comes back as glow
+    haze_gain: float = 0.22          # how much scattered light comes back as glow
     haze_sigma_px: float = 150.0
     haze_tint: np.ndarray = field(default_factory=lambda: hex_to_linear("#8fb6d9"))
     fog_floor: float = 0.0016        # faint ambient fog brightness (linear)

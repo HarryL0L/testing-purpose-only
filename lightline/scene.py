@@ -159,6 +159,8 @@ class Scene:
     haze_beta: tuple = (0.07, 0.022)
     bloom_step_t: float = 1e9
     pulses: tuple = ()
+    base_vfov: float = 36.0
+    end_vfov: float = 52.0
 
     @property
     def frames(self) -> int:
@@ -196,8 +198,12 @@ class Scene:
     def look_at(self, t: float) -> dict:
         u = min(1.0, max(0.0, t / self.duration))
         beta = self.haze_beta[0] + (self.haze_beta[1] - self.haze_beta[0]) * u
-        bloom = 0.52 + 0.22 * float(smoothstep(self.bloom_step_t - 0.2, self.bloom_step_t + 0.6, t))
-        return {"haze_beta": beta, "bloom": bloom}
+        bloom = 0.42 + 0.18 * float(smoothstep(self.bloom_step_t - 0.2, self.bloom_step_t + 0.6, t))
+        vfov = self.base_vfov
+        if t >= self.ending_start:
+            w = float(smoothstep(0.0, 0.8, (t - self.ending_start) / max(self.duration - self.ending_start, 1e-6)))
+            vfov = self.base_vfov + (self.end_vfov - self.base_vfov) * w
+        return {"haze_beta": beta, "bloom": bloom, "vfov_deg": vfov}
 
 
 def _bezier(p0, p1, p2, p3=None, n=24):
@@ -396,17 +402,21 @@ def build_scene(storyboard, glyph_dir: str, look: Look | None = None, seed: int 
     end_dir = normalize(line_dir * 0.75 + mean_n * 0.55 + UP * 0.55)
     end_pos = centroid_all + end_dir * dist_all
     end_tgt = centroid_all + UP * 0.8
-    # fit the end pose to the projected content (the sphere fit ignores perspective asymmetry)
+    # fit the end pose to the projected content (the sphere fit ignores perspective asymmetry);
+    # the crane widens the lens to END_VFOV so the camera can sit closer to the line
+    import dataclasses
+    END_VFOV = 52.0
+    look_end = dataclasses.replace(look, vfov_deg=END_VFOV)
     allpts = np.vstack([st.pts for sh in shots for st in sh.strokes])
-    for _ in range(5):
+    for _ in range(6):
         camf = Camera(end_pos, end_tgt, 1.0)
-        fsx, fsy, _fz = camf.project(allpts, look)
-        bw = (fsx.max() - fsx.min()) / (0.80 * look.width)
-        bh = (fsy.max() - fsy.min()) / (0.70 * look.height)
+        fsx, fsy, _fz = camf.project(allpts, look_end)
+        bw = (fsx.max() - fsx.min()) / (0.84 * look.width)
+        bh = (fsy.max() - fsy.min()) / (0.72 * look.height)
         cx = (fsx.max() + fsx.min()) / 2 - look.width / 2
         cy = (fsy.max() + fsy.min()) / 2 - look.height / 2
         dcen = float(np.linalg.norm(end_tgt - end_pos))
-        end_tgt = end_pos + camf.fwd * dcen + camf.right * (cx / look.focal_px * dcen) - camf.up * (cy / look.focal_px * dcen)
+        end_tgt = end_pos + camf.fwd * dcen + camf.right * (cx / look_end.focal_px * dcen) - camf.up * (cy / look_end.focal_px * dcen)
         end_pos = end_tgt + (end_pos - end_tgt) * max(bw, bh, 0.6)
     end_pos[1] = max(end_pos[1], 1.0)
 
@@ -533,7 +543,8 @@ def build_scene(storyboard, glyph_dir: str, look: Look | None = None, seed: int 
     hb = sb.get("haze_beta", [0.07, 0.022])
     return Scene(look=look, trail=trail, shots=shots, duration=duration, cam_pos=cam_pos, cam_tgt=cam_tgt,
                  cam_focus=cam_focus, texts=texts, opening=opening, ending_start=ending_start, title=title,
-                 haze_beta=(float(hb[0]), float(hb[1])), bloom_step_t=bloom_step_t, pulses=tuple(pulses))
+                 haze_beta=(float(hb[0]), float(hb[1])), bloom_step_t=bloom_step_t, pulses=tuple(pulses),
+                 base_vfov=look.vfov_deg, end_vfov=END_VFOV)
 
 
 def auto_layout(sb: dict, glyph_dir: str, turn_deg: float = -9.0, gap_m: float = 3.2) -> dict:
