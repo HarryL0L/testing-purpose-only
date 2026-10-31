@@ -60,7 +60,7 @@ def load_glyph(path: str) -> tuple[list[Stroke], bool]:
     with open(path) as f:
         g = json.load(f)
     default_smooth = g.get("smooth", True)
-    subdiv = int(g.get("subdiv", 10))
+    subdiv = max(1, int(g.get("subdiv", 10)))
     strokes: list[Stroke] = []
     for s in g["strokes"]:
         if isinstance(s, dict):
@@ -86,10 +86,15 @@ def load_glyph(path: str) -> tuple[list[Stroke], bool]:
                               jitter=float(opts.get("jitter", 0.0)), pause_after=float(opts.get("pause_after", 0.0)),
                               color=hex_to_linear(col) if col else None))
     metres = bool(g.get("metres", False))
+    if not strokes:
+        raise ValueError(f"{path}: glyph has no stroke with >= 2 points")
     if not metres:
         allp = np.vstack([s.pts for s in strokes])
         mn, mx = allp.min(0), allp.max(0)
-        h = max(mx[1] - mn[1], 1e-6)
+        ext = float(np.max(mx - mn))
+        h = float(mx[1] - mn[1])
+        if ext < 1e-9 or h < 1e-3 * ext:
+            raise ValueError(f"{path}: degenerate glyph bbox (height {h:.3g}, extent {ext:.3g}); set \"metres\": true for flat glyphs")
         off = np.array([(mn[0] + mx[0]) / 2, mn[1], (mn[2] + mx[2]) / 2])
         for s in strokes:
             s.pts = (s.pts - off) / h
@@ -235,6 +240,8 @@ class _Segments:
             n = max(2, int(round(D * self.hz)))
             tt = t0 + (np.arange(n) + 0.5) / n * D
             u = (tt - t0) / D
+            tau_s = tt - t0
+            env = smoothstep(0.0, 0.25, tau_s) * smoothstep(0.0, 0.25, D - tau_s)  # zero at both ends: no steps between kinds
             if kind == "stroke":
                 pos = resample_by_arclength(poly, ease_in_out(u, 0.45))
                 tau = tt - t0
@@ -245,7 +252,7 @@ class _Segments:
                 it = np.full(n, inten)
                 amp = 0.02
             elif kind == "hover":
-                pos = poly[0][None, :] + np.stack([0.04 * np.sin(1.3 * tt), 0.025 * np.sin(0.9 * tt + 1.0), 0.035 * np.cos(1.1 * tt)], 1)
+                pos = poly[0][None, :] + env[:, None] * np.stack([0.04 * np.sin(1.3 * tt), 0.025 * np.sin(0.9 * tt + 1.0), 0.035 * np.cos(1.1 * tt)], 1)
                 it = np.full(n, inten)
                 amp = 0.0
             elif kind == "still":
@@ -259,7 +266,7 @@ class _Segments:
             else:
                 raise ValueError(kind)
             if amp > 0:
-                pos = pos + wobble(tt, freqs, phases, amps) * amp
+                pos = pos + wobble(tt, freqs, phases, amps) * (amp * env[:, None])
             if jitter > 0:
                 pos = pos + wobble(tt, jf, jp) * jitter
             ts.append(tt)
@@ -300,7 +307,10 @@ def build_scene(storyboard, glyph_dir: str, look: Look | None = None, seed: int 
         strokes, metres = load_glyph(os.path.join(glyph_dir, f"{s['glyph']}.json"))
         mn, mx = glyph_bbox(strokes)
         if s.get("height_m"):
-            scale = s["height_m"] / max(mx[1] - mn[1], 1e-6)
+            hh = float(mx[1] - mn[1])
+            if hh < 1e-6 * max(1.0, float(np.max(mx - mn))):
+                raise ValueError(f"shot {s['id']}: cannot scale a zero-height glyph by height_m")
+            scale = s["height_m"] / hh
         else:
             scale = 1.0
         placed = place_glyph(strokes, s.get("pos", [0, 0, 0]), s.get("rot_y", 0.0), scale, s.get("base_y", 0.0))
@@ -386,6 +396,19 @@ def build_scene(storyboard, glyph_dir: str, look: Look | None = None, seed: int 
     end_dir = normalize(line_dir * 0.75 + mean_n * 0.55 + UP * 0.55)
     end_pos = centroid_all + end_dir * dist_all
     end_tgt = centroid_all + UP * 0.8
+    # fit the end pose to the projected content (the sphere fit ignores perspective asymmetry)
+    allpts = np.vstack([st.pts for sh in shots for st in sh.strokes])
+    for _ in range(5):
+        camf = Camera(end_pos, end_tgt, 1.0)
+        fsx, fsy, _fz = camf.project(allpts, look)
+        bw = (fsx.max() - fsx.min()) / (0.80 * look.width)
+        bh = (fsy.max() - fsy.min()) / (0.70 * look.height)
+        cx = (fsx.max() + fsx.min()) / 2 - look.width / 2
+        cy = (fsy.max() + fsy.min()) / 2 - look.height / 2
+        dcen = float(np.linalg.norm(end_tgt - end_pos))
+        end_tgt = end_pos + camf.fwd * dcen + camf.right * (cx / look.focal_px * dcen) - camf.up * (cy / look.focal_px * dcen)
+        end_pos = end_tgt + (end_pos - end_tgt) * max(bw, bh, 0.6)
+    end_pos[1] = max(end_pos[1], 1.0)
 
     def lerp(a, b, u):
         return a + (b - a) * u
@@ -456,8 +479,10 @@ def build_scene(storyboard, glyph_dir: str, look: Look | None = None, seed: int 
     hs1 = hs2 = head_pos[0].copy()
     for i in range(F):
         t = frame_t[i]
-        dp, dtg, hb = desired(t)
-        hs1 = hs1 + (head_pos[i] - hs1) * ah
+        # look ahead by each cascade's group delay so the causal smoothing does not lag the subject
+        dp, _, _ = desired(min(t + 2 * tau_pos, duration - 1e-3))
+        _, dtg, hb = desired(min(t + 2 * tau_tgt, duration - 1e-3))
+        hs1 = hs1 + (head_pos[min(i + int(round(2 * tau_head * fps)), F - 1)] - hs1) * ah
         hs2 = hs2 + (hs1 - hs2) * ah
         dtg = dtg * (1 - hb) + hs2 * hb
         if p1 is None:

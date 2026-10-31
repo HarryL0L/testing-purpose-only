@@ -247,6 +247,7 @@ class Trail:
 class Renderer:
     def __init__(self, look: Look, seed: int = 7):
         self.look = look
+        self.seed = seed
         self.rng = np.random.default_rng(seed)
         H, W = look.height, look.width
         self.H, self.W = H, W
@@ -324,12 +325,15 @@ class Renderer:
         keep = (X > -margin) & (X < W + margin) & (Y > -margin) & (Y < H + margin)
         return X[keep], Y[keep], Z[keep], E[keep]
 
-    def _splat_bilinear(self, X, Y, E, factor=1):
-        """accumulate RGB energies at float positions into an (H/f)x(W/f)x3 buffer (energy density preserved)."""
-        H, W = self.H // factor, self.W // factor
+    def _splat_bilinear(self, X, Y, E, factor=1, pad=(0, 0)):
+        """accumulate RGB energies at float positions into a ((H+2py)/f x (W+2px)/f x 3) buffer.
+        Pixel-centre convention (sample at continuous X lands at the same place for every factor);
+        energy density is preserved when downsampling."""
+        px, py = pad
+        H, W = (self.H + 2 * py) // factor, (self.W + 2 * px) // factor
+        X = (X + px) / factor - 0.5
+        Y = (Y + py) / factor - 0.5
         if factor > 1:
-            X = X / factor
-            Y = Y / factor
             E = E / float(factor * factor)
         xf = np.floor(X)
         yf = np.floor(Y)
@@ -365,42 +369,49 @@ class Renderer:
         coc = np.minimum(look.dof_max_px, look.dof_aperture * fl * np.abs(Zc - focus) / (Zc * max(focus, 0.3)))
         return np.sqrt(core * core + coc * coc).astype(np.float32)
 
+    HPAD = 33  # haze-buffer padding in 1/8-res pixels (= ceil(260 / 8), the subsample margin)
+
     def _render_pass(self, sx, sy, z, energy, cam: Camera, reflection: bool):
-        """project+splat+blur, bucketed by blur radius. returns (direct HxWx3, haze_small hxwx3)."""
+        """project+splat+blur, bucketed by blur radius. returns (direct HxWx3, haze_small padded hxwx3)."""
         look = self.look
         H, W = self.H, self.W
         hs, ws = H // 8, W // 8
+        hp = self.HPAD
         direct = np.zeros((H, W, 3), np.float32)
-        haze_small = np.zeros((hs, ws, 3), np.float32)
+        haze_small = np.zeros((hs + 2 * hp, ws + 2 * hp, 3), np.float32)
         sub = self._subsample_segments(sx, sy, z, energy)
         if sub is None:
             return direct, haze_small
         X, Y, Z, E = sub
         T = np.exp(-look.haze_beta * Z).astype(np.float32)
-        # scattered part -> low-res haze buffer (one splat)
+        # scattered part -> padded low-res haze buffer (one splat); off-frame samples keep their place
         Eh = E * (1.0 - T)[:, None]
-        xs = np.clip((X / 8.0).astype(np.int64), 0, ws - 1)
-        ys = np.clip((Y / 8.0).astype(np.int64), 0, hs - 1)
-        flat = ys * ws + xs
+        xs = np.floor(X / 8.0).astype(np.int64) + hp
+        ys = np.floor(Y / 8.0).astype(np.int64) + hp
+        m = (xs >= 0) & (xs < ws + 2 * hp) & (ys >= 0) & (ys < hs + 2 * hp)
+        flat = ys[m] * (ws + 2 * hp) + xs[m]
         for c in range(3):
-            haze_small[..., c] = np.bincount(flat, weights=Eh[:, c], minlength=hs * ws).reshape(hs, ws)
+            haze_small[..., c] = np.bincount(flat, weights=Eh[m, c], minlength=(hs + 2 * hp) * (ws + 2 * hp)).reshape(hs + 2 * hp, ws + 2 * hp)
         # direct part, bucketed by sigma
         Ed = E * T[:, None]
         sig = self._sigma_for_depth(Z, cam.focus)
         edges = np.geomspace(0.5, 64.0, 26)
         bid = np.searchsorted(edges, sig)
         for b in np.unique(bid):
-            m = bid == b
-            s_b = float(np.exp(np.mean(np.log(sig[m]))))
+            mb = bid == b
+            s_b = float(np.exp(np.mean(np.log(sig[mb]))))
             f = 1 if s_b < 2.6 else (2 if s_b < 7.0 else (4 if s_b < 20.0 else 8))
-            buf = self._splat_bilinear(X[m], Y[m], Ed[m], factor=f)
             if reflection:
-                bl = cv2.GaussianBlur(buf, (0, 0), sigmaX=max((s_b + 1.0) / f, 0.3), sigmaY=max((s_b * look.reflect_aniso + look.reflect_blur_add) / f, 0.3))
+                sx_b, sy_b = s_b + 1.0, s_b * look.reflect_aniso + look.reflect_blur_add
             else:
-                bl = cv2.GaussianBlur(buf, (0, 0), sigmaX=max(s_b / f, 0.3), sigmaY=max(s_b / f, 0.3))
+                sx_b, sy_b = s_b, s_b
+            px = int(min(260, math.ceil(3.0 * sx_b)) + f - 1) // f * f
+            py = int(min(260, math.ceil(3.0 * sy_b)) + f - 1) // f * f
+            buf = self._splat_bilinear(X[mb], Y[mb], Ed[mb], factor=f, pad=(px, py))
+            bl = cv2.GaussianBlur(buf, (0, 0), sigmaX=max(sx_b / f, 0.3), sigmaY=max(sy_b / f, 0.3), borderType=cv2.BORDER_CONSTANT)
             if f > 1:
-                bl = cv2.resize(bl, (W, H), interpolation=cv2.INTER_LINEAR)
-            direct += bl
+                bl = cv2.resize(bl, (W + 2 * px, H + 2 * py), interpolation=cv2.INTER_LINEAR)
+            direct += bl[py:py + H, px:px + W]
         return direct, haze_small
 
     # ---------------------------------------------------------------- head light
@@ -484,8 +495,8 @@ class Renderer:
         return res
 
     # ---------------------------------------------------------------- frame
-    def render(self, trail: Trail, t: float, cam: Camera, texts=(), fade=1.0, head_color=None, trail_gain=1.0, head_gain=1.0):
-        """render one frame at time t. texts: iterable of (key, lines, alpha, rgb)."""
+    def render(self, trail: Trail, t: float, cam: Camera, texts=(), fade=1.0, head_color=None, trail_gain=1.0, head_gain=1.0, frame=None):
+        """render one frame at time t. texts: iterable of (key, lines, alpha, rgb). frame seeds the grain."""
         look = self.look
         H, W = self.H, self.W
         fl = look.focal_px
@@ -494,7 +505,8 @@ class Renderer:
         n = int(np.searchsorted(trail.t, t, side="right"))
         head_strength = float(trail.head[n - 1]) * head_gain if n > 0 else 0.0
         img = np.zeros((H, W, 3), np.float32)
-        haze_small = np.zeros((H // 8, W // 8, 3), np.float32)
+        hpad = self.HPAD
+        haze_small = np.zeros((H // 8 + 2 * hpad, W // 8 + 2 * hpad, 3), np.float32)
         refl = np.zeros((H, W, 3), np.float32)
         head_pos = trail.pos[max(n - 1, 0)] if n > 0 else None
         head_rgb = (trail.color[max(n - 1, 0)] if head_color is None else head_color) if n > 0 else None
@@ -557,7 +569,7 @@ class Renderer:
 
         if head_pos is not None and n >= 2:
             # lights along the trail: cap ~360, weight by intensity & spacing
-            stride = max(1, n // 260)
+            stride = max(1, len(trail.t) // 300)  # constant over the film: no light-set churn between frames
             Ls = trail.pos[:n:stride]
             Li = (trail.inten[:n:stride] * stride * 0.0035 * trail_gain)[:, None] * trail.color[:n:stride]
             floor_lit = self._floor_light(cam, Ls, Li, head_pos, head_rgb, head_strength * 0.45)
@@ -580,7 +592,7 @@ class Renderer:
             img += refl * (wet_f * mask_f)[..., None]
 
         # ---- haze: scattered light comes back as a wide soft glow + faint fog gradient
-        hz = gaussian_blur(haze_small, look.haze_sigma_px / 8.0)
+        hz = gaussian_blur(haze_small, look.haze_sigma_px / 8.0)[hpad:-hpad, hpad:-hpad]
         hz = cv2.resize(hz, (W, H), interpolation=cv2.INTER_LINEAR)
         lum = hz @ np.array([0.2126, 0.7152, 0.0722], np.float32)
         img += (0.5 * hz + 0.5 * lum[..., None] * look.haze_tint[None, None, :]) * look.haze_gain
@@ -613,7 +625,8 @@ class Renderer:
                 M = np.array([[sc, 0, W / 2.0 * (1 - sc)], [0, sc, H / 2.0 * (1 - sc)]], np.float32)
                 img[..., c] = cv2.warpAffine(img[..., c], M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
         # film grain, stronger in the shadows, also dithers the 8-bit gradients
-        g = self.rng.standard_normal((H, W)).astype(np.float32)
+        grng = self.rng if frame is None else np.random.default_rng([self.seed, int(frame)])
+        g = grng.standard_normal((H, W)).astype(np.float32)
         lumi = img @ np.array([0.2126, 0.7152, 0.0722], np.float32)
         img += (g * look.grain * (1.0 - 0.6 * lumi))[..., None]
         if fade < 1.0:

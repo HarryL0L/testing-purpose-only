@@ -21,15 +21,19 @@ def main():
     missing = sorted(set(range(nums[0], nums[-1] + 1)) - set(nums))
     if missing:
         sys.exit(f"missing frames: {missing[:20]}{'...' if len(missing) > 20 else ''}")
+    bad = [f for f in files if os.path.getsize(f) == 0]
+    if bad:
+        sys.exit(f"empty frames: {bad[:10]}")
     print(f"{len(files)} frames ({nums[0]}..{nums[-1]}), {len(files)/a.fps:.2f} s")
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "warning", "-stats",
            "-framerate", str(a.fps), "-start_number", str(nums[0]), "-i", os.path.join(a.frames, "f%05d.png")]
     have_audio = a.audio and os.path.exists(a.audio)
     if have_audio:
         cmd += ["-i", a.audio]
-    cmd += ["-c:v", "libx264", "-preset", a.preset, "-crf", str(a.crf), "-pix_fmt", "yuv420p",
+    cmd += ["-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p",  # convert RGB->YUV with the 709 matrix the stream is tagged with
+            "-c:v", "libx264", "-preset", a.preset, "-crf", str(a.crf), "-pix_fmt", "yuv420p",
             "-x264-params", "aq-mode=3:aq-strength=1.1:deblock=-1,-1:keyint=96:min-keyint=24",
-            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
             "-movflags", "+faststart"]
     if have_audio:
         cmd += ["-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-shortest"]
@@ -39,6 +43,11 @@ def main():
     info = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration,size:stream=codec_name,width,height,r_frame_rate",
                            "-of", "default=noprint_wrappers=1", a.out], capture_output=True, text=True).stdout
     print(info)
+    nb = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries", "stream=nb_read_frames",
+                         "-of", "default=noprint_wrappers=1:nokey=1", a.out], capture_output=True, text=True).stdout.strip()
+    print(f"encoded video frames: {nb} (expected {len(files)})")
+    if nb.isdigit() and int(nb) != len(files):
+        sys.exit("frame count mismatch: the encode is truncated")
 
 if __name__ == "__main__":
     main()
