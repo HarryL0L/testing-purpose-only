@@ -24,6 +24,8 @@ class Prefs(context: Context) {
     var showDevices by bool("show_devices", true)
     var showCharging by bool("show_charging", true)
     var hideWithShade by bool("hide_with_shade", true)
+    /** Use the wallpaper's Material You accent for the island's own highlights (Android 12+). */
+    var materialYou by bool("material_you", true)
 
     /** Revision of the automatic camera estimate the saved nudges were tuned for. */
     var estimateRev by int("estimate_rev", 1)

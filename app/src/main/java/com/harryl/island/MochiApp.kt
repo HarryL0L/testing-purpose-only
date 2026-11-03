@@ -3,10 +3,13 @@ package com.harryl.island
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import com.google.android.material.color.DynamicColors
 
-class IslandApp : Application() {
+class MochiApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Material You: wallpaper colours on Android 12+, the Mochi palette elsewhere.
+        DynamicColors.applyToActivitiesIfAvailable(this)
         val nm = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             IslandService.CHANNEL_ID,

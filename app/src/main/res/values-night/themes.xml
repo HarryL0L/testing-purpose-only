@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Mochi" parent="Theme.Material3Expressive.DayNight.NoActionBar">
+        <item name="colorPrimary">#C0C1FF</item>
+        <item name="colorSecondary">#C9BEFF</item>
+        <item name="colorTertiary">#FFB1C8</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <style name="Theme.Mochi.Calibrate">
+        <item name="android:windowBackground">#FFF2F2F7</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

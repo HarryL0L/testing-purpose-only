@@ -142,14 +142,17 @@ data class IslandLayout(
             val cardL: Float
             val cardR: Float
             when (side) {
-                // The card grows away from the camera, so it is limited by the far margin only.
+                // The card's camera-side edge follows the camera; the far edge mirrors that gap,
+                // so the card sits with the same distance to both screen edges.
                 Side.LEFT -> {
                     cardL = hl - padH
-                    cardR = min(screenW - margin, cardL + dp(MAX_CARD_DP))
+                    val gap = max(cardL, dp(4f))
+                    cardR = min(screenW - gap, cardL + dp(MAX_CARD_DP))
                 }
                 Side.RIGHT -> {
                     cardR = hr + padH
-                    cardL = max(margin, cardR - dp(MAX_CARD_DP))
+                    val gap = max(screenW - cardR, dp(4f))
+                    cardL = max(gap, cardR - dp(MAX_CARD_DP))
                 }
                 Side.CENTER -> {
                     val l = (cx - maxCard / 2).coerceIn(margin, max(margin, screenW - margin - maxCard))

@@ -1,12 +1,12 @@
-# Realme Island
+# Mochi
 
-A Dynamic Island–style overlay for the **Realme X7 Max** (and any Android 10+ phone).
-It wraps the hole‑punch camera in a black pill that fluidly morphs to show:
+A soft, squishy Dynamic Island–style overlay for Android 10+ phones with a hole-punch camera.
+Mochi wraps the camera in a black pill that fluidly morphs to show:
 
 | Trigger | Compact pill | Expanded card |
 | --- | --- | --- |
 | Music session (Spotify, YouTube Music, …) | album art + animated bars | art, title, artist, progress, ⏮ ⏯ ⏭ |
-| Sony WF‑C500 / any Bluetooth earbuds or headphones | earbud icon + battery % | battery ring, name, "Connected · 82%" |
+| Bluetooth earbuds or headphones (e.g. Sony WF‑C500) | earbud icon + battery % | battery ring, name, "Connected · 82%" |
 | Wired headphones plugged in / removed | headset icon | "Connected" / "Disconnected" |
 | Charger connected / removed | bolt + % | pulsing bolt, battery ring, "Charging" |
 | App notifications | app icon + title | app icon, title, two lines of text; tap opens, swipe up dismisses |
@@ -24,8 +24,8 @@ its rounded end is concentric with the camera. It re-fits on rotation, resolutio
 changes. Without a top camera, for example in landscape, it floats at the top centre. The settings
 screen shows exactly what Android reported. The nudge sliders are only for fine-tuning.
 
-Realme and OPPO report a hole-punch camera as a padded box running into the screen corner (on the
-X7 Max about 150 × 108 px from the top-left corner), not as the hole itself. A real hole never
+Some phones (for example Realme and OPPO models) report a hole-punch camera as a padded box running into the screen corner (about
+150 × 108 px from the top-left corner on a 1080 px wide screen), not as the hole itself. A real hole never
 touches the screen edge, so the island treats such a box as padding and estimates the hole inside
 it. For an exact fit, tap **Line up with camera**: drag a ring onto the black camera hole on a
 bright full-screen canvas, size it, and save. The line-up is stored relative to screen width, so
@@ -34,11 +34,22 @@ it survives resolution changes.
 ## Why Accessibility is needed for taps
 
 Android draws normal app overlays *below* the status bar, so the status bar takes every tap on the
-island. Enabling **Accessibility → Realme Island** moves it to an accessibility overlay above the
+island. Enabling **Accessibility → Mochi** moves it to an accessibility overlay above the
 status bar, so tap-to-expand, the media buttons and swipe-to-dismiss work. The service reads no
 screen content. It only watches window changes to hide the island while the notification shade or
 lock screen is open. On Android 13+ a sideloaded app's accessibility switch can be greyed out:
 open App info → ⋮ → **Allow restricted settings**, then turn it on.
+
+## Material 3 Expressive
+
+* The settings app uses the Material 3 Expressive theme from Material Components 1.14: a large
+  collapsing title, grouped rounded-segment lists, a connected button group for the position
+  picker, and Expressive buttons that change shape when pressed.
+* Material You: on Android 12+ the app takes its colours from your wallpaper, and the island's own
+  highlights can use the wallpaper accent too (Behaviour → Material You accent colours).
+* The island moves with the Material 3 Expressive motion scheme springs, and the music card shows
+  the Expressive wavy progress bar while playing.
+* The launcher icon includes a monochrome layer for Android 13+ themed icons.
 
 ## Battery design
 
@@ -87,7 +98,7 @@ Requires JDK 17+, compileSdk 34.
 
 ## Setup on the phone
 
-1. Open **Realme Island** and grant, in order:
+1. Open **Mochi** and grant, in order:
    * Accessibility (needed for taps; see above)
    * Notification access (needed for music, notifications and live activities)
    * Nearby devices (Bluetooth) – Android 12+
@@ -97,14 +108,14 @@ Requires JDK 17+, compileSdk 34.
 2. Turn on **Island enabled**.
 3. Tap a **Preview** chip to see each style. Previews never change the real device state.
 
-### Realme UI (ColorOS) background survival
+### Keeping Mochi awake
 
-Realme UI kills background apps aggressively. Also do:
+Some phones close background apps aggressively. Also do:
 
 * App info → **Battery usage → Allow background activity**
 * App info → **Auto‑launch → On**
-* Settings → Battery → App battery management → Realme Island → **Don't optimise**
-* In recents, swipe down on the Realme Island card and tap **Lock**
+* Settings → Battery → App battery management → Mochi → **Don't optimise**
+* In recents, swipe down on Mochi's card and tap **Lock**
 
 The notification‑listener service doubles as an auto‑start hook: the system binds it at boot,
 which restarts the island even when `BOOT_COMPLETED` is blocked.
@@ -113,11 +124,11 @@ which restarts the island even when `BOOT_COMPLETED` is blocked.
 
 Sony earbuds report battery over the HFP profile (`AT+IPHONEACCEV`). Android exposes it through
 the hidden `BluetoothDevice.getBatteryLevel()` / `BATTERY_LEVEL_CHANGED` broadcast, which this
-app reads with reflection. It works on Android 10–14 on Realme UI. If the percentage shows as
+app reads with reflection. It works on Android 10–14. If the percentage shows as
 "Connected" without a number, the device didn't report a level yet; it updates as soon as the
 earbuds send one.
 
 Connected devices are seeded from the Bluetooth profiles' real connected-device lists when the
 island starts, and cleared when Bluetooth turns off, so a device can never get stuck as "connected".
 Wired and USB‑C earphones and dongles are detected through Android's audio-device callback,
-because the X7 Max has no 3.5 mm jack.
+because many phones have no 3.5 mm jack.

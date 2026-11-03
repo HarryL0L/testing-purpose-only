@@ -13,12 +13,12 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <application
-        android:name=".IslandApp"
+        android:name=".MochiApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.RealmeIsland"
+        android:theme="@style/Theme.Mochi"
         tools:targetApi="34">
 
         <activity
@@ -34,7 +34,7 @@
             android:name=".CalibrateActivity"
             android:exported="false"
             android:screenOrientation="portrait"
-            android:theme="@style/Theme.RealmeIsland.Calibrate"
+            android:theme="@style/Theme.Mochi.Calibrate"
             tools:ignore="DiscouragedApi,LockedOrientationActivity" />
 
         <service

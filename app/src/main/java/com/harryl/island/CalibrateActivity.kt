@@ -6,14 +6,13 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.LinearLayout
+import android.view.View
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.card.MaterialCardView
 import com.google.android.material.slider.Slider
 import kotlin.math.roundToInt
 
@@ -71,71 +70,31 @@ class CalibrateActivity : AppCompatActivity() {
         syncControls()
     }
 
-    private fun buildPanel(): MaterialCardView {
-        val d = resources.displayMetrics.density
-        fun px(v: Int) = (v * d).roundToInt()
-        val card = MaterialCardView(this).apply { radius = 20 * d }
-        val col = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(px(16), px(16), px(16), px(12))
-        }
-        col.addView(TextView(this).apply {
-            setText(R.string.cal_title)
-            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleMedium)
-        })
-        col.addView(TextView(this).apply {
-            setText(R.string.cal_help)
-            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
-            setPadding(0, px(4), 0, px(8))
-        })
-        readout = TextView(this).apply {
-            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
-        }
-        col.addView(readout)
-        sizeSlider = Slider(this).apply {
+    private fun buildPanel(): View {
+        val panel = layoutInflater.inflate(R.layout.calibrate_panel, null, false)
+        readout = panel.findViewById(R.id.calReadout)
+        sizeSlider = panel.findViewById<Slider>(R.id.calSize).apply {
             valueFrom = canvas.minDiameter
             valueTo = canvas.maxDiameter
             value = canvas.diameter.coerceIn(valueFrom, valueTo)
             addOnChangeListener { _, v, fromUser -> if (fromUser) canvas.setSize(v) }
         }
-        col.addView(TextView(this).apply {
-            setText(R.string.cal_size)
-            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
-            setPadding(0, px(8), 0, 0)
-        })
-        col.addView(sizeSlider)
-
-        val arrows = LinearLayout(this).apply { gravity = Gravity.CENTER_HORIZONTAL }
-        fun arrow(label: String, dx: Float, dy: Float) = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-            text = label
-            minWidth = px(56)
-            setOnClickListener { canvas.nudge(dx, dy) }
-            setOnLongClickListener { canvas.nudge(dx * 5, dy * 5); true }
-        }
-        arrows.addView(arrow("←", -1f, 0f))
-        arrows.addView(arrow("↑", 0f, -1f))
-        arrows.addView(arrow("↓", 0f, 1f))
-        arrows.addView(arrow("→", 1f, 0f))
-        col.addView(arrows)
-
-        val actions = LinearLayout(this).apply {
-            gravity = Gravity.END
-            setPadding(0, px(8), 0, 0)
-        }
-        actions.addView(MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
-            setText(R.string.cal_use_auto)
-            setOnClickListener {
-                prefs.anchor = Prefs.ANCHOR_AUTO
-                finishAndPreview()
+        fun arrow(id: Int, dx: Float, dy: Float) {
+            panel.findViewById<MaterialButton>(id).apply {
+                setOnClickListener { canvas.nudge(dx, dy) }
+                setOnLongClickListener { canvas.nudge(dx * 5, dy * 5); true }
             }
-        })
-        actions.addView(MaterialButton(this).apply {
-            setText(R.string.cal_save)
-            setOnClickListener { save() }
-        })
-        col.addView(actions)
-        card.addView(col)
-        return card
+        }
+        arrow(R.id.calLeft, -1f, 0f)
+        arrow(R.id.calUp, 0f, -1f)
+        arrow(R.id.calDown, 0f, 1f)
+        arrow(R.id.calRight, 1f, 0f)
+        panel.findViewById<MaterialButton>(R.id.calAuto).setOnClickListener {
+            prefs.anchor = Prefs.ANCHOR_AUTO
+            finishAndPreview()
+        }
+        panel.findViewById<MaterialButton>(R.id.calSave).setOnClickListener { save() }
+        return panel
     }
 
     private fun syncControls() {

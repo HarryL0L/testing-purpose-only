@@ -390,7 +390,7 @@ class IslandService : Service(), IslandView.Listener {
             )
             PREVIEW_NOTICE -> showTransient(
                 IslandContent.Notice(
-                    "preview", packageName, getString(R.string.app_name), "Realme Island",
+                    "preview", packageName, getString(R.string.app_name), "Hi, I'm Mochi",
                     "This is how a notification looks. Tap to open, swipe up to dismiss.", null, null,
                 ),
             )

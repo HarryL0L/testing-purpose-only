@@ -14,6 +14,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.harryl.island.databinding.ActivityMainBinding
 import com.harryl.island.databinding.ItemPermissionBinding
@@ -34,6 +36,16 @@ class MainActivity : AppCompatActivity() {
         bindSwitches()
         bindPosition()
         bindPreview()
+        ExpressiveList.style(b.permissionList)
+        ExpressiveList.style(b.groupPosition)
+        ExpressiveList.style(b.groupBehaviour)
+        ExpressiveList.style(b.groupTips)
+        // Edge to edge: keep the last row clear of the gesture bar.
+        ViewCompat.setOnApplyWindowInsetsListener(b.scroll) { v, insets ->
+            val bottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, bottom)
+            insets
+        }
         b.btnAppInfo.setOnClickListener {
             startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         }
@@ -94,6 +106,7 @@ class MainActivity : AppCompatActivity() {
         b.switchEnabled.setOnCheckedChangeListener(null)
         b.switchEnabled.isChecked = prefs.enabled && canShow
         b.switchEnabled.setOnCheckedChangeListener { _, checked -> setEnabled(checked) }
+        updateHero()
         if (prefs.enabled && canShow) {
             if (IslandService.running) IslandService.resync(this) else IslandService.start(this)
         }
@@ -108,12 +121,23 @@ class MainActivity : AppCompatActivity() {
             return
         }
         prefs.enabled = on
+        updateHero()
         if (on) {
             IslandService.start(this)
             if (!IslandAccessibilityService.isEnabled(this)) Toast.makeText(this, R.string.taps_blocked, Toast.LENGTH_LONG).show()
         } else {
             IslandService.stop(this)
         }
+    }
+
+    private fun updateHero() {
+        b.heroStatus.setText(
+            when {
+                !IslandService.canShow(this) -> R.string.hero_needs_setup
+                prefs.enabled -> R.string.hero_on
+                else -> R.string.hero_off
+            },
+        )
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -128,6 +152,11 @@ class MainActivity : AppCompatActivity() {
     // ---- Behaviour ----------------------------------------------------------------------------
 
     private fun bindSwitches() {
+        b.switchMaterialYou.bind({ prefs.materialYou }) {
+            prefs.materialYou = it
+            IslandService.relayout(this)
+        }
+        b.switchMaterialYou.isEnabled = Build.VERSION.SDK_INT >= 31
         b.switchPersistentMusic.bind({ prefs.persistentMusic }) { prefs.persistentMusic = it }
         b.switchVisualizer.bind({ prefs.visualizer }) { prefs.visualizer = it }
         b.switchHaptics.bind({ prefs.haptics }) { prefs.haptics = it }
@@ -158,12 +187,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindPosition() {
         b.btnCalibrate.setOnClickListener { startActivity(Intent(this, CalibrateActivity::class.java)) }
-        b.anchorGroup.setOnCheckedChangeListener { _, id ->
-            prefs.anchor = when (id) {
+        b.anchorGroup.addOnButtonCheckedListener { _, id, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val anchor = when (id) {
                 R.id.anchorCenter -> Prefs.ANCHOR_CENTER
                 R.id.anchorCalibrated -> Prefs.ANCHOR_CALIBRATED
                 else -> Prefs.ANCHOR_AUTO
             }
+            if (anchor == prefs.anchor) return@addOnButtonCheckedListener
+            prefs.anchor = anchor
             updateDetection()
             relayoutAndPreview()
         }
@@ -189,7 +221,7 @@ class MainActivity : AppCompatActivity() {
             prefs.anchor == Prefs.ANCHOR_CALIBRATED && prefs.calibrated -> R.id.anchorCalibrated
             else -> R.id.anchorAuto
         }
-        if (b.anchorGroup.checkedRadioButtonId != checked) b.anchorGroup.check(checked)
+        if (b.anchorGroup.checkedButtonId != checked) b.anchorGroup.check(checked)
 
         val g = IslandGeometry.detect(this)
         val cam = IslandLayout.usableCamera(g.camera, g.screenW, g.screenH)

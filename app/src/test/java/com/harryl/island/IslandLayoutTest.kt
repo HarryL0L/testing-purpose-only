@@ -42,7 +42,8 @@ class IslandLayoutTest {
         // Expanded card starts where the pill starts and stays on screen.
         assertEquals(l.holeL - l.padH, l.cardL, eps)
         assertTrue(l.cardL >= 0f)
-        assertEquals(1080 - dp(IslandLayout.MARGIN_DP), l.cardR, eps)
+        // Same distance to both screen edges.
+        assertEquals(l.cardL, 1080 - l.cardR, eps)
     }
 
     @Test
@@ -51,7 +52,7 @@ class IslandLayoutTest {
         assertEquals(Side.RIGHT, l.side)
         assertEquals(1080f - 66f, capCenterX(l), eps)
         assertEquals(l.holeR + l.padH, l.cardR, eps)
-        assertTrue(l.cardL >= dp(IslandLayout.MARGIN_DP) - eps)
+        assertEquals(1080 - l.cardR, l.cardL, eps)
     }
 
     @Test
@@ -67,6 +68,15 @@ class IslandLayoutTest {
         val l = layout(CameraBox(40, 30, 60, 50))
         assertEquals(dp(IslandLayout.MIN_PILL_DP), l.pillH, eps)
         assertEquals(50f, capCenterX(l), eps)
+    }
+
+    @Test
+    fun expandedCardIsEvenOnTheUsersPhone() {
+        // The estimated X7 Max hole from the reported corner box.
+        val hole = IslandLayout.refineCornerCutout(CameraBox(0, 0, 150, 108), 1080)
+        val l = IslandLayout.compute(1080, 2400, 3f, hole, 90, 0, 0, false, keepOut = CameraBox(0, 0, 150, 108))
+        assertEquals(51f, l.cardL, eps)
+        assertEquals(1080f - 51f, l.cardR, eps)
     }
 
     @Test
@@ -109,7 +119,7 @@ class IslandLayoutTest {
     }
 
     @Test
-    fun realmeCornerBoxIsRefinedToTheHoleInside() {
+    fun cornerBoxIsRefinedToTheHoleInside() {
         // What the X7 Max reports: a padded box from the top-left corner.
         val box = CameraBox(0, 0, 150, 108)
         val hole = IslandLayout.refineCornerCutout(box, 1080)

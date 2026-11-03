@@ -1,312 +1,412 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fillViewport="true"
-    android:fitsSystemWindows="true">
+    android:layout_height="match_parent">
 
-    <LinearLayout
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBar"
+        style="@style/Widget.Material3Expressive.AppBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:fitsSystemWindows="true">
 
-        <TextView
+        <com.google.android.material.appbar.CollapsingToolbarLayout
+            style="@style/Widget.Material3Expressive.CollapsingToolbar.Large"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/collapsingToolbarLayoutLargeSize"
+            app:title="@string/app_name"
+            app:layout_scrollFlags="scroll|exitUntilCollapsed|snap">
+
+            <com.google.android.material.appbar.MaterialToolbar
+                android:id="@+id/toolbar"
+                android:layout_width="match_parent"
+                android:layout_height="?attr/actionBarSize"
+                android:elevation="0dp"
+                app:layout_collapseMode="pin" />
+        </com.google.android.material.appbar.CollapsingToolbarLayout>
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <LinearLayout
+            android:id="@+id/content"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/app_name"
-            android:textAppearance="?attr/textAppearanceHeadlineMedium" />
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="32dp">
 
-        <!-- Master switch -->
-        <com.google.android.material.card.MaterialCardView
-            style="?attr/materialCardViewFilledStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp">
-
-            <LinearLayout
+            <!-- Hero: master switch in a big, friendly container. -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/heroCard"
+                style="?attr/materialCardViewFilledStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:padding="16dp">
+                android:layout_marginTop="4dp"
+                app:cardBackgroundColor="?attr/colorPrimaryContainer"
+                app:shapeAppearance="?attr/shapeAppearanceCornerExtraLarge">
 
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="24dp">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:layout_marginEnd="16dp"
+                        android:contentDescription="@null"
+                        android:src="@mipmap/ic_launcher" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/enable_island"
+                            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                            android:textColor="?attr/colorOnPrimaryContainer" />
+
+                        <TextView
+                            android:id="@+id/heroStatus"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textAppearance="?attr/textAppearanceBodyMedium"
+                            android:textColor="?attr/colorOnPrimaryContainer" />
+                    </LinearLayout>
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switchEnabled"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Preview -->
+            <TextView
+                style="@style/SectionTitle"
+                android:text="@string/section_preview" />
+
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipToPadding="false"
+                android:scrollbars="none">
+
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/previewGroup"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    app:singleLine="true">
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/previewMusic"
+                        style="@style/Widget.Material3.Chip.Suggestion.Elevated"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/preview_music"
+                        app:chipIcon="@drawable/ic_music_note"
+                        app:chipIconVisible="true" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/previewEarbuds"
+                        style="@style/Widget.Material3.Chip.Suggestion.Elevated"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/preview_earbuds"
+                        app:chipIcon="@drawable/ic_earbuds"
+                        app:chipIconVisible="true" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/previewStopwatch"
+                        style="@style/Widget.Material3.Chip.Suggestion.Elevated"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/preview_stopwatch"
+                        app:chipIcon="@drawable/ic_timer"
+                        app:chipIconVisible="true" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/previewNotice"
+                        style="@style/Widget.Material3.Chip.Suggestion.Elevated"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/preview_notice"
+                        app:chipIcon="@drawable/ic_bell"
+                        app:chipIconVisible="true" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/previewWired"
+                        style="@style/Widget.Material3.Chip.Suggestion.Elevated"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/preview_wired"
+                        app:chipIcon="@drawable/ic_wired"
+                        app:chipIconVisible="true" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/previewCharging"
+                        style="@style/Widget.Material3.Chip.Suggestion.Elevated"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/preview_charging"
+                        app:chipIcon="@drawable/ic_bolt"
+                        app:chipIconVisible="true" />
+                </com.google.android.material.chip.ChipGroup>
+            </HorizontalScrollView>
+
+            <!-- Setup: rows are added in code -->
+            <TextView
+                style="@style/SectionTitle"
+                android:text="@string/section_setup" />
+
+            <LinearLayout
+                android:id="@+id/permissionList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <!-- Position -->
+            <TextView
+                style="@style/SectionTitle"
+                android:text="@string/section_position" />
+
+            <LinearLayout
+                android:id="@+id/groupPosition"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    style="@style/GroupRow"
                     android:orientation="vertical">
 
                     <TextView
+                        android:id="@+id/detectedInfo"
+                        style="@style/RowBody" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCalibrate"
+                        style="@style/Widget.Material3Expressive.Button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/cal_open"
+                        app:icon="@drawable/ic_target" />
+                </LinearLayout>
+
+                <LinearLayout
+                    style="@style/GroupRow"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.button.MaterialButtonToggleGroup
+                        android:id="@+id/anchorGroup"
+                        style="@style/Widget.Material3Expressive.MaterialButtonToggleGroup"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/enable_island"
-                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        app:selectionRequired="true"
+                        app:singleSelection="true">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/anchorAuto"
+                            style="@style/Widget.Material3Expressive.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/anchor_auto" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/anchorCalibrated"
+                            style="@style/Widget.Material3Expressive.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1.3"
+                            android:text="@string/anchor_calibrated" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/anchorCenter"
+                            style="@style/Widget.Material3Expressive.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/anchor_center" />
+                    </com.google.android.material.button.MaterialButtonToggleGroup>
+                </LinearLayout>
+
+                <LinearLayout
+                    style="@style/GroupRow"
+                    android:orientation="vertical">
 
                     <TextView
+                        style="@style/RowTitle"
+                        android:text="@string/offset_x" />
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/offsetX"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/enable_island_desc"
-                        android:textAppearance="?attr/textAppearanceBodySmall" />
+                        android:stepSize="1"
+                        android:valueFrom="-20"
+                        android:valueTo="20" />
+
+                    <TextView
+                        style="@style/RowTitle"
+                        android:text="@string/offset_y" />
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/offsetY"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:stepSize="1"
+                        android:valueFrom="-20"
+                        android:valueTo="20" />
+
+                    <TextView
+                        style="@style/RowBody"
+                        android:text="@string/offset_hint" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnResetNudge"
+                        style="@style/Widget.Material3Expressive.Button.TonalButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/reset_nudge" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Behaviour -->
+            <TextView
+                style="@style/SectionTitle"
+                android:text="@string/section_behaviour" />
+
+            <LinearLayout
+                android:id="@+id/groupBehaviour"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    style="@style/GroupRow"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/collapseLabel"
+                        style="@style/RowTitle"
+                        android:text="@string/collapse_after" />
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/collapseSeconds"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:stepSize="1"
+                        android:valueFrom="2"
+                        android:valueTo="10" />
                 </LinearLayout>
 
                 <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/switchEnabled"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                    android:id="@+id/switchMaterialYou"
+                    style="@style/PrefSwitch"
+                    android:text="@string/material_you" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchPersistentMusic"
+                    style="@style/PrefSwitch"
+                    android:text="@string/persistent_music" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchVisualizer"
+                    style="@style/PrefSwitch"
+                    android:text="@string/visualizer" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchHaptics"
+                    style="@style/PrefSwitch"
+                    android:text="@string/haptics" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchNotifications"
+                    style="@style/PrefSwitch"
+                    android:text="@string/show_notifications" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchLive"
+                    style="@style/PrefSwitch"
+                    android:text="@string/show_live" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchShade"
+                    style="@style/PrefSwitch"
+                    android:text="@string/hide_with_shade" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchDevices"
+                    style="@style/PrefSwitch"
+                    android:text="@string/show_devices" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchCharging"
+                    style="@style/PrefSwitch"
+                    android:text="@string/show_charging" />
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
 
-        <!-- Setup -->
-        <TextView
-            style="@style/SectionTitle"
-            android:text="@string/section_setup" />
+            <!-- Background tips -->
+            <TextView
+                style="@style/SectionTitle"
+                android:text="@string/section_tips" />
 
-        <LinearLayout
-            android:id="@+id/permissionList"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <!-- Preview -->
-        <TextView
-            style="@style/SectionTitle"
-            android:text="@string/section_preview" />
-
-        <com.google.android.material.chip.ChipGroup
-            android:id="@+id/previewGroup"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/previewMusic"
-                style="@style/Widget.Material3.Chip.Assist"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/preview_music"
-                app:chipIcon="@drawable/ic_music_note" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/previewEarbuds"
-                style="@style/Widget.Material3.Chip.Assist"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/preview_earbuds"
-                app:chipIcon="@drawable/ic_earbuds" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/previewWired"
-                style="@style/Widget.Material3.Chip.Assist"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/preview_wired"
-                app:chipIcon="@drawable/ic_wired" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/previewNotice"
-                style="@style/Widget.Material3.Chip.Assist"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/preview_notice"
-                app:chipIcon="@drawable/ic_bell" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/previewCharging"
-                style="@style/Widget.Material3.Chip.Assist"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/preview_charging"
-                app:chipIcon="@drawable/ic_bolt" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/previewStopwatch"
-                style="@style/Widget.Material3.Chip.Assist"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/preview_stopwatch"
-                app:chipIcon="@drawable/ic_timer" />
-        </com.google.android.material.chip.ChipGroup>
-
-        <!-- Position -->
-        <TextView
-            style="@style/SectionTitle"
-            android:text="@string/section_position" />
-
-        <TextView
-            android:id="@+id/detectedInfo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="4dp"
-            android:textAppearance="?attr/textAppearanceBodyMedium" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCalibrate"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="4dp"
-            android:text="@string/cal_open"
-            app:icon="@drawable/ic_island" />
-
-        <RadioGroup
-            android:id="@+id/anchorGroup"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <RadioButton
-                android:id="@+id/anchorAuto"
+            <LinearLayout
+                android:id="@+id/groupTips"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/anchor_auto" />
+                android:orientation="vertical">
 
-            <RadioButton
-                android:id="@+id/anchorCalibrated"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/anchor_calibrated" />
+                <LinearLayout
+                    style="@style/GroupRow"
+                    android:orientation="vertical">
 
-            <RadioButton
-                android:id="@+id/anchorCenter"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/anchor_center" />
-        </RadioGroup>
+                    <TextView
+                        style="@style/RowBody"
+                        android:text="@string/tips" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/offset_x"
-            android:textAppearance="?attr/textAppearanceBodyMedium" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
 
-        <com.google.android.material.slider.Slider
-            android:id="@+id/offsetX"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:stepSize="1"
-            android:valueFrom="-20"
-            android:valueTo="20" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnAppInfo"
+                            style="@style/Widget.Material3Expressive.Button.TonalButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:text="@string/open_app_info" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/offset_y"
-            android:textAppearance="?attr/textAppearanceBodyMedium" />
-
-        <com.google.android.material.slider.Slider
-            android:id="@+id/offsetY"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:stepSize="1"
-            android:valueFrom="-20"
-            android:valueTo="20" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/offset_hint"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnResetNudge"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/reset_nudge" />
-
-        <!-- Behaviour -->
-        <TextView
-            style="@style/SectionTitle"
-            android:text="@string/section_behaviour" />
-
-        <TextView
-            android:id="@+id/collapseLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/collapse_after"
-            android:textAppearance="?attr/textAppearanceBodyMedium" />
-
-        <com.google.android.material.slider.Slider
-            android:id="@+id/collapseSeconds"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:stepSize="1"
-            android:valueFrom="2"
-            android:valueTo="10" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/switchPersistentMusic"
-            style="@style/PrefSwitch"
-            android:text="@string/persistent_music" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/switchVisualizer"
-            style="@style/PrefSwitch"
-            android:text="@string/visualizer" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/switchHaptics"
-            style="@style/PrefSwitch"
-            android:text="@string/haptics" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/switchNotifications"
-            style="@style/PrefSwitch"
-            android:text="@string/show_notifications" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/switchLive"
-            style="@style/PrefSwitch"
-            android:text="@string/show_live" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/switchShade"
-            style="@style/PrefSwitch"
-            android:text="@string/hide_with_shade" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/switchDevices"
-            style="@style/PrefSwitch"
-            android:text="@string/show_devices" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/switchCharging"
-            style="@style/PrefSwitch"
-            android:text="@string/show_charging" />
-
-        <!-- Realme tips -->
-        <TextView
-            style="@style/SectionTitle"
-            android:text="@string/section_realme" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/realme_tips"
-            android:textAppearance="?attr/textAppearanceBodyMedium" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnAppInfo"
-                style="?attr/materialButtonOutlinedStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:text="@string/open_app_info" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnBattery"
-                style="?attr/materialButtonOutlinedStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/open_battery" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnBattery"
+                            style="@style/Widget.Material3Expressive.Button.TonalButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/open_battery" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
-    </LinearLayout>
-</ScrollView>
+    </androidx.core.widget.NestedScrollView>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

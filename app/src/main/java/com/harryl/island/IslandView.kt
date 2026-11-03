@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
@@ -13,6 +14,8 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
+import android.os.Build
+import android.os.SystemClock
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -30,6 +33,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * Draws the island with a Canvas and morphs it between the camera-hole pill, the compact pill
@@ -144,16 +148,17 @@ class IslandView(
         fun cancel() = anim.cancel()
     }
 
-    private val sL = Spring(0f, SHAPE_STIFFNESS, SHAPE_DAMPING, 0.5f)
-    private val sT = Spring(0f, SHAPE_STIFFNESS, SHAPE_DAMPING, 0.5f)
-    private val sW = Spring(0f, SHAPE_STIFFNESS, SHAPE_DAMPING, 0.5f)
-    private val sH = Spring(0f, SHAPE_STIFFNESS, SHAPE_DAMPING, 0.5f)
-    private val sR = Spring(0f, SHAPE_STIFFNESS, 0.9f, 0.5f)
-    private val sCompX = Spring(0f, SHAPE_STIFFNESS * 0.8f, 0.62f, 0.5f)
-    private val sCompA = Spring(0f, 700f, 1f, 0.004f)
-    private val sContentA = Spring(0f, 420f, 1f, 0.004f)
-    private val sBgA = Spring(0f, 900f, 1f, 0.004f)
-    private val sRing = Spring(0f, 120f, 0.85f, 0.004f)
+    // Material 3 Expressive motion scheme: spatial springs bounce a little, effect springs don't.
+    private val sL = Spring(0f, SPATIAL_DEFAULT_STIFFNESS, SPATIAL_DEFAULT_DAMPING, 0.5f)
+    private val sT = Spring(0f, SPATIAL_DEFAULT_STIFFNESS, SPATIAL_DEFAULT_DAMPING, 0.5f)
+    private val sW = Spring(0f, SPATIAL_DEFAULT_STIFFNESS, SPATIAL_DEFAULT_DAMPING, 0.5f)
+    private val sH = Spring(0f, SPATIAL_DEFAULT_STIFFNESS, SPATIAL_DEFAULT_DAMPING, 0.5f)
+    private val sR = Spring(0f, SPATIAL_DEFAULT_STIFFNESS, 0.9f, 0.5f)
+    private val sCompX = Spring(0f, SPATIAL_FAST_STIFFNESS, SPATIAL_FAST_DAMPING, 0.5f)
+    private val sCompA = Spring(0f, EFFECTS_DEFAULT_STIFFNESS, 1f, 0.004f)
+    private val sContentA = Spring(0f, EFFECTS_SLOW_STIFFNESS, 1f, 0.004f)
+    private val sBgA = Spring(0f, EFFECTS_FAST_STIFFNESS, 1f, 0.004f)
+    private val sRing = Spring(0f, SPATIAL_SLOW_STIFFNESS, SPATIAL_SLOW_DAMPING, 0.004f)
     private val springs = listOf(sL, sT, sW, sH, sR, sCompX, sCompA, sContentA, sBgA, sRing)
 
     // ---- Paints -------------------------------------------------------------------------------
@@ -195,6 +200,12 @@ class IslandView(
         strokeCap = Paint.Cap.ROUND
     }
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val wavePath = Path()
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeWidth = dp(4)
+    }
     private val clipPath = Path()
     private val rectF = RectF()
     private val tmpRect = RectF()
@@ -206,7 +217,10 @@ class IslandView(
     private val colorGood = ContextCompat.getColor(context, R.color.battery_good)
     private val colorMid = ContextCompat.getColor(context, R.color.battery_mid)
     private val colorLow = ContextCompat.getColor(context, R.color.battery_low)
-    private val colorAccent = ContextCompat.getColor(context, R.color.island_accent)
+    private val brandAccent = ContextCompat.getColor(context, R.color.island_accent)
+    /** Material You: the wallpaper's accent (light tone, for the black island) on Android 12+. */
+    private val colorAccent: Int
+        get() = if (prefs.materialYou && Build.VERSION.SDK_INT >= 31) context.getColor(android.R.color.system_accent1_200) else brandAccent
     private val colorTimer = 0xFFFF9F0A.toInt()
 
     private val icons = HashMap<Int, Drawable>()
@@ -573,7 +587,8 @@ class IslandView(
     private fun tickDelay(): Long = when (val p = primary) {
         is IslandContent.Music -> when {
             !p.playing -> -1
-            expanded -> 1000
+            // 30 fps only while the card is open and the wavy progress is moving.
+            expanded -> 33
             prefs.visualizer -> 90
             else -> -1
         }
@@ -736,7 +751,7 @@ class IslandView(
         drawText(canvas, m.artist, tx, artTop + dp(36), tw, subPaint, colorDim, a)
 
         val progress = if (m.duration > 0) (m.positionNow().toFloat() / m.duration).coerceIn(0f, 1f) else 0f
-        drawProgress(canvas, bl, br, artTop + art + dp(14), progress, m.accent, a)
+        drawProgress(canvas, bl, br, artTop + art + dp(14), progress, m.accent, a, wavy = m.playing)
     }
 
     private fun drawLiveBody(canvas: Canvas, c: IslandContent.Live, bl: Float, br: Float, top: Float, a: Float) {
@@ -759,15 +774,45 @@ class IslandView(
         if (c.progress >= 0) drawProgress(canvas, bl, br, iconTop + size + dp(12), c.progress / 100f, color, a)
     }
 
-    private fun drawProgress(canvas: Canvas, bl: Float, br: Float, y: Float, progress: Float, color: Int, a: Float) {
-        fillPaint.color = colorTrack
-        fillPaint.alpha = (fillPaint.alpha * a).roundToInt()
-        tmpRect.set(bl, y, br, y + dp(4))
-        canvas.drawRoundRect(tmpRect, dp(2), dp(2), fillPaint)
+    /**
+     * Material 3 Expressive progress: the active part is a gently travelling wave while [wavy],
+     * then a small gap and a flat track to the end, which carries a stop dot.
+     */
+    private fun drawProgress(
+        canvas: Canvas, bl: Float, br: Float, y: Float, progress: Float, color: Int, a: Float, wavy: Boolean = false,
+    ) {
+        val cy = y + dp(2)
+        val cap = dp(2)
+        val activeEnd = bl + (br - bl) * progress.coerceIn(0f, 1f)
+        val trackStart = min(br, activeEnd + dp(6))
+
+        linePaint.color = colorTrack
+        linePaint.alpha = (Color.alpha(colorTrack) * a).roundToInt()
+        if (br - cap > trackStart + cap) canvas.drawLine(trackStart + cap, cy, br - cap, cy, linePaint)
         fillPaint.color = color
         fillPaint.alpha = (255 * a).roundToInt()
-        tmpRect.set(bl, y, bl + (br - bl) * progress, y + dp(4))
-        canvas.drawRoundRect(tmpRect, dp(2), dp(2), fillPaint)
+        canvas.drawCircle(br - cap, cy, dp(2), fillPaint)
+
+        if (activeEnd - bl < 2 * cap) return
+        linePaint.color = color
+        linePaint.alpha = (255 * a).roundToInt()
+        if (!wavy) {
+            canvas.drawLine(bl + cap, cy, activeEnd - cap, cy, linePaint)
+            return
+        }
+        val amplitude = dp(1.8f)
+        val wavelength = dp(22)
+        val phase = (SystemClock.uptimeMillis() % WAVE_PERIOD_MS) / WAVE_PERIOD_MS.toFloat() * TWO_PI
+        wavePath.rewind()
+        var x = bl + cap
+        val end = activeEnd - cap
+        val step = dp(1.5f)
+        wavePath.moveTo(x, cy + amplitude * sin((x - bl) / wavelength * TWO_PI - phase))
+        while (x < end) {
+            x = min(end, x + step)
+            wavePath.lineTo(x, cy + amplitude * sin((x - bl) / wavelength * TWO_PI - phase))
+        }
+        canvas.drawPath(wavePath, linePaint)
     }
 
     private fun drawRingBody(
@@ -1061,7 +1106,18 @@ class IslandView(
         const val MEDIA_PREVIOUS = 0
         const val MEDIA_PLAY_PAUSE = 1
         const val MEDIA_NEXT = 2
-        private const val SHAPE_STIFFNESS = 320f
-        private const val SHAPE_DAMPING = 0.72f
+        // Material 3 Expressive motion tokens (MotionScheme.expressive()).
+        private const val SPATIAL_FAST_STIFFNESS = 800f
+        private const val SPATIAL_FAST_DAMPING = 0.6f
+        private const val SPATIAL_DEFAULT_STIFFNESS = 380f
+        private const val SPATIAL_DEFAULT_DAMPING = 0.8f
+        private const val SPATIAL_SLOW_STIFFNESS = 200f
+        private const val SPATIAL_SLOW_DAMPING = 0.8f
+        private const val EFFECTS_FAST_STIFFNESS = 3800f
+        private const val EFFECTS_DEFAULT_STIFFNESS = 1600f
+        private const val EFFECTS_SLOW_STIFFNESS = 800f
+
+        private const val WAVE_PERIOD_MS = 1600L
+        private const val TWO_PI = (2 * Math.PI).toFloat()
     }
 }

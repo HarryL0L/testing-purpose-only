@@ -29,7 +29,7 @@ class IslandOverlay(
     private val handler = Handler(Looper.getMainLooper())
     private val windowContext: Context =
         if (windowType == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY) overlayContext(hostContext) else hostContext
-    private val viewContext = ContextThemeWrapper(windowContext, R.style.Theme_RealmeIsland)
+    private val viewContext = ContextThemeWrapper(windowContext, R.style.Theme_Mochi)
     private val wm = windowContext.getSystemService(WindowManager::class.java)
     private val displayManager = hostContext.getSystemService(DisplayManager::class.java)
 
@@ -53,7 +53,7 @@ class IslandOverlay(
         } else {
             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
-        title = "RealmeIsland"
+        title = "Mochi"
         width = 1
         height = 1
     }

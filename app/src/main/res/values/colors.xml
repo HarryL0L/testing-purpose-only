@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="launcher_bg">#FFF2F2F7</color>
+    <color name="launcher_bg">#FFEDE7FF</color>
     <color name="island_bg">#FF000000</color>
     <color name="island_border">#1AFFFFFF</color>
     <color name="island_text">#FFFFFFFF</color>
     <color name="island_text_dim">#B3FFFFFF</color>
     <color name="island_track">#33FFFFFF</color>
-    <color name="island_accent">#FF4D5BFF</color>
+    <color name="island_accent">#FF8B8BFF</color>
     <color name="battery_good">#FF34C759</color>
     <color name="battery_mid">#FFFFCC00</color>
     <color name="battery_low">#FFFF3B30</color>
