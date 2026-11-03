@@ -1,22 +1,33 @@
 package com.harryl.island
 
+import android.Manifest
 import android.bluetooth.BluetoothA2dp
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHeadset
+import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.BatteryManager
-import android.os.SystemClock
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 
 /**
- * Listens for the hardware events the island reacts to. Everything is broadcast-driven,
- * nothing polls, so this costs nothing while idle.
+ * Tracks the hardware the island reacts to. Everything is event driven, nothing polls:
+ *  - Bluetooth audio via profile broadcasts, seeded from the profiles' real connected-device lists,
+ *  - wired / USB-C earphones via AudioDeviceCallback (the X7 Max has no 3.5 mm jack, so USB-C
+ *    earphones and dongles never send the old headset-plug broadcast),
+ *  - charger and screen state.
  */
 class DeviceReceiver(
     private val context: Context,
@@ -24,10 +35,33 @@ class DeviceReceiver(
     private val sink: (IslandEvent) -> Unit,
 ) : BroadcastReceiver() {
 
+    private val audio = context.getSystemService(AudioManager::class.java)
+    private val main = Handler(Looper.getMainLooper())
     private var registered = false
-    /** address -> elapsedRealtime of the last connect/disconnect we surfaced, to merge A2DP + HFP events. */
-    private val lastShown = HashMap<String, Long>()
-    private var lastWiredState = -1
+
+    /** AudioDeviceInfo ids of wired outputs currently plugged in. */
+    private val wiredIds = HashSet<Int>()
+    private var audioScanDone = false
+
+    private val audioCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
+            // The first call after registering lists what is already plugged in.
+            val announce = audioScanDone
+            audioScanDone = true
+            for (d in addedDevices) {
+                if (!isWired(d)) continue
+                val wasEmpty = wiredIds.isEmpty()
+                wiredIds += d.id
+                if (wasEmpty) emitWired(d, connected = true, announce = announce)
+            }
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
+            for (d in removedDevices) {
+                if (wiredIds.remove(d.id) && wiredIds.isEmpty()) emitWired(d, connected = false, announce = true)
+            }
+        }
+    }
 
     fun register() {
         if (registered) return
@@ -35,20 +69,23 @@ class DeviceReceiver(
             addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
             addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED)
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
             addAction(ACTION_BT_BATTERY_LEVEL_CHANGED)
-            addAction(AudioManager.ACTION_HEADSET_PLUG)
             addAction(Intent.ACTION_POWER_CONNECTED)
             addAction(Intent.ACTION_POWER_DISCONNECTED)
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
         }
         ContextCompat.registerReceiver(context, this, filter, ContextCompat.RECEIVER_EXPORTED)
+        audio.registerAudioDeviceCallback(audioCallback, main)
         registered = true
+        seedBluetooth()
     }
 
     fun unregister() {
         if (!registered) return
         runCatching { context.unregisterReceiver(this) }
+        runCatching { audio.unregisterAudioDeviceCallback(audioCallback) }
         registered = false
     }
 
@@ -56,9 +93,12 @@ class DeviceReceiver(
         when (intent.action) {
             BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED,
             BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED -> onBtProfile(intent)
-            BluetoothDevice.ACTION_ACL_DISCONNECTED -> onBtDisconnected(intent)
+            BluetoothDevice.ACTION_ACL_DISCONNECTED -> device(intent)?.let { emitBt(it, connected = false) }
+            BluetoothAdapter.ACTION_STATE_CHANGED -> {
+                val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)
+                if (state == BluetoothAdapter.STATE_OFF || state == BluetoothAdapter.STATE_TURNING_OFF) sink(IslandEvent.BluetoothOff)
+            }
             ACTION_BT_BATTERY_LEVEL_CHANGED -> onBtBattery(intent)
-            AudioManager.ACTION_HEADSET_PLUG -> onWired(intent)
             Intent.ACTION_POWER_CONNECTED -> onPower(true)
             Intent.ACTION_POWER_DISCONNECTED -> onPower(false)
             Intent.ACTION_SCREEN_ON -> sink(IslandEvent.Screen(true))
@@ -68,18 +108,41 @@ class DeviceReceiver(
 
     // ---- Bluetooth ----------------------------------------------------------------------------
 
-    private fun onBtProfile(intent: Intent) {
-        val device = device(intent) ?: return
-        when (intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)) {
-            BluetoothProfile.STATE_CONNECTED -> surface(device, connected = true)
-            BluetoothProfile.STATE_DISCONNECTED -> surface(device, connected = false)
+    /** Ask the A2DP and headset profiles which devices are really connected right now. */
+    fun seedBluetooth() {
+        if (!hasBtPermission()) return
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return
+        val enabled = runCatching { adapter.isEnabled }.getOrDefault(false)
+        if (!enabled) {
+            sink(IslandEvent.BluetoothOff)
+            return
+        }
+        for (profile in intArrayOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET)) {
+            runCatching {
+                adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                    override fun onServiceConnected(p: Int, proxy: BluetoothProfile) {
+                        try {
+                            for (d in proxy.connectedDevices) {
+                                sink(IslandEvent.DeviceState(describe(d, connected = true), announce = false))
+                            }
+                        } catch (_: SecurityException) {
+                        } finally {
+                            runCatching { adapter.closeProfileProxy(p, proxy) }
+                        }
+                    }
+
+                    override fun onServiceDisconnected(p: Int) = Unit
+                }, profile)
+            }
         }
     }
 
-    private fun onBtDisconnected(intent: Intent) {
+    private fun onBtProfile(intent: Intent) {
         val device = device(intent) ?: return
-        if (!isAudioDevice(device)) return
-        surface(device, connected = false)
+        when (intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)) {
+            BluetoothProfile.STATE_CONNECTED -> emitBt(device, connected = true)
+            BluetoothProfile.STATE_DISCONNECTED -> emitBt(device, connected = false)
+        }
     }
 
     private fun onBtBattery(intent: Intent) {
@@ -88,17 +151,13 @@ class DeviceReceiver(
         if (level in 0..100) sink(IslandEvent.DeviceBattery(device.address, level))
     }
 
-    private fun surface(device: BluetoothDevice, connected: Boolean) {
-        if (!prefs.showDevices) return
-        val now = SystemClock.elapsedRealtime()
-        val key = device.address + (if (connected) "+" else "-")
-        val last = lastShown[key] ?: 0L
-        if (now - last < 4_000) return // A2DP and HFP both fire; show once.
-        lastShown[key] = now
-        sink(IslandEvent.Transient(describe(device, connected)))
+    private fun emitBt(device: BluetoothDevice, connected: Boolean) {
+        if (connected && !isAudioDevice(device)) return
+        // The service only announces real changes, so A2DP + HFP firing together shows once.
+        sink(IslandEvent.DeviceState(describe(device, connected), announce = true))
     }
 
-    fun describe(device: BluetoothDevice, connected: Boolean): IslandContent.Device {
+    private fun describe(device: BluetoothDevice, connected: Boolean): IslandContent.Device {
         val name = runCatching { device.name }.getOrNull()?.takeIf { it.isNotBlank() }
             ?: context.getString(R.string.unknown_device)
         return IslandContent.Device(
@@ -111,12 +170,21 @@ class DeviceReceiver(
     }
 
     private fun device(intent: Intent): BluetoothDevice? =
-        @Suppress("DEPRECATION")
-        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+        if (Build.VERSION.SDK_INT >= 33) {
+            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+        }
+
+    private fun hasBtPermission(): Boolean =
+        Build.VERSION.SDK_INT < 31 ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
 
     private fun isAudioDevice(device: BluetoothDevice): Boolean {
         val major = runCatching { device.bluetoothClass?.majorDeviceClass }.getOrNull() ?: return true
-        return major == BluetoothClass.Device.Major.AUDIO_VIDEO || major == BluetoothClass.Device.Major.WEARABLE
+        return major == BluetoothClass.Device.Major.AUDIO_VIDEO || major == BluetoothClass.Device.Major.WEARABLE ||
+            major == BluetoothClass.Device.Major.UNCATEGORIZED
     }
 
     private fun kindOf(device: BluetoothDevice, name: String): DeviceKind {
@@ -140,8 +208,7 @@ class DeviceReceiver(
 
     /**
      * BluetoothDevice.getBatteryLevel() is a hidden API that Sony (WF-C500), OnePlus/Realme and most
-     * HFP headsets populate via AT+IPHONEACCEV / AT+XAPL. It is reachable through reflection on
-     * Android 10-14. Returns -1 when unknown.
+     * HFP headsets populate. It is reachable through reflection on Android 10-14. Returns -1 when unknown.
      */
     private fun readBattery(device: BluetoothDevice): Int = try {
         val m = device.javaClass.getMethod("getBatteryLevel")
@@ -150,24 +217,25 @@ class DeviceReceiver(
         -1
     }
 
-    // ---- Wired --------------------------------------------------------------------------------
+    // ---- Wired / USB-C ------------------------------------------------------------------------
 
-    private fun onWired(intent: Intent) {
-        val state = intent.getIntExtra("state", -1)
-        if (state !in 0..1) return
-        // The broadcast is sticky: the first delivery after registering is just the current state.
-        if (isInitialStickyBroadcast || lastWiredState == -1 && state == 0) {
-            lastWiredState = state
-            return
-        }
-        if (state == lastWiredState) return
-        lastWiredState = state
-        if (!prefs.showDevices) return
-        val name = intent.getStringExtra("name")?.takeIf { it.isNotBlank() && !it.equals("h2w", true) }
+    private fun isWired(d: AudioDeviceInfo): Boolean = d.isSink && when (d.type) {
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_USB_DEVICE -> true
+        else -> false
+    }
+
+    private fun emitWired(d: AudioDeviceInfo, connected: Boolean, announce: Boolean) {
+        val usb = d.type == AudioDeviceInfo.TYPE_USB_HEADSET || d.type == AudioDeviceInfo.TYPE_USB_DEVICE
+        // Analog headsets report the phone model as their product name, so only trust USB names.
+        val name = d.productName?.toString()?.trim()?.takeIf { usb && it.isNotEmpty() }
             ?: context.getString(R.string.wired_headphones)
         sink(
-            IslandEvent.Transient(
-                IslandContent.Device(address = "wired", kind = DeviceKind.WIRED, name = name, battery = -1, connected = state == 1),
+            IslandEvent.DeviceState(
+                IslandContent.Device(address = WIRED_ADDRESS, kind = DeviceKind.WIRED, name = name, battery = -1, connected = connected),
+                announce = announce,
             ),
         )
     }
@@ -184,6 +252,7 @@ class DeviceReceiver(
     }
 
     companion object {
+        const val WIRED_ADDRESS = "wired"
         const val ACTION_BT_BATTERY_LEVEL_CHANGED = "android.bluetooth.device.action.BATTERY_LEVEL_CHANGED"
         const val EXTRA_BT_BATTERY_LEVEL = "android.bluetooth.device.extra.BATTERY_LEVEL"
     }

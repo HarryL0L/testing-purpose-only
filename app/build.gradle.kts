@@ -13,8 +13,8 @@ android {
         applicationId = "com.harryl.island"
         minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     buildTypes {
@@ -47,4 +47,6 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.dynamicanimation:dynamicanimation:1.0.0")
     implementation("androidx.palette:palette-ktx:1.0.0")
+
+    testImplementation("junit:junit:4.13.2")
 }

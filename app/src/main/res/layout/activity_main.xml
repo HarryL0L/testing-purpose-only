@@ -118,12 +118,27 @@
                 android:layout_height="wrap_content"
                 android:text="@string/preview_charging"
                 app:chipIcon="@drawable/ic_bolt" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/previewStopwatch"
+                style="@style/Widget.Material3.Chip.Assist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/preview_stopwatch"
+                app:chipIcon="@drawable/ic_timer" />
         </com.google.android.material.chip.ChipGroup>
 
         <!-- Position -->
         <TextView
             style="@style/SectionTitle"
             android:text="@string/section_position" />
+
+        <TextView
+            android:id="@+id/detectedInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
 
         <RadioGroup
             android:id="@+id/anchorGroup"
@@ -136,12 +151,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/anchor_auto" />
-
-            <RadioButton
-                android:id="@+id/anchorLeft"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/anchor_left" />
 
             <RadioButton
                 android:id="@+id/anchorCenter"
@@ -162,8 +171,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:stepSize="1"
-            android:valueFrom="-40"
-            android:valueTo="40" />
+            android:valueFrom="-20"
+            android:valueTo="20" />
 
         <TextView
             android:layout_width="match_parent"
@@ -176,14 +185,22 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:stepSize="1"
-            android:valueFrom="-40"
-            android:valueTo="40" />
+            android:valueFrom="-20"
+            android:valueTo="20" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/offset_hint"
             android:textAppearance="?attr/textAppearanceBodySmall" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnResetNudge"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/reset_nudge" />
 
         <!-- Behaviour -->
         <TextView
@@ -224,6 +241,16 @@
             android:id="@+id/switchNotifications"
             style="@style/PrefSwitch"
             android:text="@string/show_notifications" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchLive"
+            style="@style/PrefSwitch"
+            android:text="@string/show_live" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchShade"
+            style="@style/PrefSwitch"
+            android:text="@string/hide_with_shade" />
 
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/switchDevices"

@@ -5,11 +5,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
@@ -22,7 +20,6 @@ import android.text.TextUtils
 import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.View
-import android.view.WindowInsets
 import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
@@ -38,6 +35,8 @@ import kotlin.math.roundToInt
  * Draws the island with a Canvas and morphs it between the camera-hole pill, the compact pill
  * and the expanded card using springs. Everything is in screen coordinates; the host keeps the
  * overlay window just large enough to contain the current and target shapes.
+ *
+ * Position and size come from [IslandLayout], computed from the camera cutout Android reports.
  */
 class IslandView(
     context: Context,
@@ -47,8 +46,7 @@ class IslandView(
 ) : View(context) {
 
     interface Host {
-        fun screenSize(): Point
-        fun cutoutRect(): Rect?
+        fun geometry(): IslandGeometry
         fun attach()
         fun detach()
         fun updateWindow(rect: Rect)
@@ -63,11 +61,13 @@ class IslandView(
         fun onOutsideTouch()
     }
 
-    private enum class Side { LEFT, CENTER, RIGHT }
     private enum class Hit { NONE, PILL, CARD, COMPANION, PREV, PLAY, NEXT }
+
     private class Shape(val l: Float, val t: Float, val w: Float, val h: Float, val r: Float) {
         val right get() = l + w
         val bottom get() = t + h
+        fun same(o: Shape?) = o != null && abs(l - o.l) < 0.5f && abs(t - o.t) < 0.5f &&
+            abs(w - o.w) < 0.5f && abs(h - o.h) < 0.5f && abs(r - o.r) < 0.5f
     }
 
     // ---- Dimensions ---------------------------------------------------------------------------
@@ -77,40 +77,45 @@ class IslandView(
     private fun dp(v: Int) = v * density
     private fun sp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics)
 
-    private val padH = dp(10)
     private val padV = dp(6)
-    private val margin = dp(10)
+    private val bubblePad = dp(10)
     private val gap = dp(8)
     private val compGap = dp(6)
     private val bodyPad = dp(14)
     private val expandedRadius = dp(26)
+    private val windowEdge = dp(4)
 
-    // ---- Geometry (screen coordinates) --------------------------------------------------------
+    // ---- Geometry (screen coordinates, from IslandLayout) -------------------------------------
 
-    private var screenW = 1080
-    private var screenH = 2400
-    private val hole = Rect()
+    private var layoutKey: Any? = null
+    private var screenW = 1
+    private var screenH = 1
+    private val hole = RectF()
     private var side = Side.LEFT
-    private var pillH = dp(36)
+    private var pillH = dp(32)
     private var bandTop = 0f
+    private var padH = dp(10)
+    private var cardL = 0f
+    private var cardR = 0f
+    private var hasCamera = false
 
     // ---- State --------------------------------------------------------------------------------
 
     private var primary: IslandContent? = null
     private var companion: IslandContent? = null
-    /** Last companion we drew; kept around so the bubble can fade out after [companion] is cleared. */
+    /** Last companion drawn; kept so the bubble can fade out after [companion] is cleared. */
     private var drawnCompanion: IslandContent? = null
     private var expanded = false
     private var attached = false
     private var hiding = false
     private var identity: String? = null
+    private var target: Shape? = null
+    private var targetCompanionW = -1f
     private var noticeLayout: StaticLayout? = null
     private var noticeLayoutKey: String? = null
     private var noticeLayoutWidth = 0
 
     private val winRect = Rect()
-    /** Cutout as reported through window insets once attached; more reliable than Display.getCutout(). */
-    private var insetCutout: Rect? = null
 
     // ---- Springs ------------------------------------------------------------------------------
 
@@ -158,7 +163,6 @@ class IslandView(
         strokeWidth = dp(1)
     }
     private val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.island_text)
         textSize = sp(14f)
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
@@ -167,14 +171,14 @@ class IslandView(
         textSize = sp(12f)
     }
     private val smallPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.island_text)
         textSize = sp(12f)
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        fontFeatureSettings = "tnum"
     }
     private val bigPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.island_text)
         textSize = sp(22f)
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        fontFeatureSettings = "tnum"
     }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -201,6 +205,7 @@ class IslandView(
     private val colorMid = ContextCompat.getColor(context, R.color.battery_mid)
     private val colorLow = ContextCompat.getColor(context, R.color.battery_low)
     private val colorAccent = ContextCompat.getColor(context, R.color.island_accent)
+    private val colorTimer = 0xFFFF9F0A.toInt()
 
     private val icons = HashMap<Int, Drawable>()
     private fun icon(id: Int): Drawable = icons.getOrPut(id) { AppCompatResources.getDrawable(context, id)!!.mutate() }
@@ -217,7 +222,7 @@ class IslandView(
             if (!attached || hiding) return
             val delay = tickDelay()
             if (delay < 0) return
-            if (delay < 500) stepBars()
+            if (primary is IslandContent.Music && !expanded) stepBars()
             invalidate()
             tickScheduled = true
             postDelayed(this, delay)
@@ -242,8 +247,8 @@ class IslandView(
     private var downY = 0f
     private var downHit = Hit.NONE
     private var swiped = false
-    private val swipeThreshold = dp(36)
-    private val touchSlop = dp(10)
+    private val swipeThreshold = dp(28)
+    private val touchSlop = dp(12)
 
     init {
         isClickable = true
@@ -255,18 +260,21 @@ class IslandView(
     // =====================================================================================
 
     fun present(content: IslandContent, companion: IslandContent?, expanded: Boolean) {
+        val comp = if (expanded) null else companion
         val base = identityOf(content)
         val newIdentity = base + (if (expanded) "+x" else "")
-        val contentChanged = newIdentity != identity
+        val identityChanged = newIdentity != identity
         val baseChanged = base != identity?.removeSuffix("+x")
         identity = newIdentity
         primary = content
-        this.companion = if (expanded) null else companion
-        if (this.companion != null) drawnCompanion = this.companion
+        this.companion = comp
+        if (comp != null) drawnCompanion = comp
         this.expanded = expanded
+        val wasHiding = hiding
         hiding = false
 
-        if (!attached) {
+        val newlyAttached = !attached
+        if (newlyAttached) {
             relayout()
             val h = holeShape()
             snapShape(h)
@@ -275,42 +283,50 @@ class IslandView(
             sCompA.snap(0f)
             sCompX.snap(companionHiddenX(h))
             sRing.snap(0f)
+            target = null
             attached = true
-            growWindow()
-            host.attach()
-        } else if (contentChanged) {
+        } else if (identityChanged) {
             sContentA.snap(if (baseChanged) 0f else 0.3f)
         }
 
-        if (contentChanged) {
+        if (identityChanged) {
             pulseAnimator.cancel()
-            if (expanded && content is IslandContent.Power && content.charging) pulseAnimator.start() else pulse = 0f
+            pulse = 0f
+            if (expanded && content is IslandContent.Power && content.charging) pulseAnimator.start()
             if (baseChanged && (content is IslandContent.Device || content is IslandContent.Power)) sRing.snap(0f)
         }
 
-        val target = if (expanded) expandedShape(content) else compactShape(content)
-        growWindow(target)
-        animateShape(target)
+        // Only touch the window and the springs when the shape really changes. Media position,
+        // battery and live-activity updates arrive often; re-laying out the window for each of
+        // them made the island jitter.
+        val t = if (expanded) expandedShape(content) else compactShape(content)
+        val compW = comp?.let { companionWidth(it) } ?: -1f
+        if (newlyAttached || wasHiding || !t.same(target) || compW != targetCompanionW) {
+            target = t
+            targetCompanionW = compW
+            growWindow(t)
+            animateShape(t)
+            if (comp != null) {
+                sCompA.to(1f)
+                sCompX.to(companionShownX(t, comp))
+            } else {
+                sCompA.to(0f)
+                sCompX.to(companionHiddenX(t))
+            }
+            settleIfIdle()
+        }
+        if (newlyAttached) host.attach()
         sBgA.to(1f)
         sContentA.to(1f)
         sRing.to(1f)
-
-        val comp = this.companion
-        if (comp != null) {
-            sCompA.to(1f)
-            sCompX.to(companionShownX(target, comp))
-        } else {
-            sCompA.to(0f)
-            sCompX.to(companionHiddenX(target))
-        }
         scheduleTick()
         invalidate()
-        settleIfIdle()
     }
 
     fun dismiss() {
         if (!attached || hiding) return
         hiding = true
+        target = null
         pulseAnimator.cancel()
         val h = holeShape()
         growWindow(h)
@@ -323,47 +339,42 @@ class IslandView(
         settleIfIdle()
     }
 
-    /** If nothing needed to animate, run the end-of-animation bookkeeping right away. */
-    private fun settleIfIdle() {
-        post { if (springs.none { it.running }) onSpringEnd() }
-    }
-
+    /** Re-fits the island to the screen and camera the host reports. Cheap no-op when nothing changed. */
     fun relayout() {
-        val size = host.screenSize()
-        screenW = size.x
-        screenH = size.y
-        val anchor = prefs.anchor
-        val cut = if (anchor == Prefs.ANCHOR_AUTO) (insetCutout ?: host.cutoutRect()) else null
-        val offX = dp(prefs.offsetX)
-        val offY = dp(prefs.offsetY)
-
-        if (cut != null && cut.width() < screenW / 2 && cut.top < screenH / 4) {
-            hole.set(cut)
-        } else if (anchor == Prefs.ANCHOR_CENTER) {
-            hole.set(screenW / 2, dp(10).roundToInt(), screenW / 2, dp(34).roundToInt())
-        } else {
-            // Realme X7 Max: hole-punch camera in the top-left corner.
-            val l = dp(12).roundToInt()
-            val t = dp(12).roundToInt()
-            val s = dp(24).roundToInt()
-            hole.set(l, t, l + s, t + s)
-        }
-        hole.offset(offX.roundToInt(), offY.roundToInt())
-
-        side = when {
-            hole.centerX() < screenW * 0.35f -> Side.LEFT
-            hole.centerX() > screenW * 0.65f -> Side.RIGHT
-            else -> Side.CENTER
-        }
-        pillH = max(dp(34), hole.height() + 2 * padV)
-        bandTop = max(dp(2), hole.centerY() - pillH / 2)
+        val g = host.geometry()
+        val key = listOf<Any?>(g, prefs.anchor, prefs.offsetX, prefs.offsetY)
+        if (key == layoutKey) return
+        layoutKey = key
+        val l = IslandLayout.compute(
+            screenW = g.screenW,
+            screenH = g.screenH,
+            density = density,
+            camera = g.camera,
+            statusBarH = g.statusBarH,
+            offsetXdp = prefs.offsetX,
+            offsetYdp = prefs.offsetY,
+            forceCenter = prefs.anchor == Prefs.ANCHOR_CENTER,
+        )
+        screenW = l.screenW
+        screenH = l.screenH
+        hole.set(l.holeL, l.holeT, l.holeR, l.holeB)
+        side = l.side
+        pillH = l.pillH
+        bandTop = l.bandTop
+        padH = l.padH
+        cardL = l.cardL
+        cardR = l.cardR
+        hasCamera = l.followsCamera
+        noticeLayout = null
 
         val p = primary
         if (attached && p != null && !hiding) {
-            val target = if (expanded) expandedShape(p) else compactShape(p)
-            growWindow(target)
-            animateShape(target)
-            companion?.let { sCompX.to(companionShownX(target, it)) }
+            val t = if (expanded) expandedShape(p) else compactShape(p)
+            target = t
+            growWindow(t)
+            animateShape(t)
+            companion?.let { sCompX.to(companionShownX(t, it)) }
+            settleIfIdle()
         }
     }
 
@@ -400,7 +411,7 @@ class IslandView(
                 l = hole.right + padH - w
             }
             Side.CENTER -> {
-                val half = max(leftW, rightW) + gap + padH
+                val half = max(leftW, rightW) + gap + (if (hasCamera) padH else padV)
                 w = hole.width() + 2 * half
                 l = hole.centerX() - w / 2
             }
@@ -410,27 +421,20 @@ class IslandView(
 
     private fun expandedShape(c: IslandContent): Shape {
         val bodyH = bodyHeight(c)
-        val l: Float
-        val r: Float
-        when (side) {
-            Side.LEFT -> { l = hole.left - padH; r = screenW - margin }
-            Side.RIGHT -> { l = margin; r = hole.right + padH }
-            Side.CENTER -> { l = margin; r = screenW - margin }
-        }
-        return Shape(l, bandTop, r - l, pillH + bodyH, min(expandedRadius, (pillH + bodyH) / 2))
+        return Shape(cardL, bandTop, cardR - cardL, pillH + bodyH, min(expandedRadius, (pillH + bodyH) / 2))
     }
 
     private fun compactIconSize() = pillH - 2 * padV
 
     private fun compactLeftWidth(c: IslandContent): Float = when (c) {
-        is IslandContent.Music -> compactIconSize()
-        is IslandContent.Notice -> compactIconSize()
+        is IslandContent.Music, is IslandContent.Notice, is IslandContent.Live -> compactIconSize()
         else -> dp(18)
     }
 
     private fun compactRightWidth(c: IslandContent): Float = when (c) {
         is IslandContent.Music -> dp(16)
         is IslandContent.Notice -> min(dp(110), smallPaint.measureText(c.title))
+        is IslandContent.Live -> min(dp(110), smallPaint.measureText(Clock.widthTemplate(liveCompactText(c))))
         is IslandContent.Device -> smallPaint.measureText(deviceCompactText(c))
         is IslandContent.Power -> smallPaint.measureText(percentText(c.level))
     }
@@ -438,6 +442,7 @@ class IslandView(
     private fun bodyHeight(c: IslandContent): Float = when (c) {
         is IslandContent.Music -> dp(10 + 52 + 14 + 4 + 14)
         is IslandContent.Device, is IslandContent.Power -> dp(10 + 52 + 12)
+        is IslandContent.Live -> dp(10 + 44 + 12) + (if (c.progress >= 0) dp(14) else 0f)
         is IslandContent.Notice -> {
             val layout = noticeLayout(c)
             val textH = dp(20) + layout.height
@@ -446,8 +451,7 @@ class IslandView(
     }
 
     private fun noticeLayout(c: IslandContent.Notice): StaticLayout {
-        val shape = expandedBodyWidth()
-        val width = max(1, (shape - dp(40) - dp(12)).roundToInt())
+        val width = max(1, (expandedBodyWidth() - dp(40) - dp(12)).roundToInt())
         val key = c.key + c.text.hashCode()
         noticeLayout?.let { if (noticeLayoutKey == key && noticeLayoutWidth == width) return it }
         val layout = StaticLayout.Builder.obtain(c.text, 0, c.text.length, subPaint, width)
@@ -462,18 +466,10 @@ class IslandView(
         return layout
     }
 
-    private fun expandedBodyWidth(): Float {
-        val w = when (side) {
-            Side.LEFT -> screenW - margin - (hole.left - padH)
-            Side.RIGHT -> hole.right + padH - margin
-            Side.CENTER -> screenW - 2 * margin
-        }
-        return w - 2 * bodyPad
-    }
+    private fun expandedBodyWidth(): Float = (cardR - cardL) - 2 * bodyPad
 
     private fun companionWidth(c: IslandContent): Float = when (c) {
-        is IslandContent.Device -> padH + dp(14) + (if (c.battery >= 0) dp(4) + smallPaint.measureText(percentText(c.battery)) else 0f) + padH
-        is IslandContent.Music -> pillH
+        is IslandContent.Device -> bubblePad + dp(14) + (if (c.battery >= 0) dp(4) + smallPaint.measureText(percentText(c.battery)) else 0f) + bubblePad
         else -> pillH
     }
 
@@ -481,7 +477,7 @@ class IslandView(
         if (side == Side.RIGHT) pill.l - compGap - companionWidth(c) else pill.right + compGap
 
     private fun companionHiddenX(pill: Shape): Float {
-        val c = companion
+        val c = companion ?: drawnCompanion
         val w = if (c != null) companionWidth(c) else pillH
         return if (side == Side.RIGHT) pill.l else pill.right - w
     }
@@ -494,38 +490,48 @@ class IslandView(
         sL.to(s.l); sT.to(s.t); sW.to(s.w); sH.to(s.h); sR.to(s.r)
     }
 
-    /** Make the window big enough for both where we are and where we are going. */
-    private fun growWindow(target: Shape? = null) {
+    /** Make the window big enough for both where we are and where we are going (plus spring overshoot). */
+    private fun growWindow(target: Shape) {
         val r = RectF(sL.value, sT.value, sL.value + sW.value, sT.value + sH.value)
-        if (target != null) r.union(target.l, target.t, target.right, target.bottom)
-        val comp = companion
+        r.union(target.l, target.t, target.right, target.bottom)
+        val comp = companion ?: drawnCompanion
         val compW = if (comp != null) companionWidth(comp) else pillH
         r.union(sCompX.value, sT.value, sCompX.value + compW, sT.value + pillH)
-        if (target != null) {
-            val cx = if (comp != null) companionShownX(target, comp) else companionHiddenX(target)
-            r.union(cx, target.t, cx + compW, target.t + pillH)
-        }
-        setWindow(r, dp(14), dp(22))
+        val cx = if (companion != null) companionShownX(target, companion!!) else companionHiddenX(target)
+        r.union(cx, target.t, cx + compW, target.t + pillH)
+        setWindow(r, grow = true)
     }
 
     private fun tightenWindow() {
         val r = RectF(sL.value, sT.value, sL.value + sW.value, sT.value + sH.value)
         val comp = companion
         if (comp != null) r.union(sCompX.value, sT.value, sCompX.value + companionWidth(comp), sT.value + pillH)
-        setWindow(r, dp(3), dp(3))
+        setWindow(r, grow = false)
     }
 
-    private fun setWindow(r: RectF, insetX: Float, insetBottom: Float) {
+    /**
+     * The edge on the camera side keeps a constant inset, so on a left (or right) hole punch the
+     * window origin never moves while the island morphs; only the far edge and the bottom change.
+     */
+    private fun setWindow(r: RectF, grow: Boolean) {
+        val overshoot = if (grow) dp(18) else 0f
+        val left = r.left - windowEdge - (if (side == Side.LEFT) 0f else overshoot)
+        val right = r.right + windowEdge + (if (side == Side.RIGHT) 0f else overshoot)
         val next = Rect(
-            (r.left - insetX).roundToInt().coerceAtLeast(0),
-            (r.top - dp(2)).roundToInt().coerceAtLeast(0),
-            (r.right + insetX).roundToInt().coerceAtMost(screenW),
-            (r.bottom + insetBottom).roundToInt().coerceAtMost(screenH),
+            left.roundToInt().coerceAtLeast(0),
+            (r.top - windowEdge).roundToInt().coerceAtLeast(0),
+            right.roundToInt().coerceAtMost(screenW),
+            (r.bottom + windowEdge + (if (grow) dp(24) else 0f)).roundToInt().coerceAtMost(screenH),
         )
         if (next == winRect) return
         winRect.set(next)
         host.updateWindow(next)
         invalidate()
+    }
+
+    /** If nothing needed to animate, run the end-of-animation bookkeeping right away. */
+    private fun settleIfIdle() {
+        post { if (springs.none { it.running }) onSpringEnd() }
     }
 
     private fun onSpringEnd() {
@@ -540,13 +546,16 @@ class IslandView(
             companion = null
             drawnCompanion = null
             identity = null
+            target = null
         } else if (attached) {
+            if (companion == null) drawnCompanion = null
             tightenWindow()
         }
     }
 
     private fun identityOf(c: IslandContent): String = when (c) {
         is IslandContent.Music -> "music:" + c.trackKey
+        is IslandContent.Live -> "live:" + c.key
         is IslandContent.Notice -> "notice:" + c.key
         is IslandContent.Device -> "device:" + c.address + ":" + c.connected
         is IslandContent.Power -> "power:" + c.charging
@@ -556,11 +565,16 @@ class IslandView(
     // Ticks
     // =====================================================================================
 
-    private fun tickDelay(): Long {
-        val m = primary as? IslandContent.Music ?: return -1
-        if (!m.playing) return -1
-        if (expanded) return 1000
-        return if (prefs.visualizer) 90 else -1
+    private fun tickDelay(): Long = when (val p = primary) {
+        is IslandContent.Music -> when {
+            !p.playing -> -1
+            expanded -> 1000
+            prefs.visualizer -> 90
+            else -> -1
+        }
+        // Wake exactly on the next second boundary of the stopwatch / timer.
+        is IslandContent.Live -> if (p.chronoBase > 0) 1000 - (abs(System.currentTimeMillis() - p.chronoBase) % 1000) + 5 else -1
+        else -> -1
     }
 
     private fun scheduleTick() {
@@ -613,13 +627,13 @@ class IslandView(
         clipPath.addRoundRect(rectF, r, r, Path.Direction.CW)
         canvas.save()
         canvas.clipPath(clipPath)
-        if (expanded) drawExpanded(canvas, p, l, t, w, contentA) else drawCompact(canvas, p, l, t, w, h, contentA)
+        if (expanded) drawExpanded(canvas, p, l, t, w, contentA) else drawCompact(canvas, p, t, h, contentA)
         canvas.restore()
     }
 
     // ---- Compact ------------------------------------------------------------------------------
 
-    private fun drawCompact(canvas: Canvas, c: IslandContent, l: Float, t: Float, w: Float, h: Float, a: Float) {
+    private fun drawCompact(canvas: Canvas, c: IslandContent, t: Float, h: Float, a: Float) {
         val cy = t + h / 2
         val leftW = compactLeftWidth(c)
         val rightW = compactRightWidth(c)
@@ -634,6 +648,10 @@ class IslandView(
             is IslandContent.Music -> {
                 drawArt(canvas, c.art, leftX, cy - leftW / 2, leftW, leftW / 2, a, c.accent)
                 drawBars(canvas, rightX, cy, rightW, dp(16), c.accent, a, c.playing)
+            }
+            is IslandContent.Live -> {
+                drawArt(canvas, c.icon, leftX, cy - leftW / 2, leftW, leftW / 2, a, liveColor(c), liveIcon(c))
+                drawText(canvas, liveCompactText(c), rightX, cy, rightW, smallPaint, liveColor(c), a)
             }
             is IslandContent.Notice -> {
                 drawArt(canvas, c.icon, leftX, cy - leftW / 2, leftW, leftW / 2, a, colorAccent)
@@ -654,16 +672,20 @@ class IslandView(
     // ---- Expanded -----------------------------------------------------------------------------
 
     private fun drawExpanded(canvas: Canvas, c: IslandContent, l: Float, t: Float, w: Float, a: Float) {
-        // Header label beside the camera hole.
+        // Header label in the band beside the camera.
         val label = when (c) {
             is IslandContent.Music -> context.getString(if (c.playing) R.string.now_playing else R.string.paused)
+            is IslandContent.Live -> c.appName
             is IslandContent.Notice -> c.appName
             is IslandContent.Device -> context.getString(if (c.connected) R.string.connected else R.string.disconnected)
             is IslandContent.Power -> context.getString(if (c.charging) R.string.charging else R.string.charger_removed)
         }
         val bandCy = bandTop + pillH / 2
         when (side) {
-            Side.LEFT, Side.CENTER -> drawText(canvas, label, hole.right + gap, bandCy, l + w - bodyPad - (hole.right + gap), subPaint, colorDim, a)
+            Side.LEFT, Side.CENTER -> {
+                val lx = if (hasCamera) hole.right + gap else l + bodyPad
+                drawText(canvas, label, lx, bandCy, l + w - bodyPad - lx, subPaint, colorDim, a)
+            }
             Side.RIGHT -> {
                 val tw = min(subPaint.measureText(label), hole.left - gap - (l + bodyPad))
                 drawText(canvas, label, hole.left - gap - tw, bandCy, tw, subPaint, colorDim, a)
@@ -675,6 +697,7 @@ class IslandView(
         val br = l + w - bodyPad
         when (c) {
             is IslandContent.Music -> drawMusicBody(canvas, c, bl, br, bodyTop, a)
+            is IslandContent.Live -> drawLiveBody(canvas, c, bl, br, bodyTop, a)
             is IslandContent.Device -> drawRingBody(
                 canvas, deviceIcon(c.kind), c.battery, if (c.connected) batteryColor(c.battery, colorGood) else colorDim,
                 c.name, deviceSubText(c), bl, br, bodyTop, a, 1f,
@@ -695,8 +718,7 @@ class IslandView(
         drawArt(canvas, m.art, bl, artTop, art, dp(10), a, m.accent)
 
         val btn = dp(36)
-        val ctrlRight = br
-        val ctrlLeft = ctrlRight - 3 * btn
+        val ctrlLeft = br - 3 * btn
         val ctrlCy = artTop + art / 2
         drawIcon(canvas, R.drawable.ic_skip_previous, ctrlLeft + btn / 2, ctrlCy, dp(24), colorText, a)
         drawIcon(canvas, if (m.playing) R.drawable.ic_pause else R.drawable.ic_play, ctrlLeft + btn * 1.5f, ctrlCy, dp(28), colorText, a)
@@ -707,15 +729,38 @@ class IslandView(
         drawText(canvas, m.title, tx, artTop + dp(16), tw, titlePaint, colorText, a)
         drawText(canvas, m.artist, tx, artTop + dp(36), tw, subPaint, colorDim, a)
 
-        val barY = artTop + art + dp(14)
         val progress = if (m.duration > 0) (m.positionNow().toFloat() / m.duration).coerceIn(0f, 1f) else 0f
+        drawProgress(canvas, bl, br, artTop + art + dp(14), progress, m.accent, a)
+    }
+
+    private fun drawLiveBody(canvas: Canvas, c: IslandContent.Live, bl: Float, br: Float, top: Float, a: Float) {
+        val size = dp(44)
+        val iconTop = top + dp(10)
+        val color = liveColor(c)
+        drawArt(canvas, c.icon, bl, iconTop, size, dp(10), a, color, liveIcon(c))
+
+        val big = c.chronoText() ?: (if (c.progress >= 0) "${c.progress}%" else null)
+        var textRight = br
+        if (big != null) {
+            val bw = bigPaint.measureText(Clock.widthTemplate(big))
+            drawText(canvas, big, br - bw, iconTop + size / 2, bw, bigPaint, color, a)
+            textRight = br - bw - dp(10)
+        }
+        val tx = bl + size + dp(12)
+        val tw = textRight - tx
+        drawText(canvas, c.title, tx, iconTop + dp(13), tw, titlePaint, colorText, a)
+        drawText(canvas, c.text, tx, iconTop + dp(32), tw, subPaint, colorDim, a)
+        if (c.progress >= 0) drawProgress(canvas, bl, br, iconTop + size + dp(12), c.progress / 100f, color, a)
+    }
+
+    private fun drawProgress(canvas: Canvas, bl: Float, br: Float, y: Float, progress: Float, color: Int, a: Float) {
         fillPaint.color = colorTrack
         fillPaint.alpha = (fillPaint.alpha * a).roundToInt()
-        tmpRect.set(bl, barY, br, barY + dp(4))
+        tmpRect.set(bl, y, br, y + dp(4))
         canvas.drawRoundRect(tmpRect, dp(2), dp(2), fillPaint)
-        fillPaint.color = m.accent
+        fillPaint.color = color
         fillPaint.alpha = (255 * a).roundToInt()
-        tmpRect.set(bl, barY, bl + (br - bl) * progress, barY + dp(4))
+        tmpRect.set(bl, y, bl + (br - bl) * progress, y + dp(4))
         canvas.drawRoundRect(tmpRect, dp(2), dp(2), fillPaint)
     }
 
@@ -742,7 +787,6 @@ class IslandView(
         if (level >= 0) {
             val pct = percentText(level)
             val pw = bigPaint.measureText(pct)
-            bigPaint.color = tint
             drawText(canvas, pct, br - pw, cy, pw, bigPaint, tint, a)
             textRight = br - pw - dp(10)
         }
@@ -755,12 +799,12 @@ class IslandView(
     private fun drawNoticeBody(canvas: Canvas, n: IslandContent.Notice, bl: Float, br: Float, top: Float, a: Float) {
         val iconSize = dp(40)
         val iconTop = top + dp(10)
-        if (n.icon != null) drawArt(canvas, n.icon, bl, iconTop, iconSize, dp(10), a, colorAccent)
-        else drawArt(canvas, null, bl, iconTop, iconSize, dp(10), a, colorAccent, R.drawable.ic_bell)
+        drawArt(canvas, n.icon, bl, iconTop, iconSize, dp(10), a, colorAccent, R.drawable.ic_bell)
         val tx = bl + iconSize + dp(12)
         val tw = br - tx
         drawText(canvas, n.title, tx, iconTop + dp(9), tw, titlePaint, colorText, a)
         val layout = noticeLayout(n)
+        subPaint.color = colorDim
         subPaint.alpha = (255 * a).roundToInt()
         canvas.save()
         canvas.translate(tx, iconTop + dp(20))
@@ -773,16 +817,13 @@ class IslandView(
 
     private fun drawCompanion(canvas: Canvas, c: IslandContent, bgA: Float) {
         val a = (sCompA.value.coerceIn(0f, 1f) * bgA)
-        if (a <= 0.01f && !sCompX.running) {
-            if (companion == null) drawnCompanion = null
-            return
-        }
+        if (a <= 0.01f && !sCompX.running) return
         val x = sCompX.value
         val w = companionWidth(c)
         val t = sT.value
         rectF.set(x, t, x + w, t + pillH)
-        bgPaint.alpha = (255 * bgA).roundToInt()
-        borderPaint.alpha = (26 * bgA).roundToInt()
+        bgPaint.alpha = (255 * a).roundToInt()
+        borderPaint.alpha = (26 * a).roundToInt()
         canvas.drawRoundRect(rectF, pillH / 2, pillH / 2, bgPaint)
         canvas.drawRoundRect(rectF, pillH / 2, pillH / 2, borderPaint)
         if (a <= 0.01f) return
@@ -790,10 +831,10 @@ class IslandView(
         when (c) {
             is IslandContent.Device -> {
                 val tint = batteryColor(c.battery, colorGood)
-                drawIcon(canvas, deviceIcon(c.kind), x + padH + dp(7), cy, dp(14), tint, a)
+                drawIcon(canvas, deviceIcon(c.kind), x + bubblePad + dp(7), cy, dp(14), tint, a)
                 if (c.battery >= 0) {
-                    val tx = x + padH + dp(14) + dp(4)
-                    drawText(canvas, percentText(c.battery), tx, cy, x + w - padH - tx, smallPaint, colorText, a)
+                    val tx = x + bubblePad + dp(14) + dp(4)
+                    drawText(canvas, percentText(c.battery), tx, cy, x + w - bubblePad - tx, smallPaint, colorText, a)
                 }
             }
             is IslandContent.Music -> drawArt(canvas, c.art, x + padV, t + padV, pillH - 2 * padV, (pillH - 2 * padV) / 2, a, c.accent)
@@ -803,7 +844,10 @@ class IslandView(
 
     // ---- Primitives ---------------------------------------------------------------------------
 
-    private fun drawArt(canvas: Canvas, bmp: Bitmap?, x: Float, y: Float, size: Float, radius: Float, a: Float, fallback: Int, fallbackIcon: Int = R.drawable.ic_music_note) {
+    private fun drawArt(
+        canvas: Canvas, bmp: Bitmap?, x: Float, y: Float, size: Float, radius: Float, a: Float,
+        fallback: Int, fallbackIcon: Int = R.drawable.ic_music_note,
+    ) {
         tmpRect.set(x, y, x + size, y + size)
         if (bmp != null && !bmp.isRecycled) {
             val shader = BitmapShader(bmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
@@ -856,6 +900,23 @@ class IslandView(
             tmpRect.set(bx, cy - h / 2, bx + barW, cy + h / 2)
             canvas.drawRoundRect(tmpRect, barW / 2, barW / 2, fillPaint)
         }
+    }
+
+    private fun liveCompactText(c: IslandContent.Live): String =
+        c.chronoText()
+            ?: (if (c.progress >= 0) "${c.progress}%" else null)
+            ?: Clock.timeToken(c.title + " " + c.text)
+            ?: c.title
+
+    private fun liveColor(c: IslandContent.Live): Int = when (c.kind) {
+        LiveKind.CALL -> colorGood
+        LiveKind.STOPWATCH, LiveKind.TIMER -> colorTimer
+        else -> colorText
+    }
+
+    private fun liveIcon(c: IslandContent.Live): Int = when (c.kind) {
+        LiveKind.STOPWATCH, LiveKind.TIMER -> R.drawable.ic_timer
+        else -> R.drawable.ic_bell
     }
 
     private fun deviceIcon(kind: DeviceKind): Int = when (kind) {
@@ -946,12 +1007,13 @@ class IslandView(
             val cx = sCompX.value
             if (x in cx..(cx + companionWidth(comp)) && y in t..(t + pillH)) return Hit.COMPANION
         }
-        if (x < l || x > l + w || y < t || y > t + h) return Hit.NONE
+        // A little slack around the pill so small targets are easy to hit.
+        val slack = dp(6)
+        if (x < l - slack || x > l + w + slack || y < t - slack || y > t + h + slack) return Hit.NONE
         if (!expanded) return Hit.PILL
         if (p is IslandContent.Music) {
             val btn = dp(36)
-            val ctrlRight = l + w - bodyPad
-            val ctrlLeft = ctrlRight - 3 * btn
+            val ctrlLeft = l + w - bodyPad - 3 * btn
             val cy = t + pillH + dp(10) + dp(26)
             if (x >= ctrlLeft - dp(6) && y >= cy - btn / 2 - dp(6) && y <= cy + btn / 2 + dp(6)) {
                 return when {
@@ -977,21 +1039,6 @@ class IslandView(
         }
     }
 
-    // =====================================================================================
-    // Window insets: refine the camera hole once the window is actually on screen.
-    // =====================================================================================
-
-    override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
-        if (prefs.anchor == Prefs.ANCHOR_AUTO) {
-            val cut = insets.displayCutout?.boundingRectTop
-            if (cut != null && !cut.isEmpty && cut.width() < screenW / 2 && cut != insetCutout) {
-                insetCutout = Rect(cut)
-                relayout()
-            }
-        }
-        return super.onApplyWindowInsets(insets)
-    }
-
     override fun onDetachedFromWindow() {
         removeCallbacks(tick)
         tickScheduled = false
@@ -1009,6 +1056,6 @@ class IslandView(
         const val MEDIA_PLAY_PAUSE = 1
         const val MEDIA_NEXT = 2
         private const val SHAPE_STIFFNESS = 320f
-        private const val SHAPE_DAMPING = 0.68f
+        private const val SHAPE_DAMPING = 0.72f
     }
 }

@@ -2,25 +2,44 @@ package com.harryl.island
 
 import android.content.Context
 import android.graphics.PixelFormat
-import android.graphics.Point
 import android.graphics.Rect
+import android.hardware.display.DisplayManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.ContextThemeWrapper
+import android.view.Display
 import android.view.Gravity
 import android.view.WindowManager
 
-/** Owns the overlay window and keeps it exactly as large as the island needs to be. */
+/**
+ * Owns the overlay window, keeps it exactly as large as the island needs, and re-fits the island
+ * whenever the display changes (rotation, resolution, display size, cutout).
+ *
+ * [windowType] is TYPE_ACCESSIBILITY_OVERLAY when the accessibility service is on (drawn above
+ * the status bar, so taps work) or TYPE_APPLICATION_OVERLAY otherwise.
+ */
 class IslandOverlay(
-    context: Context,
-    prefs: Prefs,
-    listener: IslandView.Listener,
+    hostContext: Context,
+    private val windowType: Int,
+    private val prefs: Prefs,
+    private val listener: IslandView.Listener,
 ) : IslandView.Host {
 
-    private val wm = context.getSystemService(WindowManager::class.java)
-    private val view = IslandView(context, prefs, this, listener)
+    private val handler = Handler(Looper.getMainLooper())
+    private val windowContext: Context =
+        if (windowType == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY) overlayContext(hostContext) else hostContext
+    private val viewContext = ContextThemeWrapper(windowContext, R.style.Theme_RealmeIsland)
+    private val wm = windowContext.getSystemService(WindowManager::class.java)
+    private val displayManager = hostContext.getSystemService(DisplayManager::class.java)
+
+    private var geometry = IslandGeometry.detect(windowContext)
+    private var view = IslandView(viewContext, prefs, this, listener)
     private var attached = false
+    private var last: Triple<IslandContent, IslandContent?, Boolean>? = null
 
     private val lp = WindowManager.LayoutParams().apply {
-        type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        type = windowType
         format = PixelFormat.TRANSLUCENT
         flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -37,42 +56,56 @@ class IslandOverlay(
         title = "RealmeIsland"
         width = 1
         height = 1
-        x = 0
-        y = 0
     }
 
-    fun present(primary: IslandContent, companion: IslandContent?, expanded: Boolean) =
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+        override fun onDisplayChanged(displayId: Int) {
+            // Also fires on 120/60 Hz switches; relayout() is a no-op when nothing moved.
+            if (displayId == Display.DEFAULT_DISPLAY) relayout()
+        }
+    }
+
+    init {
+        displayManager?.registerDisplayListener(displayListener, handler)
+    }
+
+    fun present(primary: IslandContent, companion: IslandContent?, expanded: Boolean) {
+        last = Triple(primary, companion, expanded)
         view.present(primary, companion, expanded)
+    }
 
-    fun hide() = view.dismiss()
+    fun hide() {
+        last = null
+        view.dismiss()
+    }
 
-    fun relayout() = view.relayout()
+    /** Re-reads the screen and camera from Android and re-fits the island if anything changed. */
+    fun relayout() {
+        val g = IslandGeometry.detect(windowContext)
+        val densityChanged = g.densityDpi != geometry.densityDpi
+        geometry = g
+        if (densityChanged) recreateView() else view.relayout()
+    }
 
     fun destroy() {
+        displayManager?.unregisterDisplayListener(displayListener)
         view.cancelAll()
         detach()
     }
 
+    /** Text sizes and dp values are baked into the view, so a display-size change rebuilds it. */
+    private fun recreateView() {
+        view.cancelAll()
+        detach()
+        view = IslandView(viewContext, prefs, this, listener)
+        last?.let { (p, c, e) -> view.present(p, c, e) }
+    }
+
     // ---- IslandView.Host ----------------------------------------------------------------------
 
-    override fun screenSize(): Point {
-        return if (Build.VERSION.SDK_INT >= 30) {
-            val b = wm.maximumWindowMetrics.bounds
-            Point(b.width(), b.height())
-        } else {
-            @Suppress("DEPRECATION")
-            Point().also { wm.defaultDisplay.getRealSize(it) }
-        }
-    }
-
-    override fun cutoutRect(): Rect? = try {
-        @Suppress("DEPRECATION")
-        val cutout = wm.defaultDisplay.cutout
-        val top = cutout?.boundingRectTop
-        if (top != null && !top.isEmpty) top else cutout?.boundingRects?.firstOrNull { !it.isEmpty }
-    } catch (_: Throwable) {
-        null
-    }
+    override fun geometry(): IslandGeometry = geometry
 
     override fun attach() {
         if (attached) return
@@ -91,5 +124,16 @@ class IslandOverlay(
         lp.width = maxOf(1, rect.width())
         lp.height = maxOf(1, rect.height())
         if (attached) runCatching { wm.updateViewLayout(view, lp) }
+    }
+
+    private fun overlayContext(ctx: Context): Context {
+        if (Build.VERSION.SDK_INT < 30) return ctx
+        return try {
+            val display = ctx.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
+            ctx.createDisplayContext(display)
+                .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+        } catch (_: Throwable) {
+            ctx
+        }
     }
 }

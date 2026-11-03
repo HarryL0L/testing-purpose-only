@@ -10,8 +10,9 @@ class Prefs(context: Context) {
         context.applicationContext.getSharedPreferences("island", Context.MODE_PRIVATE)
 
     var enabled by bool("enabled", false)
+    /** [ANCHOR_AUTO] follows the camera cutout; [ANCHOR_CENTER] forces top centre. */
     var anchor by int("anchor", ANCHOR_AUTO)
-    /** Fine-tune offsets in dp. */
+    /** Optional nudges in dp on top of the detected camera position. */
     var offsetX by int("offset_x", 0)
     var offsetY by int("offset_y", 0)
     var collapseSeconds by int("collapse_seconds", 4)
@@ -19,8 +20,10 @@ class Prefs(context: Context) {
     var visualizer by bool("visualizer", true)
     var haptics by bool("haptics", true)
     var showNotifications by bool("show_notifications", true)
+    var showLive by bool("show_live", true)
     var showDevices by bool("show_devices", true)
     var showCharging by bool("show_charging", true)
+    var hideWithShade by bool("hide_with_shade", true)
 
     private fun bool(key: String, def: Boolean) = object : ReadWriteProperty<Any?, Boolean> {
         override fun getValue(thisRef: Any?, property: KProperty<*>) = sp.getBoolean(key, def)
@@ -38,7 +41,8 @@ class Prefs(context: Context) {
 
     companion object {
         const val ANCHOR_AUTO = 0
-        const val ANCHOR_LEFT = 1
+        /** Old "fixed left hole" setting; now treated as auto. */
+        const val ANCHOR_LEFT_LEGACY = 1
         const val ANCHOR_CENTER = 2
     }
 }

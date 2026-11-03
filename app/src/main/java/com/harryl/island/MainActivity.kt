@@ -9,14 +9,15 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.LayoutInflater
-import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.harryl.island.databinding.ActivityMainBinding
 import com.harryl.island.databinding.ItemPermissionBinding
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
 
@@ -49,8 +50,8 @@ class MainActivity : AppCompatActivity() {
     // ---- Permissions --------------------------------------------------------------------------
 
     private fun buildPermissionRows() {
-        addRow(R.string.perm_overlay, R.string.perm_overlay_desc, { Settings.canDrawOverlays(this) }) {
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        addRow(R.string.perm_a11y, R.string.perm_a11y_desc, { IslandAccessibilityService.isEnabled(this) }) {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         addRow(R.string.perm_notifications, R.string.perm_notifications_desc, ::hasNotificationAccess) {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
@@ -70,6 +71,9 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
             }.onFailure { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
         }
+        addRow(R.string.perm_overlay, R.string.perm_overlay_desc, { Settings.canDrawOverlays(this) }) {
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        }
     }
 
     private fun addRow(title: Int, desc: Int, check: () -> Boolean, grant: () -> Unit) {
@@ -86,21 +90,30 @@ class MainActivity : AppCompatActivity() {
             row.permButton.isEnabled = !ok
             row.permButton.setText(if (ok) R.string.granted else R.string.grant)
         }
+        val canShow = IslandService.canShow(this)
         b.switchEnabled.setOnCheckedChangeListener(null)
-        b.switchEnabled.isChecked = prefs.enabled && Settings.canDrawOverlays(this)
+        b.switchEnabled.isChecked = prefs.enabled && canShow
         b.switchEnabled.setOnCheckedChangeListener { _, checked -> setEnabled(checked) }
-        if (prefs.enabled && Settings.canDrawOverlays(this) && !IslandService.running) IslandService.start(this)
+        if (prefs.enabled && canShow) {
+            if (IslandService.running) IslandService.resync(this) else IslandService.start(this)
+        }
+        updateDetection()
     }
 
     private fun setEnabled(on: Boolean) {
-        if (on && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, R.string.perm_overlay, Toast.LENGTH_SHORT).show()
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        if (on && !IslandService.canShow(this)) {
+            Toast.makeText(this, R.string.need_host, Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             b.switchEnabled.isChecked = false
             return
         }
         prefs.enabled = on
-        if (on) IslandService.start(this) else IslandService.stop(this)
+        if (on) {
+            IslandService.start(this)
+            if (!IslandAccessibilityService.isEnabled(this)) Toast.makeText(this, R.string.taps_blocked, Toast.LENGTH_LONG).show()
+        } else {
+            IslandService.stop(this)
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -119,6 +132,8 @@ class MainActivity : AppCompatActivity() {
         b.switchVisualizer.bind({ prefs.visualizer }) { prefs.visualizer = it }
         b.switchHaptics.bind({ prefs.haptics }) { prefs.haptics = it }
         b.switchNotifications.bind({ prefs.showNotifications }) { prefs.showNotifications = it }
+        b.switchLive.bind({ prefs.showLive }) { prefs.showLive = it }
+        b.switchShade.bind({ prefs.hideWithShade }) { prefs.hideWithShade = it }
         b.switchDevices.bind({ prefs.showDevices }) { prefs.showDevices = it }
         b.switchCharging.bind({ prefs.showCharging }) { prefs.showCharging = it }
 
@@ -134,7 +149,7 @@ class MainActivity : AppCompatActivity() {
         b.collapseLabel.text = getString(R.string.collapse_after) + ": " + prefs.collapseSeconds + " s"
     }
 
-    private fun com.google.android.material.materialswitch.MaterialSwitch.bind(get: () -> Boolean, set: (Boolean) -> Unit) {
+    private fun MaterialSwitch.bind(get: () -> Boolean, set: (Boolean) -> Unit) {
         isChecked = get()
         setOnCheckedChangeListener { _, checked -> set(checked) }
     }
@@ -142,23 +157,46 @@ class MainActivity : AppCompatActivity() {
     // ---- Position -----------------------------------------------------------------------------
 
     private fun bindPosition() {
-        when (prefs.anchor) {
-            Prefs.ANCHOR_LEFT -> b.anchorLeft.isChecked = true
-            Prefs.ANCHOR_CENTER -> b.anchorCenter.isChecked = true
-            else -> b.anchorAuto.isChecked = true
-        }
+        if (prefs.anchor == Prefs.ANCHOR_CENTER) b.anchorCenter.isChecked = true else b.anchorAuto.isChecked = true
         b.anchorGroup.setOnCheckedChangeListener { _, id ->
-            prefs.anchor = when (id) {
-                R.id.anchorLeft -> Prefs.ANCHOR_LEFT
-                R.id.anchorCenter -> Prefs.ANCHOR_CENTER
-                else -> Prefs.ANCHOR_AUTO
-            }
+            prefs.anchor = if (id == R.id.anchorCenter) Prefs.ANCHOR_CENTER else Prefs.ANCHOR_AUTO
+            updateDetection()
             relayoutAndPreview()
         }
-        b.offsetX.value = prefs.offsetX.toFloat().coerceIn(-40f, 40f)
-        b.offsetY.value = prefs.offsetY.toFloat().coerceIn(-40f, 40f)
+        b.offsetX.value = prefs.offsetX.toFloat().coerceIn(-20f, 20f)
+        b.offsetY.value = prefs.offsetY.toFloat().coerceIn(-20f, 20f)
         b.offsetX.addOnChangeListener { _, v, fromUser -> prefs.offsetX = v.toInt(); if (fromUser) relayoutAndPreview() }
         b.offsetY.addOnChangeListener { _, v, fromUser -> prefs.offsetY = v.toInt(); if (fromUser) relayoutAndPreview() }
+        b.btnResetNudge.setOnClickListener {
+            b.offsetX.value = 0f
+            b.offsetY.value = 0f
+            prefs.offsetX = 0
+            prefs.offsetY = 0
+            relayoutAndPreview()
+        }
+    }
+
+    /** Shows exactly what Android reports, so it's clear where the pill will sit. */
+    private fun updateDetection() {
+        val g = IslandGeometry.detect(this)
+        val cam = IslandLayout.usableCamera(g.camera, g.screenW, g.screenH)
+        val d = resources.displayMetrics.density
+        b.detectedInfo.text = when {
+            prefs.anchor == Prefs.ANCHOR_CENTER -> getString(R.string.detect_forced)
+            cam == null -> getString(R.string.detect_none)
+            else -> {
+                val cx = (cam.left + cam.right) / 2f
+                val pos = getString(
+                    when {
+                        cx < g.screenW * 0.35f -> R.string.pos_left
+                        cx > g.screenW * 0.65f -> R.string.pos_right
+                        else -> R.string.pos_centre
+                    },
+                )
+                val source = getString(if (g.source == IslandGeometry.Source.CUTOUT_PATH) R.string.source_path else R.string.source_rect)
+                getString(R.string.detect_camera, pos, (cam.width / d).roundToInt(), (cam.height / d).roundToInt(), source)
+            }
+        }
     }
 
     private fun relayoutAndPreview() {
@@ -176,22 +214,16 @@ class MainActivity : AppCompatActivity() {
             b.previewWired to IslandService.PREVIEW_WIRED,
             b.previewNotice to IslandService.PREVIEW_NOTICE,
             b.previewCharging to IslandService.PREVIEW_CHARGING,
+            b.previewStopwatch to IslandService.PREVIEW_STOPWATCH,
         )
-        for ((chip, kind) in map) {
-            chip.setOnClickListener { preview(kind) }
-        }
+        for ((chip, kind) in map) chip.setOnClickListener { preview(kind) }
     }
 
     private fun preview(kind: String) {
-        if (!prefs.enabled || !Settings.canDrawOverlays(this)) {
+        if (!prefs.enabled || !IslandService.canShow(this)) {
             Toast.makeText(this, R.string.preview_requires_enable, Toast.LENGTH_SHORT).show()
             return
         }
         IslandService.preview(this, kind)
-    }
-
-    @Suppress("unused")
-    private fun View.show(visible: Boolean) {
-        visibility = if (visible) View.VISIBLE else View.GONE
     }
 }
