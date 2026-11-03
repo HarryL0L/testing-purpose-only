@@ -98,6 +98,8 @@ class IslandView(
     private var cardL = 0f
     private var cardR = 0f
     private var hasCamera = false
+    private var clearL = 0f
+    private var clearR = 0f
 
     // ---- State --------------------------------------------------------------------------------
 
@@ -354,6 +356,7 @@ class IslandView(
             offsetXdp = prefs.offsetX,
             offsetYdp = prefs.offsetY,
             forceCenter = prefs.anchor == Prefs.ANCHOR_CENTER,
+            keepOut = if (g.source == IslandGeometry.Source.ESTIMATED) g.reported else null,
         )
         screenW = l.screenW
         screenH = l.screenH
@@ -365,6 +368,8 @@ class IslandView(
         cardL = l.cardL
         cardR = l.cardR
         hasCamera = l.followsCamera
+        clearL = l.clearL
+        clearR = l.clearR
         noticeLayout = null
 
         val p = primary
@@ -683,12 +688,13 @@ class IslandView(
         val bandCy = bandTop + pillH / 2
         when (side) {
             Side.LEFT, Side.CENTER -> {
-                val lx = if (hasCamera) hole.right + gap else l + bodyPad
+                // Text never starts inside the area Android says the camera is in.
+                val lx = if (hasCamera) clearR + gap else l + bodyPad
                 drawText(canvas, label, lx, bandCy, l + w - bodyPad - lx, subPaint, colorDim, a)
             }
             Side.RIGHT -> {
-                val tw = min(subPaint.measureText(label), hole.left - gap - (l + bodyPad))
-                drawText(canvas, label, hole.left - gap - tw, bandCy, tw, subPaint, colorDim, a)
+                val tw = min(subPaint.measureText(label), clearL - gap - (l + bodyPad))
+                drawText(canvas, label, clearL - gap - tw, bandCy, tw, subPaint, colorDim, a)
             }
         }
 

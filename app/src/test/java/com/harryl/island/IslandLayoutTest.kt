@@ -115,8 +115,9 @@ class IslandLayoutTest {
         val hole = IslandLayout.refineCornerCutout(box, 1080)
         assertEquals(54, hole.width)
         assertEquals(54, hole.height)
+        // Matches the hand-tuned position on a real X7 Max: no left/right nudge, +6 dp (18 px) down.
         assertEquals(96, (hole.left + hole.right) / 2)
-        assertEquals(54, (hole.top + hole.bottom) / 2)
+        assertEquals(72, (hole.top + hole.bottom) / 2)
         // The pill around it stays on screen and inside the status bar area.
         val l = layout(hole)
         assertTrue(l.cardL > 0f)
@@ -124,6 +125,19 @@ class IslandLayoutTest {
         assertEquals(54 + 2 * dp(IslandLayout.RING_DP), l.pillH, eps)
         // Far smaller than wrapping the whole reported box, which made a 144 px tall pill.
         assertTrue(l.pillH < 108)
+    }
+
+    @Test
+    fun textStaysClearOfTheWholeReportedBox() {
+        val box = CameraBox(0, 0, 150, 108)
+        val hole = IslandLayout.refineCornerCutout(box, 1080)
+        val l = IslandLayout.compute(1080, 2400, density, hole, 90, 0, 0, false, keepOut = box)
+        assertEquals(hole.right.toFloat(), l.holeR, eps)
+        assertEquals(150f, l.clearR, eps)
+        // Without a keep-out box, the clear span is just the hole.
+        val exact = layout(x7Camera)
+        assertEquals(exact.holeR, exact.clearR, eps)
+        assertEquals(exact.holeL, exact.clearL, eps)
     }
 
     @Test

@@ -33,6 +33,13 @@ data class IslandLayout(
     val cardL: Float,
     val cardR: Float,
     val followsCamera: Boolean,
+    /**
+     * Horizontal span that content in the camera band must stay clear of. Equals the hole, or the
+     * whole reported cutout box when the hole was only estimated inside it: the real camera is
+     * somewhere in that box, so text that starts after it can never land on the lens.
+     */
+    val clearL: Float,
+    val clearR: Float,
 ) {
     val holeCenterX: Float get() = (holeL + holeR) / 2
     val holeCenterY: Float get() = (holeT + holeB) / 2
@@ -48,9 +55,11 @@ data class IslandLayout(
         /**
          * Realme and OPPO report a hole-punch camera as a padded box that runs into the screen
          * corner (on the X7 Max about 150 x 108 px from the top-left corner). A real hole never
-         * touches the screen edge, so such a box is padding. Estimate the hole inside it: centred
-         * vertically, half the box height across, with the same gap on the far side as above and
-         * below. Anything that is not a corner box is returned unchanged.
+         * touches the screen edge, so such a box is padding. Estimate the hole inside it: half the
+         * box height across, its centre two thirds of the way down the box (the box runs from the
+         * screen top, so it has more room above the camera than below) and half the box height in
+         * from the far side. Measured against a real X7 Max. Anything that is not a corner box is
+         * returned unchanged.
          */
         fun refineCornerCutout(box: CameraBox, screenW: Int): CameraBox {
             val touchesTop = box.top <= 2
@@ -59,7 +68,7 @@ data class IslandLayout(
             if (!touchesTop || nearLeft == nearRight) return box
             val h = box.height
             val d = max(1, h / 2)
-            val cy = box.top + h / 2
+            val cy = box.top + h * 2 / 3
             val rawCx = if (nearLeft) box.right - h / 2 else box.left + h / 2
             val cx = rawCx.coerceIn(box.left + d / 2, max(box.left + d / 2, box.right - d / 2))
             val l = cx - d / 2
@@ -84,6 +93,8 @@ data class IslandLayout(
             offsetXdp: Int,
             offsetYdp: Int,
             forceCenter: Boolean,
+            /** The padded cutout box the hole was estimated from, if it was estimated. */
+            keepOut: CameraBox? = null,
         ): IslandLayout {
             fun dp(v: Float) = v * density
             val offX = dp(offsetXdp.toFloat())
@@ -148,6 +159,8 @@ data class IslandLayout(
             }
             return IslandLayout(
                 screenW, screenH, hl, ht, hr, hb, side, pillH, bandTop, padH, cardL, cardR, cam != null,
+                clearL = if (cam != null && keepOut != null) min(hl, keepOut.left.toFloat()) else hl,
+                clearR = if (cam != null && keepOut != null) max(hr, keepOut.right.toFloat()) else hr,
             )
         }
     }

@@ -18,5 +18,22 @@ class IslandApp : Application() {
             enableVibration(false)
         }
         nm.createNotificationChannel(channel)
+        migrateNudges()
+    }
+
+    /**
+     * Estimate revision 2 moved the corner-box hole down by a sixth of the box height, which is
+     * what people nudged by hand on revision 1. Clear those nudges once so they don't apply twice.
+     */
+    private fun migrateNudges() {
+        val prefs = Prefs(this)
+        if (prefs.estimateRev >= ESTIMATE_REV) return
+        prefs.offsetX = 0
+        prefs.offsetY = 0
+        prefs.estimateRev = ESTIMATE_REV
+    }
+
+    companion object {
+        const val ESTIMATE_REV = 2
     }
 }

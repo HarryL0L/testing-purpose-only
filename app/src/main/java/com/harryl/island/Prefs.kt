@@ -25,6 +25,9 @@ class Prefs(context: Context) {
     var showCharging by bool("show_charging", true)
     var hideWithShade by bool("hide_with_shade", true)
 
+    /** Revision of the automatic camera estimate the saved nudges were tuned for. */
+    var estimateRev by int("estimate_rev", 1)
+
     /** Camera lined up by the user, as fractions of the portrait screen width (survives resolution changes). */
     var calibrated by bool("cal_set", false)
     var calCx by float("cal_cx", 0f)
