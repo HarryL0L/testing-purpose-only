@@ -74,9 +74,9 @@
                         android:orientation="vertical">
 
                         <TextView
+                            android:id="@+id/heroTitle"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="@string/enable_island"
                             android:textAppearance="?attr/textAppearanceHeadlineSmall"
                             android:textColor="?attr/colorOnPrimaryContainer" />
 

@@ -6,6 +6,9 @@
     <string name="service_text">Tap to adjust. Mochi naps while there is nothing to show.</string>
     <string name="stop">Stop</string>
 
+    <string name="hero_title_on">Awake</string>
+    <string name="hero_title_off">Asleep</string>
+    <string name="hero_title_setup">Almost ready</string>
     <string name="hero_on">Mochi is awake and sitting on your camera.</string>
     <string name="hero_off">Mochi is asleep. Turn it on to wake it up.</string>
     <string name="hero_needs_setup">Finish setup below so Mochi can wake up.</string>

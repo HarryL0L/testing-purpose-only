@@ -130,14 +130,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** The big title already says "Mochi", so the hero card shows how Mochi is doing. */
     private fun updateHero() {
-        b.heroStatus.setText(
-            when {
-                !IslandService.canShow(this) -> R.string.hero_needs_setup
-                prefs.enabled -> R.string.hero_on
-                else -> R.string.hero_off
-            },
-        )
+        val (title, body) = when {
+            !IslandService.canShow(this) -> R.string.hero_title_setup to R.string.hero_needs_setup
+            prefs.enabled -> R.string.hero_title_on to R.string.hero_on
+            else -> R.string.hero_title_off to R.string.hero_off
+        }
+        b.heroTitle.setText(title)
+        b.heroStatus.setText(body)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
