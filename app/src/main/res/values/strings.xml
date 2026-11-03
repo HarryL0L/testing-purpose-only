@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Realme Island</string>
+    <string name="service_channel">Island service</string>
+    <string name="service_running">Island is running</string>
+    <string name="service_text">Tap to adjust. Uses no battery while idle.</string>
+    <string name="stop">Stop</string>
+
+    <string name="section_setup">Setup</string>
+    <string name="perm_overlay">Display over other apps</string>
+    <string name="perm_overlay_desc">Needed to draw the island above the status bar.</string>
+    <string name="perm_notifications">Notification access</string>
+    <string name="perm_notifications_desc">Needed to read music sessions and app notifications.</string>
+    <string name="perm_bluetooth">Nearby devices (Bluetooth)</string>
+    <string name="perm_bluetooth_desc">Needed to read the name and battery of your WF-C500.</string>
+    <string name="perm_post">Show service notification</string>
+    <string name="perm_post_desc">Android 13+ needs this for the tiny background service notice.</string>
+    <string name="perm_battery">Unrestricted battery</string>
+    <string name="perm_battery_desc">Stops Realme UI from killing the island in the background.</string>
+    <string name="grant">Grant</string>
+    <string name="granted">Granted</string>
+
+    <string name="enable_island">Island enabled</string>
+    <string name="enable_island_desc">Shows a pill around the camera hole when something happens.</string>
+
+    <string name="section_position">Position</string>
+    <string name="anchor_auto">Auto (use camera cutout)</string>
+    <string name="anchor_left">Left camera hole</string>
+    <string name="anchor_center">Centre</string>
+    <string name="offset_x">Horizontal offset</string>
+    <string name="offset_y">Vertical offset</string>
+    <string name="offset_hint">Drag the sliders while the preview is showing to line the pill up with the camera hole.</string>
+
+    <string name="section_behaviour">Behaviour</string>
+    <string name="collapse_after">Collapse after</string>
+    <string name="persistent_music">Keep music pill while playing</string>
+    <string name="visualizer">Animated music bars in the pill</string>
+    <string name="haptics">Haptic tick when the island appears</string>
+    <string name="show_notifications">Show app notifications</string>
+    <string name="show_devices">Show headphones and earbuds</string>
+    <string name="show_charging">Show charger connected</string>
+
+    <string name="section_preview">Preview</string>
+    <string name="preview_music">Music</string>
+    <string name="preview_earbuds">WF-C500</string>
+    <string name="preview_wired">Wired</string>
+    <string name="preview_notice">Notification</string>
+    <string name="preview_charging">Charger</string>
+    <string name="preview_requires_enable">Turn the island on first.</string>
+
+    <string name="section_realme">Realme UI tips</string>
+    <string name="realme_tips">Realme UI is aggressive with background apps. For the island to survive:\n\n• App info → Battery usage → Allow background activity\n• App info → Auto-launch → on\n• Settings → Battery → App battery management → Realme Island → Don\'t optimise\n• Keep the app out of the \"Lock\" list in the recents screen: swipe down on the card and tap Lock.</string>
+    <string name="open_app_info">App info</string>
+    <string name="open_battery">Battery settings</string>
+
+    <string name="now_playing">Now playing</string>
+    <string name="paused">Paused</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="charging">Charging</string>
+    <string name="charger_removed">Charger removed</string>
+    <string name="battery_percent">%d%% battery</string>
+    <string name="wired_headphones">Wired headphones</string>
+    <string name="unknown_device">Bluetooth audio</string>
+</resources>
