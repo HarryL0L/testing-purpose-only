@@ -10,7 +10,7 @@ class Prefs(context: Context) {
         context.applicationContext.getSharedPreferences("island", Context.MODE_PRIVATE)
 
     var enabled by bool("enabled", false)
-    /** [ANCHOR_AUTO] follows the camera cutout; [ANCHOR_CENTER] forces top centre. */
+    /** [ANCHOR_AUTO] follows the camera cutout, [ANCHOR_CALIBRATED] uses the user's line-up, [ANCHOR_CENTER] forces top centre. */
     var anchor by int("anchor", ANCHOR_AUTO)
     /** Optional nudges in dp on top of the detected camera position. */
     var offsetX by int("offset_x", 0)
@@ -25,10 +25,23 @@ class Prefs(context: Context) {
     var showCharging by bool("show_charging", true)
     var hideWithShade by bool("hide_with_shade", true)
 
+    /** Camera lined up by the user, as fractions of the portrait screen width (survives resolution changes). */
+    var calibrated by bool("cal_set", false)
+    var calCx by float("cal_cx", 0f)
+    var calCy by float("cal_cy", 0f)
+    var calD by float("cal_d", 0f)
+
     private fun bool(key: String, def: Boolean) = object : ReadWriteProperty<Any?, Boolean> {
         override fun getValue(thisRef: Any?, property: KProperty<*>) = sp.getBoolean(key, def)
         override fun setValue(thisRef: Any?, property: KProperty<*>, value: Boolean) {
             sp.edit().putBoolean(key, value).apply()
+        }
+    }
+
+    private fun float(key: String, def: Float) = object : ReadWriteProperty<Any?, Float> {
+        override fun getValue(thisRef: Any?, property: KProperty<*>) = sp.getFloat(key, def)
+        override fun setValue(thisRef: Any?, property: KProperty<*>, value: Float) {
+            sp.edit().putFloat(key, value).apply()
         }
     }
 
@@ -44,5 +57,6 @@ class Prefs(context: Context) {
         /** Old "fixed left hole" setting; now treated as auto. */
         const val ANCHOR_LEFT_LEGACY = 1
         const val ANCHOR_CENTER = 2
+        const val ANCHOR_CALIBRATED = 3
     }
 }

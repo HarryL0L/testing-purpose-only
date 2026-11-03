@@ -140,6 +140,14 @@
             android:layout_marginBottom="4dp"
             android:textAppearance="?attr/textAppearanceBodyMedium" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCalibrate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            android:text="@string/cal_open"
+            app:icon="@drawable/ic_island" />
+
         <RadioGroup
             android:id="@+id/anchorGroup"
             android:layout_width="match_parent"
@@ -151,6 +159,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/anchor_auto" />
+
+            <RadioButton
+                android:id="@+id/anchorCalibrated"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/anchor_calibrated" />
 
             <RadioButton
                 android:id="@+id/anchorCenter"

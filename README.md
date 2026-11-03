@@ -24,6 +24,13 @@ its rounded end is concentric with the camera. It re-fits on rotation, resolutio
 changes. Without a top camera, for example in landscape, it floats at the top centre. The settings
 screen shows exactly what Android reported. The nudge sliders are only for fine-tuning.
 
+Realme and OPPO report a hole-punch camera as a padded box running into the screen corner (on the
+X7 Max about 150 × 108 px from the top-left corner), not as the hole itself. A real hole never
+touches the screen edge, so the island treats such a box as padding and estimates the hole inside
+it. For an exact fit, tap **Line up with camera**: drag a ring onto the black camera hole on a
+bright full-screen canvas, size it, and save. The line-up is stored relative to screen width, so
+it survives resolution changes.
+
 ## Why Accessibility is needed for taps
 
 Android draws normal app overlays *below* the status bar, so the status bar takes every tap on the

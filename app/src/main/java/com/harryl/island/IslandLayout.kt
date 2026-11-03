@@ -45,6 +45,28 @@ data class IslandLayout(
         const val MARGIN_DP = 10f
         const val MAX_CARD_DP = 420f
 
+        /**
+         * Realme and OPPO report a hole-punch camera as a padded box that runs into the screen
+         * corner (on the X7 Max about 150 x 108 px from the top-left corner). A real hole never
+         * touches the screen edge, so such a box is padding. Estimate the hole inside it: centred
+         * vertically, half the box height across, with the same gap on the far side as above and
+         * below. Anything that is not a corner box is returned unchanged.
+         */
+        fun refineCornerCutout(box: CameraBox, screenW: Int): CameraBox {
+            val touchesTop = box.top <= 2
+            val nearLeft = box.left <= screenW * 0.05f
+            val nearRight = box.right >= screenW * 0.95f
+            if (!touchesTop || nearLeft == nearRight) return box
+            val h = box.height
+            val d = max(1, h / 2)
+            val cy = box.top + h / 2
+            val rawCx = if (nearLeft) box.right - h / 2 else box.left + h / 2
+            val cx = rawCx.coerceIn(box.left + d / 2, max(box.left + d / 2, box.right - d / 2))
+            val l = cx - d / 2
+            val t = cy - d / 2
+            return CameraBox(l, t, l + d, t + d)
+        }
+
         /** Rejects cutouts that cannot be a top camera (too wide, too tall, too far down). */
         fun usableCamera(camera: CameraBox?, screenW: Int, screenH: Int): CameraBox? = camera?.takeIf {
             it.width > 0 && it.height > 0 &&

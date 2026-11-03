@@ -29,7 +29,17 @@
     <string name="enable_island_desc">Shows a pill around the camera hole when something happens.</string>
 
     <string name="section_position">Position</string>
-    <string name="anchor_auto">Auto: wrap the camera</string>
+    <string name="anchor_auto">Auto: wrap the camera Android reports</string>
+    <string name="anchor_calibrated">My line-up (exact)</string>
+    <string name="cal_open">Line up with camera</string>
+    <string name="cal_title">Line up with the camera</string>
+    <string name="cal_help">Drag anywhere to move the ring onto the black camera hole, then pinch or use the slider until it just fits around it. The arrows move it 1 px; hold for 5 px. The dashed outline is where the pill will sit.</string>
+    <string name="cal_size">Camera size</string>
+    <string name="cal_readout">Centre %1$d, %2$d px · %3$d px (%4$.1f dp)</string>
+    <string name="cal_save">Save</string>
+    <string name="cal_use_auto">Use auto</string>
+    <string name="detect_estimated">Android reports a %1$d × %2$d dp box in the top %3$s corner. A camera never touches the screen edge, so that box is padding and the hole is estimated inside it. Tap Line up with camera for an exact fit.</string>
+    <string name="detect_calibrated">Using your line-up: a %1$d dp camera at the top %2$s.</string>
     <string name="anchor_center">Always float at the top centre</string>
     <string name="offset_x">Nudge left / right</string>
     <string name="offset_y">Nudge up / down</string>

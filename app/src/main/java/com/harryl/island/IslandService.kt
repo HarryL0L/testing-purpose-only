@@ -50,6 +50,8 @@ class IslandService : Service(), IslandView.Listener {
     private var transient: IslandContent? = null
     private var screenOn = true
     private var shadeOpen = false
+    /** The line-up screen is open; the island must not cover the camera. */
+    private var calibrating = false
     /** [IslandContent.expandKey] of the pill the user tapped open, if any. */
     private var expandedKey: String? = null
 
@@ -87,6 +89,10 @@ class IslandService : Service(), IslandView.Listener {
             }
             ACTION_PREVIEW -> intent.getStringExtra(EXTRA_PREVIEW)?.let { preview(it) }
             ACTION_RELAYOUT -> overlay.relayout()
+            ACTION_CALIBRATING -> {
+                calibrating = intent.getBooleanExtra(EXTRA_ON, false)
+                if (calibrating) collapseRunnable.run() else render()
+            }
             ACTION_RESYNC -> {
                 devices.seedBluetooth()
                 IslandNotificationListener.instance?.resync()
@@ -252,7 +258,7 @@ class IslandService : Service(), IslandView.Listener {
     private fun companionDevice(): IslandContent.Device? = connected.values.lastOrNull()
 
     private fun render() {
-        if (!screenOn || (shadeOpen && prefs.hideWithShade)) {
+        if (!screenOn || calibrating || (shadeOpen && prefs.hideWithShade)) {
             overlay.hide()
             return
         }
@@ -369,7 +375,7 @@ class IslandService : Service(), IslandView.Listener {
     // Previews are transient only: they never touch the real device / live / music state.
 
     private fun preview(kind: String) {
-        if (!screenOn) return
+        if (!screenOn || calibrating) return
         when (kind) {
             PREVIEW_MUSIC -> showTransient(
                 IslandContent.Music(
@@ -451,6 +457,8 @@ class IslandService : Service(), IslandView.Listener {
         const val ACTION_PREVIEW = "com.harryl.island.action.PREVIEW"
         const val ACTION_RELAYOUT = "com.harryl.island.action.RELAYOUT"
         const val ACTION_RESYNC = "com.harryl.island.action.RESYNC"
+        const val ACTION_CALIBRATING = "com.harryl.island.action.CALIBRATING"
+        const val EXTRA_ON = "on"
         const val EXTRA_PREVIEW = "preview"
         const val PREVIEW_MUSIC = "music"
         const val PREVIEW_EARBUDS = "earbuds"
@@ -481,6 +489,10 @@ class IslandService : Service(), IslandView.Listener {
 
         fun relayout(context: Context) {
             if (running) send(context, Intent(context, IslandService::class.java).setAction(ACTION_RELAYOUT))
+        }
+
+        fun setCalibrating(context: Context, on: Boolean) {
+            if (running) send(context, Intent(context, IslandService::class.java).setAction(ACTION_CALIBRATING).putExtra(EXTRA_ON, on))
         }
 
         fun resync(context: Context) {

@@ -157,9 +157,13 @@ class MainActivity : AppCompatActivity() {
     // ---- Position -----------------------------------------------------------------------------
 
     private fun bindPosition() {
-        if (prefs.anchor == Prefs.ANCHOR_CENTER) b.anchorCenter.isChecked = true else b.anchorAuto.isChecked = true
+        b.btnCalibrate.setOnClickListener { startActivity(Intent(this, CalibrateActivity::class.java)) }
         b.anchorGroup.setOnCheckedChangeListener { _, id ->
-            prefs.anchor = if (id == R.id.anchorCenter) Prefs.ANCHOR_CENTER else Prefs.ANCHOR_AUTO
+            prefs.anchor = when (id) {
+                R.id.anchorCenter -> Prefs.ANCHOR_CENTER
+                R.id.anchorCalibrated -> Prefs.ANCHOR_CALIBRATED
+                else -> Prefs.ANCHOR_AUTO
+            }
             updateDetection()
             relayoutAndPreview()
         }
@@ -178,23 +182,40 @@ class MainActivity : AppCompatActivity() {
 
     /** Shows exactly what Android reports, so it's clear where the pill will sit. */
     private fun updateDetection() {
+        // Reflect the saved choice; "My line-up" only exists once a line-up was saved.
+        b.anchorCalibrated.isEnabled = prefs.calibrated
+        val checked = when {
+            prefs.anchor == Prefs.ANCHOR_CENTER -> R.id.anchorCenter
+            prefs.anchor == Prefs.ANCHOR_CALIBRATED && prefs.calibrated -> R.id.anchorCalibrated
+            else -> R.id.anchorAuto
+        }
+        if (b.anchorGroup.checkedRadioButtonId != checked) b.anchorGroup.check(checked)
+
         val g = IslandGeometry.detect(this)
         val cam = IslandLayout.usableCamera(g.camera, g.screenW, g.screenH)
         val d = resources.displayMetrics.density
+        fun pos(box: CameraBox): String {
+            val cx = (box.left + box.right) / 2f
+            return getString(
+                when {
+                    cx < g.screenW * 0.35f -> R.string.pos_left
+                    cx > g.screenW * 0.65f -> R.string.pos_right
+                    else -> R.string.pos_centre
+                },
+            )
+        }
         b.detectedInfo.text = when {
             prefs.anchor == Prefs.ANCHOR_CENTER -> getString(R.string.detect_forced)
             cam == null -> getString(R.string.detect_none)
+            g.source == IslandGeometry.Source.CALIBRATED ->
+                getString(R.string.detect_calibrated, (cam.width / d).roundToInt(), pos(cam))
+            g.source == IslandGeometry.Source.ESTIMATED && g.reported != null -> {
+                val r = g.reported
+                getString(R.string.detect_estimated, (r.width / d).roundToInt(), (r.height / d).roundToInt(), pos(r))
+            }
             else -> {
-                val cx = (cam.left + cam.right) / 2f
-                val pos = getString(
-                    when {
-                        cx < g.screenW * 0.35f -> R.string.pos_left
-                        cx > g.screenW * 0.65f -> R.string.pos_right
-                        else -> R.string.pos_centre
-                    },
-                )
                 val source = getString(if (g.source == IslandGeometry.Source.CUTOUT_PATH) R.string.source_path else R.string.source_rect)
-                getString(R.string.detect_camera, pos, (cam.width / d).roundToInt(), (cam.height / d).roundToInt(), source)
+                getString(R.string.detect_camera, pos(cam), (cam.width / d).roundToInt(), (cam.height / d).roundToInt(), source)
             }
         }
     }

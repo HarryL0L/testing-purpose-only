@@ -30,6 +30,13 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".CalibrateActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.RealmeIsland.Calibrate"
+            tools:ignore="DiscouragedApi,LockedOrientationActivity" />
+
         <service
             android:name=".IslandService"
             android:exported="false"

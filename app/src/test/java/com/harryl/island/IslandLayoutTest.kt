@@ -109,6 +109,39 @@ class IslandLayoutTest {
     }
 
     @Test
+    fun realmeCornerBoxIsRefinedToTheHoleInside() {
+        // What the X7 Max reports: a padded box from the top-left corner.
+        val box = CameraBox(0, 0, 150, 108)
+        val hole = IslandLayout.refineCornerCutout(box, 1080)
+        assertEquals(54, hole.width)
+        assertEquals(54, hole.height)
+        assertEquals(96, (hole.left + hole.right) / 2)
+        assertEquals(54, (hole.top + hole.bottom) / 2)
+        // The pill around it stays on screen and inside the status bar area.
+        val l = layout(hole)
+        assertTrue(l.cardL > 0f)
+        assertTrue(l.bandTop >= 0f)
+        assertEquals(54 + 2 * dp(IslandLayout.RING_DP), l.pillH, eps)
+        // Far smaller than wrapping the whole reported box, which made a 144 px tall pill.
+        assertTrue(l.pillH < 108)
+    }
+
+    @Test
+    fun rightCornerBoxIsMirrored() {
+        val hole = IslandLayout.refineCornerCutout(CameraBox(930, 0, 1080, 108), 1080)
+        assertEquals(1080 - 96, (hole.left + hole.right) / 2)
+    }
+
+    @Test
+    fun realHolesAndNotchesAreLeftAlone() {
+        assertEquals(x7Camera, IslandLayout.refineCornerCutout(x7Camera, 1080))
+        val waterdrop = CameraBox(480, 0, 600, 80)
+        assertEquals(waterdrop, IslandLayout.refineCornerCutout(waterdrop, 1080))
+        val fullWidth = CameraBox(0, 0, 1080, 100)
+        assertEquals(fullWidth, IslandLayout.refineCornerCutout(fullWidth, 1080))
+    }
+
+    @Test
     fun clockFormatting() {
         assertEquals("00:05", Clock.format(5_400))
         assertEquals("01:23", Clock.format(83_000))
