@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.LlamaChat" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/system_neutral1_900</item>
+    </style>
+</resources>
