@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +20,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FileOpen
@@ -29,6 +33,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ListItem
@@ -57,10 +63,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.harryl0l.llamachat.ChatViewModel
 import io.github.harryl0l.llamachat.DownloadState
 import io.github.harryl0l.llamachat.data.AppSettings
+import io.github.harryl0l.llamachat.data.LinkedFolder
+import io.github.harryl0l.llamachat.data.LocalModel
 import io.github.harryl0l.llamachat.data.MODEL_PRESETS
 import io.github.harryl0l.llamachat.data.ModelPreset
 import io.github.harryl0l.llamachat.engine.EngineState
-import java.io.File
 import kotlin.math.roundToInt
 
 @Composable
@@ -71,6 +78,9 @@ fun ModelsScreen(vm: ChatViewModel, onBack: () -> Unit) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(vm::import)
+    }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let(vm::linkFolder)
     }
     LaunchedEffect(Unit) { vm.refreshLocalModels() }
 
@@ -115,11 +125,14 @@ fun ModelsScreen(vm: ChatViewModel, onBack: () -> Unit) {
             item { SectionTitle("Your files") }
             item {
                 LocalModels(
-                    models = vm.localModels.filterNot { it.isProjector }.map { it.file },
-                    projectors = vm.localModels.filter { it.isProjector }.map { it.file },
+                    models = vm.localModels.filterNot { it.isProjector },
+                    projectors = vm.localModels.filter { it.isProjector },
+                    folders = vm.linkedFolders,
                     settings = settings,
                     importProgress = vm.importProgress,
                     onImport = { importer.launch(arrayOf("*/*")) },
+                    onLinkFolder = { folderPicker.launch(null) },
+                    onUnlinkFolder = vm::unlinkFolder,
                     onLoad = { m, p -> vm.load(m, p); waitingForLoad = true },
                     onDelete = vm::deleteModel,
                 )
@@ -200,39 +213,66 @@ private fun PresetCard(
 
 @Composable
 private fun LocalModels(
-    models: List<File>,
-    projectors: List<File>,
+    models: List<LocalModel>,
+    projectors: List<LocalModel>,
+    folders: List<LinkedFolder>,
     settings: AppSettings,
     importProgress: Float?,
     onImport: () -> Unit,
-    onLoad: (File, File?) -> Unit,
-    onDelete: (File) -> Unit,
+    onLinkFolder: () -> Unit,
+    onUnlinkFolder: (String) -> Unit,
+    onLoad: (String, String?) -> Unit,
+    onDelete: (LocalModel) -> Unit,
 ) {
     val context = LocalContext.current
     var model by remember(models, settings.modelPath) {
-        mutableStateOf(models.firstOrNull { it.absolutePath == settings.modelPath } ?: models.firstOrNull())
+        mutableStateOf(models.firstOrNull { it.ref == settings.modelPath } ?: models.firstOrNull())
     }
     var projector by remember(projectors, settings.mmprojPath) {
-        mutableStateOf(projectors.firstOrNull { it.absolutePath == settings.mmprojPath })
+        mutableStateOf(projectors.firstOrNull { it.ref == settings.mmprojPath })
     }
+    fun supporting(m: LocalModel) = Formatter.formatShortFileSize(context, m.size) +
+        (m.folder?.let { " · in $it (used in place)" } ?: " · app storage")
     Card(shape = MaterialTheme.shapes.extraLarge, colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainer)) {
         Column(Modifier.padding(vertical = 12.dp)) {
             Text(
-                "Import any GGUF model. For images & video also import its matching mmproj-*.gguf projector.",
+                "Link a folder to use the GGUFs in it directly (no copy, saves storage), or import a file " +
+                    "into the app. For images & video also pick the matching mmproj-*.gguf.",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
+            if (folders.isNotEmpty()) {
+                Label("Linked folders")
+                Row(
+                    Modifier.padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    folders.forEach { f ->
+                        InputChip(
+                            selected = false,
+                            onClick = {},
+                            label = { Text(f.name) },
+                            leadingIcon = { Icon(Icons.Rounded.Folder, null, Modifier.size(InputChipDefaults.IconSize)) },
+                            trailingIcon = {
+                                IconButton(onClick = { onUnlinkFolder(f.uri) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Rounded.Close, "Unlink ${f.name}", Modifier.size(16.dp))
+                                }
+                            },
+                        )
+                    }
+                }
+            }
             if (models.isNotEmpty()) {
                 Label("Language model")
-                models.forEach { f ->
-                    FileRow(f, f == model, Formatter.formatShortFileSize(context, f.length()), { model = f }, { onDelete(f) })
+                models.forEach { m ->
+                    FileRow(m.name, model == m, supporting(m), { model = m }, if (m.inLinkedFolder) null else ({ onDelete(m) }))
                 }
             }
             if (projectors.isNotEmpty()) {
                 Label("Vision projector")
-                FileRow(null, projector == null, "Text only", { projector = null }, null)
-                projectors.forEach { f ->
-                    FileRow(f, f == projector, Formatter.formatShortFileSize(context, f.length()), { projector = f }, { onDelete(f) })
+                FileRow("None", projector == null, "Text only", { projector = null }, null)
+                projectors.forEach { p ->
+                    FileRow(p.name, projector == p, supporting(p), { projector = p }, if (p.inLinkedFolder) null else ({ onDelete(p) }))
                 }
             }
             if (importProgress != null) {
@@ -241,15 +281,24 @@ private fun LocalModels(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
                 )
             }
-            Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(onClick = onLinkFolder, shapes = ButtonDefaults.shapes()) {
+                    Icon(Icons.Rounded.CreateNewFolder, null, Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                    Text("Link folder")
+                }
                 OutlinedButton(onClick = onImport, enabled = importProgress == null, shapes = ButtonDefaults.shapes()) {
                     Icon(Icons.Rounded.FileOpen, null, Modifier.size(ButtonDefaults.IconSize))
                     Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                    Text("Import .gguf")
+                    Text("Import copy")
                 }
                 val m = model
                 if (m != null) {
-                    Button(onClick = { onLoad(m, projector) }, shapes = ButtonDefaults.shapes()) { Text("Load") }
+                    Button(onClick = { onLoad(m.ref, projector?.ref) }, shapes = ButtonDefaults.shapes()) { Text("Load") }
                 }
             }
         }
@@ -267,9 +316,9 @@ private fun Label(text: String) {
 }
 
 @Composable
-private fun FileRow(file: File?, selected: Boolean, supporting: String, onSelect: () -> Unit, onDelete: (() -> Unit)?) {
+private fun FileRow(name: String, selected: Boolean, supporting: String, onSelect: () -> Unit, onDelete: (() -> Unit)?) {
     ListItem(
-        headlineContent = { Text(file?.name ?: "None") },
+        headlineContent = { Text(name) },
         supportingContent = { Text(supporting) },
         leadingContent = { RadioButton(selected = selected, onClick = onSelect) },
         trailingContent = onDelete?.let {

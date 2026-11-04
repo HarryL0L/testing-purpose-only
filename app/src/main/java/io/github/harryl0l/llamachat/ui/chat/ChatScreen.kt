@@ -34,13 +34,29 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
@@ -64,7 +80,15 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import android.text.format.DateUtils
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.harryl0l.llamachat.data.ChatSummary
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -96,7 +120,20 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(8)) { uris ->
         vm.attach(uris)
     }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val settings by vm.settings.collectAsStateWithLifecycle()
 
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ChatHistoryDrawer(
+                vm = vm,
+                onNewChat = { vm.newChat(); scope.launch { drawerState.close() } },
+                onOpen = { vm.openChat(it); scope.launch { drawerState.close() } },
+            )
+        },
+    ) {
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         snackbarHost = { SnackbarHost(snackbarHost) },
@@ -113,6 +150,11 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
                     )
                 },
                 subtitle = { Text(subtitle(engineState, vm.contextUsage), maxLines = 1) },
+                navigationIcon = {
+                    IconButton(onClick = { scope.launch { drawerState.open() } }, shapes = IconButtonDefaults.shapes()) {
+                        Icon(Icons.Rounded.Menu, "Chat history")
+                    }
+                },
                 actions = {
                     IconButton(onClick = vm::newChat, shapes = IconButtonDefaults.shapes()) {
                         Icon(Icons.Rounded.EditNote, "New chat")
@@ -127,6 +169,7 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
         bottomBar = {
             Composer(
                 vm = vm,
+                thinking = settings.thinking,
                 enabled = engineState is EngineState.Ready,
                 canAttach = (engineState as? EngineState.Ready)?.info?.vision == true,
                 onAttach = {
@@ -146,6 +189,124 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(vm.messages, key = { it.id }) { msg -> MessageBubble(msg) }
+                }
+            }
+        }
+    }
+    }
+}
+
+@Composable
+private fun ChatHistoryDrawer(vm: ChatViewModel, onNewChat: () -> Unit, onOpen: (String) -> Unit) {
+    var confirmDelete by remember { mutableStateOf<ChatSummary?>(null) }
+    ModalDrawerSheet(drawerShape = RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp)) {
+        Text(
+            "Chats",
+            style = MaterialTheme.typography.headlineSmallEmphasized,
+            modifier = Modifier.padding(start = 28.dp, top = 24.dp, bottom = 12.dp),
+        )
+        NavigationDrawerItem(
+            label = { Text("New chat") },
+            icon = { Icon(Icons.Rounded.Add, null) },
+            selected = vm.currentChatId == null,
+            onClick = onNewChat,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+        HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = 8.dp))
+        if (vm.chats.isEmpty()) {
+            Text(
+                "Your conversations are saved on this phone and show up here.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp),
+            )
+        }
+        LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+            items(vm.chats, key = { it.id }) { chat ->
+                NavigationDrawerItem(
+                    label = {
+                        Column {
+                            Text(chat.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                DateUtils.getRelativeTimeSpanString(chat.updated).toString(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    selected = chat.id == vm.currentChatId,
+                    onClick = { onOpen(chat.id) },
+                    badge = {
+                        IconButton(onClick = { confirmDelete = chat }, shapes = IconButtonDefaults.shapes()) {
+                            Icon(Icons.Rounded.DeleteOutline, "Delete chat")
+                        }
+                    },
+                    modifier = Modifier.animateItem(),
+                )
+            }
+        }
+    }
+    confirmDelete?.let { chat ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("Delete chat?") },
+            text = { Text("\"${chat.title}\" and its attachments will be removed from this phone.") },
+            confirmButton = {
+                TextButton(onClick = { vm.deleteChat(chat.id); confirmDelete = null }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** Splits a raw reply into (reasoning, answer, reasoningStillOpen). */
+private fun splitThinking(raw: String): Triple<String?, String, Boolean> {
+    val t = raw.trimStart()
+    if (t.startsWith("<think>")) {
+        val rest = t.removePrefix("<think>")
+        val close = rest.indexOf("</think>")
+        return if (close < 0) Triple(rest.trim(), "", true)
+        else Triple(rest.substring(0, close).trim(), rest.substring(close + 8).trimStart(), false)
+    }
+    val close = raw.indexOf("</think>")
+    if (close >= 0) return Triple(raw.substring(0, close).trim(), raw.substring(close + 8).trimStart(), false)
+    return Triple(null, raw, false)
+}
+
+@Composable
+private fun ThinkingSection(text: String, active: Boolean) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = RoundedCornerShape(20.dp),
+        onClick = { expanded = !expanded },
+        modifier = Modifier
+            .widthIn(max = 340.dp)
+            .padding(bottom = 6.dp)
+            .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (active) LoadingIndicator(Modifier.size(24.dp))
+                else Icon(Icons.Rounded.Psychology, null, Modifier.size(20.dp))
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    if (active) "Thinking…" else "Thought process",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.size(4.dp))
+                Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, if (expanded) "Hide" else "Show")
+            }
+            if (expanded && text.isNotEmpty()) {
+                SelectionContainer {
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
                 }
             }
         }
@@ -246,7 +407,10 @@ private fun MessageBubble(msg: ChatMessage) {
                 }
             }
         }
-        if (!isUser || msg.text.isNotEmpty()) {
+        val (thinking, answer, thinkingOpen) =
+            if (isUser || msg.error) Triple(null, msg.text, false) else splitThinking(msg.text)
+        if (thinking != null) ThinkingSection(thinking, active = thinkingOpen && msg.streaming)
+        if (isUser && msg.text.isNotEmpty() || !isUser && (answer.isNotEmpty() || (thinking == null && msg.streaming) || msg.error)) {
             val container = when {
                 msg.error -> MaterialTheme.colorScheme.errorContainer
                 isUser -> MaterialTheme.colorScheme.primaryContainer
@@ -265,7 +429,7 @@ private fun MessageBubble(msg: ChatMessage) {
                 modifier = Modifier.widthIn(max = 340.dp).animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
             ) {
                 AnimatedContent(
-                    targetState = msg.text.isEmpty() && msg.streaming,
+                    targetState = answer.isEmpty() && msg.streaming,
                     transitionSpec = { fadeIn() togetherWith fadeOut() },
                     label = "bubble",
                 ) { thinking ->
@@ -281,7 +445,7 @@ private fun MessageBubble(msg: ChatMessage) {
                     } else {
                         SelectionContainer {
                             Text(
-                                msg.text.trimStart(),
+                                answer.trimStart(),
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
                             )
@@ -290,7 +454,7 @@ private fun MessageBubble(msg: ChatMessage) {
                 }
             }
         }
-        if (!isUser && msg.text.isNotEmpty() && msg.status != null) {
+        if (!isUser && answer.isNotEmpty() && msg.status != null) {
             Text(
                 msg.status!!,
                 style = MaterialTheme.typography.labelSmall,
@@ -302,7 +466,7 @@ private fun MessageBubble(msg: ChatMessage) {
 }
 
 @Composable
-private fun Composer(vm: ChatViewModel, enabled: Boolean, canAttach: Boolean, onAttach: () -> Unit) {
+private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, canAttach: Boolean, onAttach: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
@@ -328,6 +492,28 @@ private fun Composer(vm: ChatViewModel, enabled: Boolean, canAttach: Boolean, on
                         }
                     }
                 }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)) {
+                FilterChip(
+                    selected = thinking,
+                    onClick = { vm.setThinking(!thinking) },
+                    label = { Text("Thinking") },
+                    leadingIcon = {
+                        Icon(
+                            if (thinking) Icons.Rounded.Psychology else Icons.Outlined.Psychology, null,
+                            Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                )
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    if (thinking) "Reasons before answering (if the model supports it)" else "Answers directly",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Row(verticalAlignment = Alignment.Bottom) {
                 FilledTonalIconButton(

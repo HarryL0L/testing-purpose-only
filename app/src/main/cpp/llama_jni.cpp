@@ -14,6 +14,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_map>
+#include <unistd.h>
 
 #include "chat.h"
 #include "common.h"
@@ -50,6 +52,16 @@ struct video_source {
     static constexpr float TIMESTAMP_INTERVAL_MS = 5000.0f;
 
     ~video_source() { mtmd_bitmap_free(pending_frame); }
+
+    // the whole conversation is re-tokenized every turn, so the sequence must be replayable
+    void reset() {
+        idx           = 0;
+        start_emitted = false;
+        pending_text.clear();
+        mtmd_bitmap_free(pending_frame);
+        pending_frame = nullptr;
+        next_ts_ms    = 0.0f;
+    }
 
     int group_size() const {
         return tmpl == MTMD_VIDEO_TEMPLATE_DEFAULT ? 0 : 2;
@@ -137,6 +149,7 @@ struct pending_media {
 };
 
 static llama_model *              g_model   = nullptr;
+static FILE *                     g_model_fp = nullptr; // set when the model was loaded from a file descriptor
 static llama_context *            g_ctx     = nullptr;
 static mtmd_context *             g_mtmd    = nullptr;
 static common_sampler *           g_sampler = nullptr;
@@ -145,7 +158,26 @@ static common_batch               g_batch;
 static const llama_vocab *        g_vocab   = nullptr;
 
 static std::vector<common_chat_msg>                 g_history;
-static std::vector<std::unique_ptr<pending_media>>  g_media;
+static std::vector<std::unique_ptr<pending_media>>  g_media;       // attached for the next user turn
+static std::vector<std::unique_ptr<pending_media>>  g_chat_media;  // all media of the conversation, in order
+
+// What the KV cache currently holds, one unit per text token or per media chunk.
+// Each turn the whole conversation is re-rendered and compared against this, so only the part
+// that changed is evaluated again (media are matched by id and not re-encoded).
+struct cache_unit {
+    llama_token tok = LLAMA_TOKEN_NULL; // LLAMA_TOKEN_NULL for a media chunk
+    std::string media_id;
+    llama_pos   pos   = 0;
+    llama_pos   n_pos = 1;
+    const mtmd_input_chunk * chunk = nullptr; // only valid while the chunks of one prompt() live
+};
+static std::vector<cache_unit> g_cache;
+// Vision-encoder output per media id, so re-evaluating a conversation (e.g. hybrid/recurrent
+// models whose memory can't be rewound partially) doesn't run the image encoder again.
+static std::unordered_map<std::string, std::vector<float>> g_embd_cache;
+static int g_image_counter = 0;
+static bool g_enable_thinking = true;
+static bool g_opens_thinking  = false; // the generation prompt ends inside an open <think> block
 static std::string                                  g_system_prompt;
 static common_params_sampling                       g_sparams;
 
@@ -212,6 +244,9 @@ static void free_sampler() {
 
 static void unload_all() {
     g_media.clear();
+    g_chat_media.clear();
+    g_cache.clear();
+    g_embd_cache.clear();
     g_history.clear();
     g_tmpls.reset();
     g_batch = common_batch();
@@ -219,6 +254,7 @@ static void unload_all() {
     if (g_mtmd)  { mtmd_free(g_mtmd);        g_mtmd  = nullptr; }
     if (g_ctx)   { llama_free(g_ctx);        g_ctx   = nullptr; }
     if (g_model) { llama_model_free(g_model); g_model = nullptr; }
+    if (g_model_fp) { fclose(g_model_fp); g_model_fp = nullptr; }
     g_vocab  = nullptr;
     g_n_past = 0;
 }
@@ -240,17 +276,27 @@ JNIEXPORT jstring JNICALL JNI_FN(systemInfo)(JNIEnv * env, jobject) {
     return to_jstring(env, llama_print_system_info());
 }
 
-// returns null on success, an error message otherwise
-JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jstring jmmproj,
-                                        jint n_ctx, jint n_threads) {
+// Loads the language model either from a path or, when fd >= 0, from an open file descriptor
+// (e.g. a file the user picked with the Storage Access Framework; the file is used in place).
+// Returns null on success, an error message otherwise.
+JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jint fd, jint n_ctx, jint n_threads) {
     unload_all();
 
-    const std::string model_path  = jstr(env, jmodel);
-    const std::string mmproj_path = jstr(env, jmmproj);
-
     llama_model_params mparams = llama_model_default_params();
-    g_model = llama_model_load_from_file(model_path.c_str(), mparams);
+    if (fd >= 0) {
+        const int own_fd = dup(fd);
+        g_model_fp = own_fd >= 0 ? fdopen(own_fd, "rb") : nullptr;
+        if (!g_model_fp) {
+            if (own_fd >= 0) close(own_fd);
+            return to_jstring(env, "Could not open the model file");
+        }
+        g_model = llama_model_load_from_file_ptr(g_model_fp, mparams);
+    } else {
+        const std::string model_path = jstr(env, jmodel);
+        g_model = llama_model_load_from_file(model_path.c_str(), mparams);
+    }
     if (!g_model) {
+        unload_all();
         return to_jstring(env, "Failed to load model (is it a valid GGUF?)");
     }
     g_vocab = llama_model_get_vocab(g_model);
@@ -267,29 +313,34 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, js
         return to_jstring(env, "Failed to create context (out of memory? try a smaller context size)");
     }
 
-    if (!mmproj_path.empty()) {
-        mtmd_context_params mp = mtmd_context_params_default();
-        mp.use_gpu       = false;
-        mp.n_threads     = n_threads;
-        mp.print_timings = true;
-        mp.warmup        = false;
-        // images must fit in one ubatch for non-causal models
-        mp.image_max_tokens = g_n_batch;
-        mp.image_min_tokens = std::min(mp.image_min_tokens, g_n_batch);
-        g_mtmd = mtmd_init_from_file(mmproj_path.c_str(), g_model, mp);
-        if (!g_mtmd) {
-            unload_all();
-            return to_jstring(env, "Failed to load the mmproj (vision projector) file. "
-                                   "Make sure it belongs to the same model.");
-        }
-    }
-
     g_tmpls = common_chat_templates_init(g_model, "");
     g_batch = common_batch(g_ctx);
     g_sampler = common_sampler_init(g_model, g_sparams);
     g_n_past = 0;
     g_history.clear();
-    LOGI("Model loaded. n_ctx=%d threads=%d mtmd=%s", n_ctx, n_threads, g_mtmd ? "yes" : "no");
+    LOGI("Model loaded. n_ctx=%d threads=%d", n_ctx, n_threads);
+    return nullptr;
+}
+
+// Loads the vision projector (mmproj) for the already loaded model.
+// Returns null on success, an error message otherwise (the language model stays loaded).
+JNIEXPORT jstring JNICALL JNI_FN(loadProjector)(JNIEnv * env, jobject, jstring jpath, jint n_threads) {
+    if (!g_model) return to_jstring(env, "No model loaded");
+    if (g_mtmd) { mtmd_free(g_mtmd); g_mtmd = nullptr; }
+    const std::string path = jstr(env, jpath);
+    mtmd_context_params mp = mtmd_context_params_default();
+    mp.use_gpu       = false;
+    mp.n_threads     = n_threads;
+    mp.print_timings = true;
+    mp.warmup        = false;
+    // images must fit in one ubatch for non-causal models
+    mp.image_max_tokens = g_n_batch;
+    mp.image_min_tokens = std::min(mp.image_min_tokens, g_n_batch);
+    g_mtmd = mtmd_init_from_file(path.c_str(), g_model, mp);
+    if (!g_mtmd) {
+        return to_jstring(env, "Failed to load the mmproj (vision projector) file. "
+                               "Make sure it belongs to the same model.");
+    }
     return nullptr;
 }
 
@@ -358,6 +409,7 @@ JNIEXPORT jboolean JNICALL JNI_FN(addImage)(JNIEnv * env, jobject, jbyteArray rg
     auto m = std::make_unique<pending_media>();
     m->bitmap = mtmd_bitmap_init((uint32_t) w, (uint32_t) h, data);
     env->ReleaseByteArrayElements(rgb, (jbyte *) data, JNI_ABORT);
+    mtmd_bitmap_set_id(m->bitmap, ("img" + std::to_string(++g_image_counter)).c_str());
     g_media.push_back(std::move(m));
     return JNI_TRUE;
 }
@@ -394,85 +446,202 @@ JNIEXPORT void JNICALL JNI_FN(clearMedia)(JNIEnv *, jobject) {
     g_media.clear();
 }
 
-// Formats the user message with the chat template, then evaluates it (text + media).
+// "<think>reasoning</think>answer" -> reasoning_content + content, so templates can render
+// (or drop) the reasoning of earlier turns the way the model was trained.
+static common_chat_msg make_assistant_msg(const std::string & raw) {
+    common_chat_msg msg;
+    msg.role = "assistant";
+    const size_t close = raw.find("</think>");
+    if (close == std::string::npos) {
+        msg.content = raw;
+        return msg;
+    }
+    std::string reasoning = raw.substr(0, close);
+    const size_t open = reasoning.find("<think>");
+    if (open != std::string::npos) reasoning.erase(0, open + 7);
+    std::string content = raw.substr(close + 8);
+    auto trim = [](std::string & x) {
+        x.erase(0, x.find_first_not_of(" \n\r\t") == std::string::npos ? x.size() : x.find_first_not_of(" \n\r\t"));
+        const size_t e = x.find_last_not_of(" \n\r\t");
+        x.erase(e == std::string::npos ? 0 : e + 1);
+    };
+    trim(reasoning);
+    trim(content);
+    msg.reasoning_content = reasoning;
+    msg.content           = content;
+    return msg;
+}
+
+static bool same_unit(const cache_unit & a, const cache_unit & b) {
+    if (a.tok != LLAMA_TOKEN_NULL || b.tok != LLAMA_TOKEN_NULL) return a.tok == b.tok;
+    return !a.media_id.empty() && a.media_id == b.media_id && a.n_pos == b.n_pos;
+}
+
+// Adds a user turn and evaluates it.
 // The text must contain one media marker per media added with addImage/addVideo.
+// The whole conversation is rendered with the chat template (robust to templates that render
+// earlier turns differently depending on what follows, e.g. Qwen3.5 stripping reasoning), then
+// only the units after the longest prefix already in the KV cache are evaluated.
 // Returns null on success, an error message otherwise.
 JNIEXPORT jstring JNICALL JNI_FN(prompt)(JNIEnv * env, jobject, jstring jtext) {
     if (!g_ctx) return to_jstring(env, "No model loaded");
 
-    const bool first_turn = g_history.empty();
-    std::string formatted;
-    try {
-        if (first_turn && !g_system_prompt.empty()) {
-            common_chat_msg sys;
-            sys.role    = "system";
-            sys.content = g_system_prompt;
-            formatted += common_chat_format_single(g_tmpls.get(), g_history, sys, false, true);
-            g_history.push_back(sys);
-        }
+    const size_t media_before = g_chat_media.size();
+    for (auto & m : g_media) g_chat_media.push_back(std::move(m));
+    g_media.clear();
+    auto rollback_media = [&]() { g_chat_media.resize(media_before); };
+
+    // --- render the whole conversation
+    std::vector<common_chat_msg> msgs = g_history;
+    if (msgs.empty() && !g_system_prompt.empty()) {
+        common_chat_msg sys;
+        sys.role    = "system";
+        sys.content = g_system_prompt;
+        msgs.push_back(std::move(sys));
+    }
+    {
         common_chat_msg msg;
         msg.role    = "user";
         msg.content = jstr(env, jtext);
-        formatted += common_chat_format_single(g_tmpls.get(), g_history, msg, true, true);
-        g_history.push_back(std::move(msg));
+        msgs.push_back(std::move(msg));
+    }
+    std::string formatted;
+    try {
+        common_chat_templates_inputs inputs;
+        inputs.use_jinja             = true;
+        inputs.add_generation_prompt = true;
+        inputs.enable_thinking       = g_enable_thinking;
+        inputs.messages              = msgs;
+        formatted = common_chat_templates_apply(g_tmpls.get(), inputs).prompt.str();
     } catch (const std::exception & e) {
-        g_media.clear();
+        rollback_media();
         return to_jstring(env, std::string("Chat template error: ") + e.what());
     }
 
-    llama_pos new_n_past = g_n_past;
-    int32_t   res;
-
+    // --- tokenize into units
+    std::vector<cache_unit> units;
+    mtmd_input_chunks * chunks = nullptr;
+    auto free_chunks = [&]() { if (chunks) { mtmd_input_chunks_free(chunks); chunks = nullptr; } };
+    llama_pos pos = 0;
     if (g_mtmd) {
         std::vector<const mtmd_bitmap *> bitmaps;
-        for (auto & m : g_media) bitmaps.push_back(m->bitmap);
-
-        mtmd_input_text txt{formatted.c_str(), formatted.size(), /*add_special*/ first_turn, /*parse_special*/ true};
-        mtmd_input_chunks * chunks = mtmd_input_chunks_init();
-        res = mtmd_tokenize(g_mtmd, chunks, &txt, bitmaps.data(), bitmaps.size());
+        for (auto & m : g_chat_media) {
+            if (m->video) m->video->reset();
+            bitmaps.push_back(m->bitmap);
+        }
+        mtmd_input_text txt{formatted.c_str(), formatted.size(), /*add_special*/ true, /*parse_special*/ true};
+        chunks = mtmd_input_chunks_init();
+        const int32_t res = mtmd_tokenize(g_mtmd, chunks, &txt, bitmaps.data(), bitmaps.size());
         if (res != 0) {
-            mtmd_input_chunks_free(chunks);
-            g_media.clear();
-            g_history.pop_back();
+            free_chunks();
+            rollback_media();
             return to_jstring(env, res == 1 ? "Media / marker count mismatch" : "Failed to preprocess media");
         }
-
-        const llama_pos needed = mtmd_helper_get_n_pos(chunks);
-        if (g_n_past + needed + 8 > (llama_pos) llama_n_ctx(g_ctx)) {
-            mtmd_input_chunks_free(chunks);
-            g_media.clear();
-            g_history.pop_back();
-            return to_jstring(env, "Context is full (" + std::to_string(needed) +
-                                   " tokens needed). Start a new chat or raise the context size.");
-        }
-
-        res = mtmd_helper_eval_chunks(g_mtmd, g_ctx, chunks, g_n_past, 0, g_n_batch, true, &new_n_past);
-        mtmd_input_chunks_free(chunks);
-        g_media.clear();
-    } else {
-        llama_tokens toks = common_tokenize(g_ctx, formatted, first_turn, true);
-        if (g_n_past + (llama_pos) toks.size() + 8 > (llama_pos) llama_n_ctx(g_ctx)) {
-            g_history.pop_back();
-            return to_jstring(env, "Context is full. Start a new chat or raise the context size.");
-        }
-        res = 0;
-        for (size_t i = 0; i < toks.size() && res == 0; i += g_n_batch) {
-            g_batch.clear();
-            const size_t end = std::min(toks.size(), i + g_n_batch);
-            for (size_t j = i; j < end; j++) {
-                g_batch.add(toks[j], new_n_past++, 0, j == toks.size() - 1);
+        for (size_t i = 0; i < mtmd_input_chunks_size(chunks); i++) {
+            const mtmd_input_chunk * c = mtmd_input_chunks_get(chunks, i);
+            if (mtmd_input_chunk_get_type(c) == MTMD_INPUT_CHUNK_TYPE_TEXT) {
+                size_t n = 0;
+                const llama_token * toks = mtmd_input_chunk_get_tokens_text(c, &n);
+                for (size_t j = 0; j < n; j++) units.push_back({toks[j], {}, pos++, 1, nullptr});
+            } else {
+                const char * id = mtmd_input_chunk_get_id(c);
+                cache_unit u;
+                u.media_id = id ? id : "";
+                u.pos      = pos;
+                u.n_pos    = mtmd_input_chunk_get_n_pos(c);
+                u.chunk    = c;
+                pos += u.n_pos;
+                units.push_back(std::move(u));
             }
-            res = llama_process(g_ctx, LLAMA_PROCESS_TYPE_DECODE, g_batch.get());
         }
+    } else {
+        for (llama_token t : common_tokenize(g_ctx, formatted, true, true)) units.push_back({t, {}, pos++, 1, nullptr});
+    }
+    if (units.empty()) {
+        free_chunks();
+        rollback_media();
+        return to_jstring(env, "Empty prompt");
+    }
+    if (pos + 8 > (llama_pos) llama_n_ctx(g_ctx)) {
+        free_chunks();
+        rollback_media();
+        return to_jstring(env, "Context is full (" + std::to_string(pos) + " tokens needed). "
+                               "Start a new chat or raise the context size.");
     }
 
+    // --- reuse the longest common prefix of the KV cache
+    size_t k = 0;
+    while (k < g_cache.size() && k < units.size() && same_unit(g_cache[k], units[k])) k++;
+    if (k == units.size()) k--;                           // always re-evaluate the last unit for logits
+    const size_t k_match = k;
+    llama_memory_t mem = llama_get_memory(g_ctx);
+    if (!llama_memory_seq_rm(mem, 0, units[k].pos, -1)) {
+        // e.g. recurrent / hybrid models can't drop a partial range: start over
+        // (media embeddings are cached, so the vision encoder doesn't run again)
+        llama_memory_clear(mem, true);
+        k = 0;
+    }
+    LOGI("prompt: %zu units, prefix match %zu, reusing %zu, evaluating %zu",
+         units.size(), k_match, k, units.size() - k);
+
+    // --- evaluate the rest
+    int32_t res = 0;
+    size_t i = k;
+    while (i < units.size() && res == 0) {
+        if (units[i].tok == LLAMA_TOKEN_NULL) {
+            const cache_unit & u = units[i];
+            float * embd = nullptr;
+            auto it = u.media_id.empty() ? g_embd_cache.end() : g_embd_cache.find(u.media_id);
+            if (it != g_embd_cache.end()) {
+                embd = it->second.data();
+            } else {
+                res = mtmd_encode_chunk(g_mtmd, u.chunk);
+                if (res != 0) break;
+                embd = mtmd_get_output_embd(g_mtmd);
+                if (!u.media_id.empty()) {
+                    const size_t n = (size_t) llama_model_n_embd_inp(g_model) * mtmd_input_chunk_get_n_tokens(u.chunk);
+                    auto & v = g_embd_cache[u.media_id];
+                    v.assign(embd, embd + n);
+                    embd = v.data();
+                }
+            }
+            llama_pos new_n_past = u.pos;
+            res = mtmd_helper_decode_image_chunk(g_mtmd, g_ctx, u.chunk, embd, u.pos, 0, g_n_batch,
+                                                 &new_n_past, nullptr, nullptr);
+            i++;
+            continue;
+        }
+        g_batch.clear();
+        int n = 0;
+        while (i < units.size() && units[i].tok != LLAMA_TOKEN_NULL && n < g_n_batch) {
+            g_batch.add(units[i].tok, units[i].pos, 0, i == units.size() - 1);
+            i++;
+            n++;
+        }
+        res = llama_process(g_ctx, LLAMA_PROCESS_TYPE_DECODE, g_batch.get());
+    }
+    free_chunks();
+    for (auto & u : units) u.chunk = nullptr;
+
     if (res != 0) {
-        g_history.pop_back();
+        // the KV cache is now in an unknown state: start from scratch next time
+        llama_memory_clear(mem, true);
+        g_cache.clear();
+        g_n_past = 0;
+        rollback_media();
         return to_jstring(env, "Failed to evaluate the prompt (" + std::to_string(res) + ")");
     }
 
-    g_n_past = new_n_past;
-    g_n_gen  = 0;
+    {
+        const size_t tail = formatted.size() > 200 ? formatted.size() - 200 : 0;
+        const size_t o = formatted.rfind("<think>");
+        const size_t c = formatted.rfind("</think>");
+        g_opens_thinking = o != std::string::npos && o >= tail && (c == std::string::npos || c < o);
+    }
+    g_cache   = std::move(units);
+    g_n_past  = pos;
+    g_history = std::move(msgs);
+    g_n_gen   = 0;
     g_utf8_buf.clear();
     g_assistant_text.clear();
     return nullptr;
@@ -491,6 +660,7 @@ JNIEXPORT jstring JNICALL JNI_FN(nextToken)(JNIEnv * env, jobject) {
     }
     g_n_gen++;
 
+    g_cache.push_back({tok, {}, g_n_past, 1, nullptr});
     g_batch.clear();
     g_batch.add(tok, g_n_past++, 0, true);
     if (llama_process(g_ctx, LLAMA_PROCESS_TYPE_DECODE, g_batch.get()) != 0) {
@@ -511,23 +681,68 @@ JNIEXPORT void JNICALL JNI_FN(finishTurn)(JNIEnv *, jobject) {
     if (!g_ctx) return;
     g_assistant_text += g_utf8_buf;
     g_utf8_buf.clear();
-    common_chat_msg msg;
-    msg.role    = "assistant";
-    msg.content = g_assistant_text;
-    g_history.push_back(std::move(msg));
+    g_history.push_back(make_assistant_msg((g_opens_thinking ? "<think>" : "") + g_assistant_text));
     g_assistant_text.clear();
-    // the closing tokens (e.g. <|im_end|>) of the template are added by the next format call
+    // the closing tokens (e.g. <|im_end|>) are added when the next turn re-renders the conversation
     common_sampler_reset(g_sampler);
 }
 
 JNIEXPORT void JNICALL JNI_FN(resetChat)(JNIEnv *, jobject) {
     g_history.clear();
     g_media.clear();
+    g_chat_media.clear();
+    g_cache.clear();
+    g_embd_cache.clear();
     g_n_past = 0;
     g_utf8_buf.clear();
     g_assistant_text.clear();
     if (g_ctx) llama_memory_clear(llama_get_memory(g_ctx), true);
     if (g_sampler) common_sampler_reset(g_sampler);
+}
+
+JNIEXPORT void JNICALL JNI_FN(setThinking)(JNIEnv *, jobject, jboolean enabled) {
+    g_enable_thinking = enabled;
+}
+
+// true when the last prompt left a <think> block open, i.e. the reply starts with reasoning
+JNIEXPORT jboolean JNICALL JNI_FN(promptOpensThinking)(JNIEnv *, jobject) {
+    return g_opens_thinking;
+}
+
+// Restores a saved conversation without evaluating it; the next prompt() renders and evaluates
+// everything. Media added with addImage/addVideo before this call belong to the restored user
+// messages, in order. Assistant contents are raw replies ("<think>..</think>answer" allowed).
+JNIEXPORT void JNICALL JNI_FN(restoreChat)(JNIEnv * env, jobject, jobjectArray roles, jobjectArray contents) {
+    g_history.clear();
+    g_chat_media.clear();
+    g_cache.clear();
+    g_n_past = 0;
+    if (g_ctx) llama_memory_clear(llama_get_memory(g_ctx), true);
+    if (g_sampler) common_sampler_reset(g_sampler);
+    if (!g_system_prompt.empty()) {
+        common_chat_msg sys;
+        sys.role    = "system";
+        sys.content = g_system_prompt;
+        g_history.push_back(std::move(sys));
+    }
+    const jsize n = env->GetArrayLength(roles);
+    for (jsize i = 0; i < n; i++) {
+        auto jr = (jstring) env->GetObjectArrayElement(roles, i);
+        auto jc = (jstring) env->GetObjectArrayElement(contents, i);
+        const std::string role = jstr(env, jr), content = jstr(env, jc);
+        env->DeleteLocalRef(jr);
+        env->DeleteLocalRef(jc);
+        if (role == "assistant") {
+            g_history.push_back(make_assistant_msg(content));
+        } else {
+            common_chat_msg m;
+            m.role    = role;
+            m.content = content;
+            g_history.push_back(std::move(m));
+        }
+    }
+    for (auto & m : g_media) g_chat_media.push_back(std::move(m));
+    g_media.clear();
 }
 
 // [used, total]

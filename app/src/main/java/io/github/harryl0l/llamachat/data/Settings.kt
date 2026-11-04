@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.harryl0l.llamachat.engine.SamplingConfig
 import kotlinx.coroutines.flow.Flow
@@ -12,8 +15,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 data class AppSettings(
+    /** model / projector reference: an absolute path or a content:// URI from a linked folder */
     val modelPath: String? = null,
     val mmprojPath: String? = null,
+    val thinking: Boolean = true,
+    val linkedFolders: Set<String> = emptySet(),
     val contextSize: Int = 4096,
     val threads: Int = defaultThreads(),
     val maxVideoFrames: Int = 16,
@@ -40,13 +46,17 @@ class SettingsStore(private val context: Context) {
         val minP = floatPreferencesKey("min_p")
         val maxTokens = intPreferencesKey("max_tokens")
         val system = stringPreferencesKey("system")
+        val thinking = booleanPreferencesKey("thinking")
+        val folders = stringSetPreferencesKey("folders")
     }
 
-    val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
+    private fun read(p: Preferences): AppSettings {
         val d = AppSettings()
-        AppSettings(
+        return AppSettings(
             modelPath = p[K.model],
             mmprojPath = p[K.mmproj],
+            thinking = p[K.thinking] ?: d.thinking,
+            linkedFolders = p[K.folders] ?: d.linkedFolders,
             contextSize = p[K.ctx] ?: d.contextSize,
             threads = p[K.threads] ?: d.threads,
             maxVideoFrames = p[K.frames] ?: d.maxVideoFrames,
@@ -61,22 +71,13 @@ class SettingsStore(private val context: Context) {
         )
     }
 
+    val settings: Flow<AppSettings> = context.dataStore.data.map(::read)
+
     suspend fun current(): AppSettings = settings.first()
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         context.dataStore.edit { p ->
-            val d = AppSettings()
-            val cur = AppSettings(
-                modelPath = p[K.model], mmprojPath = p[K.mmproj],
-                contextSize = p[K.ctx] ?: d.contextSize, threads = p[K.threads] ?: d.threads,
-                maxVideoFrames = p[K.frames] ?: d.maxVideoFrames,
-                sampling = SamplingConfig(
-                    p[K.temp] ?: d.sampling.temperature, p[K.topP] ?: d.sampling.topP,
-                    p[K.topK] ?: d.sampling.topK, p[K.minP] ?: d.sampling.minP,
-                    p[K.maxTokens] ?: d.sampling.maxTokens,
-                ),
-                systemPrompt = p[K.system] ?: d.systemPrompt,
-            )
+            val cur = read(p)
             val n = transform(cur)
             if (n.modelPath != null) p[K.model] = n.modelPath else p.remove(K.model)
             if (n.mmprojPath != null) p[K.mmproj] = n.mmprojPath else p.remove(K.mmproj)
@@ -89,6 +90,8 @@ class SettingsStore(private val context: Context) {
             p[K.minP] = n.sampling.minP
             p[K.maxTokens] = n.sampling.maxTokens
             p[K.system] = n.systemPrompt
+            p[K.thinking] = n.thinking
+            p[K.folders] = n.linkedFolders
         }
     }
 }

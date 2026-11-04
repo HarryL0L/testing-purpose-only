@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.util.concurrent.Executors
 
 data class ModelInfo(
@@ -45,6 +44,20 @@ data class VideoConfig(val template: Int, val fps: Float, val nFrames: Int, val 
 
 class EngineException(message: String) : Exception(message)
 
+/** Where to load a vision projector from; [fallback] provides another path if the first fails. */
+class ProjectorSpec(val path: String, val fallback: (suspend () -> String)? = null)
+
+/** What to load: a file path, or an open file descriptor (model used in place). */
+class ModelSpec(
+    val name: String,
+    val path: String?,
+    val fd: Int = -1,
+    val projector: ProjectorSpec? = null,
+)
+
+/** A saved message to restore; [media] belong to user messages, in order. */
+class RestoredMessage(val role: String, val text: String, val media: List<DecodedMedia> = emptyList())
+
 /**
  * Owns the native llama.cpp state. All native calls run on one dedicated thread.
  */
@@ -69,18 +82,31 @@ class LlamaEngine(context: Context) {
     }
 
     suspend fun load(
-        model: File,
-        mmproj: File?,
+        spec: ModelSpec,
         contextSize: Int,
         threads: Int,
         sampling: SamplingConfig,
         systemPrompt: String,
+        thinking: Boolean,
     ) = withContext(dispatcher) {
         ensureInit()
-        _state.value = EngineState.Loading(model.nameWithoutExtension)
+        _state.value = EngineState.Loading(spec.name)
         LlamaNative.setSampling(sampling.temperature, sampling.topP, sampling.topK, sampling.minP, sampling.maxTokens)
         LlamaNative.setSystemPrompt(systemPrompt)
-        val error = LlamaNative.load(model.absolutePath, mmproj?.absolutePath, contextSize, threads)
+        LlamaNative.setThinking(thinking)
+        var error = LlamaNative.load(spec.path, spec.fd, contextSize, threads)
+        if (error == null && spec.projector != null) {
+            error = LlamaNative.loadProjector(spec.projector.path, threads)
+            val fallback = spec.projector.fallback
+            if (error != null && fallback != null) {
+                error = try {
+                    LlamaNative.loadProjector(fallback(), threads)
+                } catch (e: Exception) {
+                    e.message ?: "Could not read the projector file"
+                }
+            }
+            if (error != null) LlamaNative.unload()
+        }
         if (error != null) {
             _state.value = EngineState.Failed(error)
             return@withContext
@@ -88,7 +114,7 @@ class LlamaEngine(context: Context) {
         val caps = LlamaNative.capabilities()
         _state.value = EngineState.Ready(
             ModelInfo(
-                name = model.nameWithoutExtension,
+                name = spec.name,
                 description = LlamaNative.modelDescription(),
                 vision = caps and 1 != 0,
                 audio = caps and 2 != 0,
@@ -96,6 +122,39 @@ class LlamaEngine(context: Context) {
                 contextSize = contextSize,
             )
         )
+    }
+
+    suspend fun setThinking(enabled: Boolean) = withContext(dispatcher) {
+        if (initialized) LlamaNative.setThinking(enabled)
+    }
+
+    /** Puts a saved conversation back into the engine; it is evaluated with the next message. */
+    suspend fun restore(messages: List<RestoredMessage>) = withContext(dispatcher) {
+        if (!initialized) return@withContext
+        LlamaNative.clearMedia()
+        val roles = ArrayList<String>()
+        val contents = ArrayList<String>()
+        for (m in messages) {
+            if (m.role == "user") {
+                val usable = m.media.filter { addMedia(it) }
+                roles += "user"
+                contents += userContent(usable.size, m.text)
+            } else {
+                roles += m.role
+                contents += m.text
+            }
+        }
+        LlamaNative.restoreChat(roles.toTypedArray(), contents.toTypedArray())
+    }
+
+    private fun addMedia(m: DecodedMedia): Boolean = when (m) {
+        is DecodedMedia.Image -> LlamaNative.addImage(m.rgb, m.width, m.height)
+        is DecodedMedia.Video -> LlamaNative.addVideo(m.frames, m.width, m.height, m.timestamps, m.template)
+    }
+
+    private fun userContent(nMedia: Int, text: String) = buildString {
+        repeat(nMedia) { append(mediaMarker).append('\n') }
+        append(text)
     }
 
     suspend fun unload() = withContext(dispatcher) {
@@ -127,19 +186,12 @@ class LlamaEngine(context: Context) {
      */
     fun generate(text: String, media: List<DecodedMedia>): Flow<String> = flow {
         LlamaNative.clearMedia()
-        val prompt = buildString {
-            for (m in media) {
-                val ok = when (m) {
-                    is DecodedMedia.Image -> LlamaNative.addImage(m.rgb, m.width, m.height)
-                    is DecodedMedia.Video -> LlamaNative.addVideo(m.frames, m.width, m.height, m.timestamps, m.template)
-                }
-                if (!ok) throw EngineException("This model can't take that attachment (no vision projector loaded?)")
-                append(mediaMarker)
-                append('\n')
-            }
-            append(text)
+        for (m in media) {
+            if (!addMedia(m)) throw EngineException("This model can't take that attachment (no vision projector loaded?)")
         }
-        LlamaNative.prompt(prompt)?.let { throw EngineException(it) }
+        LlamaNative.prompt(userContent(media.size, text))?.let { throw EngineException(it) }
+        // the template already opened a <think> block: surface it so the UI can show reasoning
+        if (LlamaNative.promptOpensThinking()) emit("<think>")
         try {
             while (true) {
                 currentCoroutineContext().ensureActive()

@@ -2,6 +2,7 @@ package io.github.harryl0l.llamachat.data
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -55,10 +56,24 @@ val MODEL_PRESETS = listOf(
     ),
 )
 
-data class LocalModel(val file: File, val isProjector: Boolean) {
-    val name: String get() = file.name
-    val size: Long get() = file.length()
+/**
+ * A GGUF the app can load. [ref] is an absolute path (app storage) or a content:// URI of a file
+ * in a folder the user linked (used in place, never copied or deleted by the app).
+ */
+data class LocalModel(
+    val ref: String,
+    val name: String,
+    val size: Long,
+    val isProjector: Boolean,
+    val folder: String? = null, // display name of the linked folder, null for app storage
+    val folderUri: String? = null,
+) {
+    val inLinkedFolder: Boolean get() = folder != null
 }
+
+data class LinkedFolder(val uri: String, val name: String)
+
+private fun isProjectorName(name: String) = name.contains("mmproj", ignoreCase = true)
 
 class ModelRepository(private val context: Context) {
     val modelsDir: File = File(context.getExternalFilesDir(null) ?: context.filesDir, "models").apply { mkdirs() }
@@ -71,12 +86,104 @@ class ModelRepository(private val context: Context) {
     fun presetFiles(preset: ModelPreset): Pair<File, File> =
         File(presetDir(preset), preset.modelFile) to File(presetDir(preset), preset.mmprojFile)
 
-    fun localModels(): List<LocalModel> =
-        modelsDir.walkTopDown()
+    /** GGUFs in app storage plus those found in the linked folders. */
+    fun localModels(folders: Set<String>): List<LocalModel> {
+        val own = modelsDir.walkTopDown()
             .filter { it.isFile && it.extension.equals("gguf", ignoreCase = true) }
-            .map { LocalModel(it, it.name.contains("mmproj", ignoreCase = true)) }
-            .sortedBy { it.name.lowercase() }
+            .map { LocalModel(it.absolutePath, it.name, it.length(), isProjectorName(it.name)) }
             .toList()
+        val linked = folders.flatMap { uri -> runCatching { scanFolder(Uri.parse(uri)) }.getOrDefault(emptyList()) }
+        return (own + linked).sortedWith(compareBy({ it.folder ?: "" }, { it.name.lowercase() }))
+    }
+
+    fun folderInfo(uri: String): LinkedFolder {
+        val tree = Uri.parse(uri)
+        val docUri = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        val name = runCatching {
+            context.contentResolver.query(docUri, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)
+                ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        }.getOrNull() ?: tree.lastPathSegment ?: "Folder"
+        return LinkedFolder(uri, name)
+    }
+
+    /** Keeps read access to a folder the user picked (survives restarts). */
+    fun linkFolder(uri: Uri) {
+        context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    fun unlinkFolder(uri: String) {
+        runCatching {
+            context.contentResolver.releasePersistableUriPermission(
+                Uri.parse(uri), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+
+    /** Lists .gguf files in a linked folder (and its sub-folders, two levels deep). */
+    private fun scanFolder(tree: Uri): List<LocalModel> {
+        val folderName = folderInfo(tree.toString()).name
+        val out = mutableListOf<LocalModel>()
+        fun walk(docId: String, depth: Int) {
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId)
+            context.contentResolver.query(
+                children,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_SIZE,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                ),
+                null, null, null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val id = c.getString(0)
+                    val name = c.getString(1) ?: continue
+                    val mime = c.getString(3)
+                    if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                        if (depth < 2) walk(id, depth + 1)
+                    } else if (name.endsWith(".gguf", ignoreCase = true)) {
+                        val uri = DocumentsContract.buildDocumentUriUsingTree(tree, id)
+                        out += LocalModel(uri.toString(), name, c.getLong(2), isProjectorName(name), folderName, tree.toString())
+                    }
+                }
+            }
+        }
+        walk(DocumentsContract.getTreeDocumentId(tree), 0)
+        return out
+    }
+
+    fun displayName(ref: String): String =
+        if (ref.startsWith("content://")) {
+            runCatching {
+                context.contentResolver.query(Uri.parse(ref), arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            }.getOrNull() ?: "model.gguf"
+        } else File(ref).name
+
+    fun exists(ref: String): Boolean =
+        if (ref.startsWith("content://")) {
+            runCatching { context.contentResolver.openFileDescriptor(Uri.parse(ref), "r")?.close(); true }.getOrDefault(false)
+        } else File(ref).exists()
+
+    /**
+     * The mmproj loader needs a path. For a linked-folder file this copies just the projector
+     * (much smaller than the model) into app storage, once.
+     */
+    suspend fun cachedProjector(ref: String): String = withContext(Dispatchers.IO) {
+        val uri = Uri.parse(ref)
+        val name = displayName(ref)
+        var size = -1L
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst()) size = c.getLong(0)
+        }
+        val dir = File(context.noBackupFilesDir, "projector-cache").apply { mkdirs() }
+        val target = File(dir, name)
+        if (target.exists() && target.length() == size) return@withContext target.absolutePath
+        dir.listFiles()?.forEach { it.delete() } // keep only one cached projector
+        val part = File(dir, "$name.part")
+        context.contentResolver.openInputStream(uri)!!.use { input -> part.outputStream().use { input.copyTo(it, 1 shl 16) } }
+        check(part.renameTo(target)) { "Could not cache $name" }
+        target.absolutePath
+    }
 
     /** Downloads both files of a preset. Resumes partial downloads. [onProgress] gets 0..1. */
     suspend fun download(preset: ModelPreset, onProgress: (Float) -> Unit) = withContext(Dispatchers.IO) {

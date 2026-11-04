@@ -151,6 +151,31 @@ object MediaDecoder {
         }
     }
 
+    // ------------------------------------------------------------------ persistence (chat history)
+
+    /** Saves RGB pixels (at [offset]) as a JPEG. */
+    fun saveJpeg(rgb: ByteArray, offset: Int, width: Int, height: Int, file: java.io.File) {
+        val pixels = IntArray(width * height)
+        var o = offset
+        for (i in pixels.indices) {
+            pixels[i] = (0xFF shl 24) or ((rgb[o].toInt() and 0xFF) shl 16) or
+                ((rgb[o + 1].toInt() and 0xFF) shl 8) or (rgb[o + 2].toInt() and 0xFF)
+            o += 3
+        }
+        val bmp = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        file.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        bmp.recycle()
+    }
+
+    /** Loads a JPEG saved by [saveJpeg]. Returns the pixels as RGB and the size. */
+    fun loadJpeg(file: java.io.File): Triple<ByteArray, Int, Int> {
+        val bmp = android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }) ?: error("Missing ${file.name}")
+        val rgb = bmp.toRgb()
+        return Triple(rgb, bmp.width, bmp.height).also { bmp.recycle() }
+    }
+
     private fun Bitmap.toRgb(dst: ByteArray = ByteArray(width * height * 3), offset: Int = 0): ByteArray {
         val src = if (config == Bitmap.Config.ARGB_8888) this else copy(Bitmap.Config.ARGB_8888, false)
         val pixels = IntArray(src.width * src.height)

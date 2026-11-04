@@ -12,8 +12,14 @@ internal object LlamaNative {
     external fun init(nativeLibDir: String)
     external fun systemInfo(): String
 
-    /** @return null on success, otherwise an error message */
-    external fun load(modelPath: String, mmprojPath: String?, nCtx: Int, nThreads: Int): String?
+    /**
+     * Loads the language model from [modelPath], or from the open file descriptor [fd] when >= 0
+     * (used in place, e.g. a file in a folder the user linked). @return null on success, else an error
+     */
+    external fun load(modelPath: String?, fd: Int, nCtx: Int, nThreads: Int): String?
+
+    /** Loads the vision projector for the loaded model. @return null on success, else an error */
+    external fun loadProjector(path: String, nThreads: Int): String?
     external fun unload()
 
     /** bit 0 = vision, bit 1 = audio, bit 2 = video */
@@ -38,6 +44,12 @@ internal object LlamaNative {
     external fun nextToken(): String?
     external fun finishTurn()
     external fun resetChat()
+
+    external fun setThinking(enabled: Boolean)
+    external fun promptOpensThinking(): Boolean
+
+    /** Restores a saved chat (not evaluated until the next prompt). Media added before belong to it. */
+    external fun restoreChat(roles: Array<String>, contents: Array<String>)
 
     /** [used, total] tokens */
     external fun contextUsage(): IntArray

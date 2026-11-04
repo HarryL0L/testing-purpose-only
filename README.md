@@ -13,8 +13,13 @@ After the model download, nothing leaves the device.
   - frame count, frame rate, frame size and timestamp layout follow the model's own recommendation (`mtmd_get_video_config`). That covers Qwen-VL `<t seconds>` frame pairs, LFM, and the default `[XmY.YYs]` timestamps.
   - frames are handed to mtmd as a *lazy bitmap*, so the model sees one video with proper begin/end tokens.
 - **Material 3 Expressive** (`material3` 1.5.0-rc01, the first line where these APIs are public): `MaterialExpressiveTheme` with wallpaper-based dynamic color and the expressive spring motion scheme, flexible top app bars, the morphing `LoadingIndicator`, wavy progress indicators, shape-morphing buttons, `MaterialShapes` cut-outs for attachments, and a themed (monochrome) launcher icon.
-- **One-tap model downloads** from Hugging Face (resumable), or **import any `.gguf`** plus its `mmproj-*.gguf`.
-- Streaming replies with tok/s, a stop button, multi-turn chat that reuses the KV cache, a context usage readout, and settings for context size, threads, temperature, reply length, max video frames and the system prompt.
+- **One-tap model downloads** from Hugging Face (resumable), **import a copy** of any `.gguf`, or **link a folder** (e.g. `Download/models`):
+  - the language model is read in place from the folder through its file descriptor (`llama_model_load_from_file_ptr`), so it is never copied.
+  - the mmproj is opened in place through `/proc/self/fd` when Android allows it. Otherwise only the mmproj is copied to app storage, once.
+- **Chat history**: conversations are saved on the phone and listed in a side drawer. Images and sampled video frames are stored with each chat as JPEGs, so a reopened chat gives the model its media back.
+- **Thinking on/off** (passed to the template's `enable_thinking`, e.g. Qwen3 / Qwen3.5). Reasoning appears in a collapsible "Thinking" section, and earlier turns pass it back to the template as `reasoning_content`.
+- Each turn the whole conversation is rendered and compared with the KV cache token by token (like llama-server), so only the changed part is evaluated. This works with any template, including ones that rewrite earlier turns. Vision-encoder output is cached by media ID, so hybrid/recurrent models (Qwen3.5), whose memory has to be rebuilt each turn, don't run the image encoder again.
+- Streaming replies with tok/s, a stop button, a context usage readout, and settings for context size, threads, temperature, reply length, max video frames and the system prompt.
 
 | Preset | Size | Notes |
 | --- | --- | --- |
@@ -46,7 +51,7 @@ third_party/llama.cpp/                 llama.cpp submodule pinned to b12111
 app/src/main/cpp/llama_jni.cpp         JNI: model/context/mtmd, chat template, sampling, lazy video bitmaps
 app/src/main/java/.../engine/          LlamaNative (JNI decls) + LlamaEngine (single-thread engine, Flow streaming)
 app/src/main/java/.../media/           Image decoding, MediaCodec video frame grabber
-app/src/main/java/.../data/            Settings (DataStore), model presets / download / import
+app/src/main/java/.../data/            Settings (DataStore), chat history store, model presets / download / import / linked folders
 app/src/main/java/.../ui/              Compose UI (chat + models screens, expressive theme)
 ```
 

@@ -1,6 +1,7 @@
 package io.github.harryl0l.llamachat.ui.chat
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Size
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -35,7 +36,15 @@ fun MediaThumbnail(attachment: Attachment, shape: Shape, size: Dp, modifier: Mod
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(null, attachment.uri) {
         value = withContext(Dispatchers.IO) {
-            runCatching { context.contentResolver.loadThumbnail(attachment.uri, Size(384, 384), null) }.getOrNull()
+            runCatching {
+                if (attachment.uri.scheme == "file") {
+                    // media saved with a chat (JPEG in app storage)
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    BitmapFactory.decodeFile(attachment.uri.path, opts)
+                } else {
+                    context.contentResolver.loadThumbnail(attachment.uri, Size(384, 384), null)
+                }
+            }.getOrNull()
         }
     }
     Box(
