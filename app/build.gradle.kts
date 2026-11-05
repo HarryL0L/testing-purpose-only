@@ -52,6 +52,24 @@ android {
         }
     }
 
+    // "standard": CPU only. "experimental": + llama.cpp Vulkan backend and libadrenotools, so Adreno
+    // GPUs can run with a custom Vulkan driver (e.g. Mesa Turnip). arm64 only, installs side by side.
+    flavorDimensions += "gpu"
+    productFlavors {
+        create("standard") {
+            dimension = "gpu"
+            isDefault = true
+            buildConfigField("boolean", "GPU_EXPERIMENTAL", "false")
+        }
+        create("experimental") {
+            dimension = "gpu"
+            applicationIdSuffix = ".experimental"
+            versionNameSuffix = "-vulkan-experimental"
+            buildConfigField("boolean", "GPU_EXPERIMENTAL", "true")
+            externalNativeBuild { cmake { arguments += "-DLLAMACHAT_VULKAN=ON" } }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -68,7 +86,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     packaging {
         // ggml loads its CPU backend variants from the native lib dir at runtime,

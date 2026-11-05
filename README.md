@@ -49,10 +49,39 @@ git submodule update --init --recursive
 
 The release build is signed with the debug key so it installs as-is. Set up your own `signingConfig` before you publish it.
 
+## Experimental GPU build (Vulkan + libadrenotools)
+
+A second flavor, `experimental`, adds llama.cpp's **Vulkan** backend and
+**[libadrenotools](https://github.com/bylaws/libadrenotools)**, so Adreno (Snapdragon) GPUs can run with a custom
+Vulkan driver such as Mesa Turnip. It installs next to the normal app as *LlamaChat GPU (experimental)*
+(`…llamachat.experimental`). It is arm64 only.
+
+```bash
+./gradlew :app:assembleExperimentalRelease   # app/build/outputs/apk/experimental/release/
+./gradlew :app:assembleStandardRelease       # the normal CPU-only app
+```
+
+In the app, Models → **GPU · experimental**:
+- **Use GPU (Vulkan)** offloads the model and the vision encoder to the GPU (off = CPU only, same as the standard build).
+- **Vulkan driver**: the system driver, or an imported AdrenoTools driver package (`.zip` with a `meta.json` naming the driver library). A driver can only be loaded once per process, so changing it needs **Restart app**.
+- The card shows which driver loaded and which GPU llama.cpp found.
+
+How it works: llama.cpp's Vulkan backend normally links to the system `libvulkan.so`. libadrenotools, however,
+returns a *separate* Vulkan loader instance backed by the custom driver. So in this flavor `libggml-vulkan.so` is
+linked against `libvulkan_shim.so` instead (`app/src/main/cpp/vulkan/`). The shim exports every Vulkan entry point as
+an assembly trampoline into a function table, which is filled at startup from the custom driver or the system driver
+before any backend is loaded.
+
+Caveats: custom drivers only work on Adreno GPUs. On other GPUs (e.g. Mali) only the system driver is available, and
+llama.cpp's Vulkan backend may be slower than the CPU or give wrong output depending on the driver. This build has not
+been tested on real GPUs by the author of this change.
+
 ## Layout
 
 ```
 third_party/llama.cpp/                 llama.cpp submodule pinned to b12111
+third_party/libadrenotools, Vulkan-Headers, SPIRV-Headers   experimental GPU flavor only
+app/src/main/cpp/vulkan/               libvulkan shim (trampolines) for custom Vulkan drivers
 app/src/main/cpp/llama_jni.cpp         JNI: model/context/mtmd, chat template, sampling, lazy video bitmaps
 app/src/main/java/.../engine/          LlamaNative (JNI decls) + LlamaEngine (single-thread engine, Flow streaming)
 app/src/main/java/.../media/           Image decoding, MediaCodec video frame grabber

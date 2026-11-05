@@ -9,7 +9,15 @@ internal object LlamaNative {
         System.loadLibrary("llamachat")
     }
 
-    external fun init(nativeLibDir: String)
+    /**
+     * Loads the ggml backends. In the experimental build, [driverDir]/[driverName] select a custom
+     * Vulkan driver loaded through libadrenotools (null: system driver). Fixed for the process
+     * lifetime. @return a status line about the GPU driver ("" in the CPU-only build)
+     */
+    external fun init(nativeLibDir: String, driverDir: String?, driverName: String?): String
+
+    /** GPU devices ggml found, one per line ("" if none). */
+    external fun gpuInfo(): String
     external fun systemInfo(): String
 
     /**
@@ -17,7 +25,7 @@ internal object LlamaNative {
      * (used in place, e.g. a file in a folder the user linked). [repack] enables CPU weight repacking.
      * @return null on success, else an error
      */
-    external fun load(modelPath: String?, fd: Int, nCtx: Int, nThreads: Int, repack: Boolean): String?
+    external fun load(modelPath: String?, fd: Int, nCtx: Int, nThreads: Int, repack: Boolean, useGpu: Boolean): String?
 
     /** Loads the vision projector for the loaded model. @return null on success, else an error */
     external fun loadProjector(path: String, nThreads: Int): String?

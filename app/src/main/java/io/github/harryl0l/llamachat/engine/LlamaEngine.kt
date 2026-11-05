@@ -74,12 +74,33 @@ class LlamaEngine(context: Context) {
 
     val mediaMarker: String by lazy { LlamaNative.mediaMarker() }
 
+    /**
+     * Custom Vulkan driver to use when the engine initializes (experimental build). The driver is
+     * loaded once per process, so changing it needs an app restart.
+     */
+    @Volatile var driverForInit: io.github.harryl0l.llamachat.data.GpuDriver? = null
+
+    /** id of the driver the engine was initialized with ("" = system driver), null before init */
+    var initializedDriverId: String? = null
+        private set
+
+    private val _gpuStatus = MutableStateFlow("")
+    val gpuStatus: StateFlow<String> = _gpuStatus.asStateFlow()
+
     private fun ensureInit() {
         if (!initialized) {
-            LlamaNative.init(nativeLibDir)
+            val d = driverForInit
+            val status = LlamaNative.init(nativeLibDir, d?.dir?.absolutePath, d?.library)
+            initializedDriverId = d?.id ?: ""
             initialized = true
+            val gpus = LlamaNative.gpuInfo()
+            _gpuStatus.value = listOf(status, gpus.ifEmpty { if (status.isNotEmpty()) "No Vulkan GPU found" else "" })
+                .filter { it.isNotEmpty() }.joinToString("\n")
         }
     }
+
+    /** Initializes the backends (loads the GPU driver) without loading a model. */
+    suspend fun initialize() = withContext(dispatcher) { ensureInit() }
 
     suspend fun load(
         spec: ModelSpec,
@@ -89,13 +110,14 @@ class LlamaEngine(context: Context) {
         systemPrompt: String,
         thinking: Boolean,
         repack: Boolean,
+        useGpu: Boolean = false,
     ) = withContext(dispatcher) {
         ensureInit()
         _state.value = EngineState.Loading(spec.name)
         LlamaNative.setSampling(sampling.temperature, sampling.topP, sampling.topK, sampling.minP, sampling.maxTokens)
         LlamaNative.setSystemPrompt(systemPrompt)
         LlamaNative.setThinking(thinking)
-        var error = LlamaNative.load(spec.path, spec.fd, contextSize, threads, repack)
+        var error = LlamaNative.load(spec.path, spec.fd, contextSize, threads, repack, useGpu)
         if (error == null && spec.projector != null) {
             error = LlamaNative.loadProjector(spec.projector.path, threads)
             val fallback = spec.projector.fallback

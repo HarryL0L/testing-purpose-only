@@ -13,6 +13,8 @@ import androidx.lifecycle.viewModelScope
 import io.github.harryl0l.llamachat.data.AppSettings
 import io.github.harryl0l.llamachat.data.ChatStore
 import io.github.harryl0l.llamachat.data.ChatSummary
+import io.github.harryl0l.llamachat.data.GpuDriver
+import io.github.harryl0l.llamachat.data.GpuDriverStore
 import io.github.harryl0l.llamachat.data.LinkedFolder
 import io.github.harryl0l.llamachat.data.LocalModel
 import io.github.harryl0l.llamachat.data.ModelPreset
@@ -73,6 +75,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     val repo = ModelRepository(app)
     private val store = SettingsStore(app)
     private val chatStore = ChatStore(app)
+    private val driverStore = GpuDriverStore(app)
 
     val settings: StateFlow<AppSettings> = store.settings.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
     val engineState: StateFlow<EngineState> = engine.state
@@ -186,7 +189,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         ModelSpec(name, null, pfd.fd, projector)
                     } else ModelSpec(name, model, -1, projector)
                 }
-                engine.load(spec, s.contextSize, s.threads, s.sampling, s.systemPrompt, s.thinking, s.repack)
+                prepareGpuDriver()
+                engine.load(
+                    spec, s.contextSize, s.threads, s.sampling, s.systemPrompt, s.thinking, s.repack,
+                    useGpu = BuildConfig.GPU_EXPERIMENTAL && s.useGpu,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -306,6 +313,68 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             store.update { it.copy(thinking = enabled) }
             engine.setThinking(enabled)
         }
+    }
+
+    // ---------------------------------------------------------------- GPU (experimental build)
+
+    var gpuDrivers by mutableStateOf<List<GpuDriver>>(emptyList())
+        private set
+
+    /** the Vulkan driver chosen in settings differs from the one this process loaded */
+    val gpuRestartNeeded: Boolean
+        get() = engine.initializedDriverId != null && engine.initializedDriverId != (settings.value.gpuDriver ?: "")
+
+    fun refreshGpuDrivers() {
+        if (!BuildConfig.GPU_EXPERIMENTAL) return
+        viewModelScope.launch { gpuDrivers = driverStore.list() }
+    }
+
+    /** Tells the engine which custom driver to load when it initializes (once per process). */
+    private suspend fun prepareGpuDriver() {
+        if (!BuildConfig.GPU_EXPERIMENTAL) return
+        engine.driverForInit = store.current().gpuDriver?.let { driverStore.get(it) }
+    }
+
+    /** Loads the GPU driver now (without a model) so the GPU can be shown in settings. */
+    fun probeGpu() {
+        if (!BuildConfig.GPU_EXPERIMENTAL) return
+        viewModelScope.launch { prepareGpuDriver(); engine.initialize() }
+    }
+
+    fun importGpuDriver(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val d = driverStore.import(uri)
+                refreshGpuDrivers()
+                store.update { it.copy(gpuDriver = d.id) }
+                snackbar = "Imported ${d.name}. Restart the app to use it."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                snackbar = e.message ?: "Could not import that driver"
+            }
+        }
+    }
+
+    fun selectGpuDriver(id: String?) {
+        viewModelScope.launch { store.update { it.copy(gpuDriver = id) } }
+    }
+
+    fun deleteGpuDriver(id: String) {
+        viewModelScope.launch {
+            if (store.current().gpuDriver == id) store.update { it.copy(gpuDriver = null) }
+            driverStore.delete(id)
+            refreshGpuDrivers()
+        }
+    }
+
+    /** A Vulkan driver can only be loaded once per process: restart to apply a new choice. */
+    fun restartApp() {
+        val app = getApplication<Application>()
+        val intent = app.packageManager.getLaunchIntentForPackage(app.packageName) ?: return
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        app.startActivity(intent)
+        Runtime.getRuntime().exit(0)
     }
 
     // ---------------------------------------------------------------- chats

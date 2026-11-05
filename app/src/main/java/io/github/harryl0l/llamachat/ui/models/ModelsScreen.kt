@@ -51,6 +51,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -68,6 +69,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.harryl0l.llamachat.BuildConfig
 import io.github.harryl0l.llamachat.ChatViewModel
 import io.github.harryl0l.llamachat.DownloadState
 import io.github.harryl0l.llamachat.data.AppSettings
@@ -154,8 +156,91 @@ fun ModelsScreen(vm: ChatViewModel, onBack: () -> Unit) {
                 )
             }
 
+            if (BuildConfig.GPU_EXPERIMENTAL) {
+                item { SectionTitle("GPU · experimental") }
+                item { GpuCard(vm, settings) }
+            }
             item { SectionTitle("Settings") }
             item { SettingsCard(settings, vm) }
+        }
+    }
+}
+
+@Composable
+private fun GpuCard(vm: ChatViewModel, settings: AppSettings) {
+    val status by vm.engine.gpuStatus.collectAsStateWithLifecycle()
+    val driverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(vm::importGpuDriver)
+    }
+    LaunchedEffect(Unit) { vm.refreshGpuDrivers(); vm.probeGpu() }
+    Card(shape = MaterialTheme.shapes.extraLarge, colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainer)) {
+        Column(Modifier.padding(vertical = 12.dp)) {
+            Text(
+                "Runs the model with llama.cpp's Vulkan backend. On Adreno (Snapdragon) GPUs you can load " +
+                    "a custom Vulkan driver such as Mesa Turnip through libadrenotools. Results vary by " +
+                    "device and driver: it can be faster, slower, or produce wrong output.",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            if (status.isNotEmpty()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                ) {
+                    Text(status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+                }
+            }
+            ListItem(
+                headlineContent = { Text("Use GPU (Vulkan)") },
+                supportingContent = { Text("Off: CPU only. Changing it reloads the model.") },
+                trailingContent = {
+                    Switch(
+                        checked = settings.useGpu,
+                        onCheckedChange = { on -> vm.updateSettings(reloadNeeded = true) { it.copy(useGpu = on) } },
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            )
+            Label("Vulkan driver")
+            FileRow("System driver", settings.gpuDriver == null, "The phone's own driver", { vm.selectGpuDriver(null) }, null)
+            vm.gpuDrivers.forEach { d ->
+                FileRow(
+                    d.name, settings.gpuDriver == d.id,
+                    listOf(d.description, d.library).filter { it.isNotBlank() }.joinToString(" · "),
+                    { vm.selectGpuDriver(d.id) }, { vm.deleteGpuDriver(d.id) },
+                )
+            }
+            if (vm.gpuRestartNeeded) {
+                Row(
+                    Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "A driver can only be swapped at startup.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(onClick = vm::restartApp, shapes = ButtonDefaults.shapes()) { Text("Restart app") }
+                }
+            }
+            Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                OutlinedButton(
+                    onClick = { driverPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Icon(Icons.Rounded.FileOpen, null, Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                    Text("Import driver (.zip)")
+                }
+            }
+            Text(
+                "Custom drivers only work on Adreno GPUs (AdrenoTools .zip packages with a meta.json). " +
+                    "Other GPUs, like Mali, can only use the system driver.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
         }
     }
 }

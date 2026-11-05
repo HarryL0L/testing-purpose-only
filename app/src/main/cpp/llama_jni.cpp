@@ -177,6 +177,7 @@ static std::vector<cache_unit> g_cache;
 // models whose memory can't be rewound partially) doesn't run the image encoder again.
 static std::unordered_map<std::string, std::vector<float>> g_embd_cache;
 static int g_image_counter = 0;
+static bool g_use_gpu = false;
 // Context checkpoints (like llama-server): hybrid/recurrent (e.g. Qwen3.5) and SWA models can't
 // drop the end of their memory, so without these every turn re-processes the whole chat (video
 // included). A checkpoint is the small "partial" state (recurrent / SWA part) saved right before
@@ -282,13 +283,55 @@ static void unload_all() {
 
 extern "C" {
 
-JNIEXPORT void JNICALL JNI_FN(init)(JNIEnv * env, jobject, jstring native_lib_dir) {
+#ifdef LLAMACHAT_VULKAN
+extern "C" int llamachat_vk_init(const char * hook_lib_dir, const char * driver_dir, const char * driver_name,
+                                 char * msg, size_t msg_len);
+#endif
+
+// Returns a status line about the GPU driver ("" in the CPU-only build).
+// Experimental build: the Vulkan driver (system, or a custom one via libadrenotools when
+// driver_dir/driver_name are set) must be chosen before the backends are loaded, and can't be
+// changed afterwards without restarting the process.
+JNIEXPORT jstring JNICALL JNI_FN(init)(JNIEnv * env, jobject, jstring native_lib_dir,
+                                        jstring jdriver_dir, jstring jdriver_name) {
     llama_log_set(android_log_cb, nullptr);
     mtmd_helper_log_set(android_log_cb, nullptr);
     const std::string dir = jstr(env, native_lib_dir);
+    std::string status;
+#ifdef LLAMACHAT_VULKAN
+    {
+        const std::string driver_dir = jstr(env, jdriver_dir), driver_name = jstr(env, jdriver_name);
+        char msg[512] = {0};
+        const int r = llamachat_vk_init(dir.c_str(), driver_dir.c_str(), driver_name.c_str(), msg, sizeof(msg));
+        LOGI("Vulkan driver: %s (%d)", msg, r);
+        status = msg;
+    }
+#else
+    (void) jdriver_dir;
+    (void) jdriver_name;
+#endif
     LOGI("Loading ggml backends from %s", dir.c_str());
     ggml_backend_load_all_from_path(dir.c_str());
     llama_backend_init();
+    return to_jstring(env, status);
+}
+
+// One line per GPU device ggml found ("" when none, e.g. the CPU-only build).
+JNIEXPORT jstring JNICALL JNI_FN(gpuInfo)(JNIEnv * env, jobject) {
+    std::string out;
+    for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
+        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+        const auto type = ggml_backend_dev_type(dev);
+        if (type != GGML_BACKEND_DEVICE_TYPE_GPU && type != GGML_BACKEND_DEVICE_TYPE_IGPU) continue;
+        size_t free = 0, total = 0;
+        ggml_backend_dev_memory(dev, &free, &total);
+        char line[384];
+        snprintf(line, sizeof(line), "%s: %s (%.1f GiB)\n", ggml_backend_dev_name(dev),
+                 ggml_backend_dev_description(dev), total / 1073741824.0);
+        out += line;
+    }
+    if (!out.empty()) out.pop_back();
+    return to_jstring(env, out);
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(systemInfo)(JNIEnv * env, jobject) {
@@ -302,11 +345,18 @@ JNIEXPORT jstring JNICALL JNI_FN(systemInfo)(JNIEnv * env, jobject) {
 // types). Faster, but repacked tensors live in anonymous memory instead of the mmapped file, so
 // large models need more RAM and load slower. Off = weights stay memory-mapped.
 JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jint fd, jint n_ctx, jint n_threads,
-                                        jboolean repack) {
+                                        jboolean repack, jboolean use_gpu) {
     unload_all();
 
     llama_model_params mparams = llama_model_default_params();
     mparams.use_extra_bufts = repack;
+    // llama.cpp offloads to every GPU it finds by default; only do that when asked
+    static ggml_backend_dev_t no_devices[] = { nullptr };
+    g_use_gpu = use_gpu;
+    if (!use_gpu) {
+        mparams.devices      = no_devices;
+        mparams.n_gpu_layers = 0;
+    }
     if (fd >= 0) {
         const int own_fd = dup(fd);
         g_model_fp = own_fd >= 0 ? fdopen(own_fd, "rb") : nullptr;
@@ -331,6 +381,7 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, ji
     cparams.n_ubatch        = (uint32_t) g_n_batch;
     cparams.n_threads       = n_threads;
     cparams.n_threads_batch = n_threads;
+    cparams.op_offload      = use_gpu;
     g_ctx = llama_init_from_model(g_model, cparams);
     if (!g_ctx) {
         unload_all();
@@ -354,7 +405,7 @@ JNIEXPORT jstring JNICALL JNI_FN(loadProjector)(JNIEnv * env, jobject, jstring j
     if (g_mtmd) { mtmd_free(g_mtmd); g_mtmd = nullptr; }
     const std::string path = jstr(env, jpath);
     mtmd_context_params mp = mtmd_context_params_default();
-    mp.use_gpu       = false;
+    mp.use_gpu       = g_use_gpu;
     mp.n_threads     = n_threads;
     mp.print_timings = true;
     mp.warmup        = false;

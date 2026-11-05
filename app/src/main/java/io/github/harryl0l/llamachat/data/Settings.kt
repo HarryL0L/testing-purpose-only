@@ -23,6 +23,10 @@ data class AppSettings(
     val repack: Boolean = true,
     /** load the last used model when the app starts (off: only load when the user asks) */
     val autoLoad: Boolean = false,
+    /** experimental build: offload the model to the GPU (Vulkan) */
+    val useGpu: Boolean = false,
+    /** experimental build: id of a custom Vulkan driver (libadrenotools), null = system driver */
+    val gpuDriver: String? = null,
     val linkedFolders: Set<String> = emptySet(),
     val contextSize: Int = 4096,
     val threads: Int = defaultThreads(),
@@ -59,6 +63,8 @@ class SettingsStore(private val context: Context) {
         val thinking = booleanPreferencesKey("thinking")
         val repack = booleanPreferencesKey("repack")
         val autoLoad = booleanPreferencesKey("auto_load")
+        val useGpu = booleanPreferencesKey("use_gpu")
+        val gpuDriver = stringPreferencesKey("gpu_driver")
         val folders = stringSetPreferencesKey("folders")
     }
 
@@ -70,6 +76,8 @@ class SettingsStore(private val context: Context) {
             thinking = p[K.thinking] ?: d.thinking,
             repack = p[K.repack] ?: d.repack,
             autoLoad = p[K.autoLoad] ?: d.autoLoad,
+            useGpu = p[K.useGpu] ?: d.useGpu,
+            gpuDriver = p[K.gpuDriver],
             linkedFolders = p[K.folders] ?: d.linkedFolders,
             contextSize = p[K.ctx] ?: d.contextSize,
             threads = p[K.threads] ?: d.threads,
@@ -111,6 +119,8 @@ class SettingsStore(private val context: Context) {
             p[K.thinking] = n.thinking
             p[K.repack] = n.repack
             p[K.autoLoad] = n.autoLoad
+            p[K.useGpu] = n.useGpu
+            if (n.gpuDriver != null) p[K.gpuDriver] = n.gpuDriver else p.remove(K.gpuDriver)
             p[K.folders] = n.linkedFolders
         }
     }
