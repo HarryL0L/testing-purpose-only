@@ -102,13 +102,47 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private var genJob: Job? = null
     private var nextId = 0L
 
+    /** Name of the last used model (offered as a one-tap "Load" when nothing is loaded). */
+    var lastModelName by mutableStateOf<String?>(null)
+        private set
+
     init {
         viewModelScope.launch {
             refreshChats()
             refreshLocalModels()
             val s = store.current()
+            refreshLastModel()
+            // only load on start when the user opted in; otherwise wait for "Load"
+            if (s.autoLoad) loadLast()
+        }
+    }
+
+    private suspend fun refreshLastModel() {
+        val ref = store.current().modelPath
+        lastModelName = withContext(Dispatchers.IO) {
+            ref?.takeIf { repo.exists(it) }?.let { repo.displayName(it).removeSuffix(".gguf") }
+        }
+    }
+
+    /** Loads the last used model (and its projector). */
+    fun loadLast() {
+        viewModelScope.launch {
+            val s = store.current()
             val model = s.modelPath
-            if (model != null && repo.exists(model)) load(model, s.mmprojPath?.takeIf { repo.exists(it) })
+            val ok = model != null && withContext(Dispatchers.IO) { repo.exists(model) }
+            if (!ok) { snackbar = "The last model file is gone. Choose a model."; refreshLastModel(); return@launch }
+            val mmproj = s.mmprojPath?.takeIf { withContext(Dispatchers.IO) { repo.exists(it) } }
+            load(model!!, mmproj)
+        }
+    }
+
+    /** Frees the model from memory. The chat stays and is restored when a model is loaded again. */
+    fun unload() {
+        viewModelScope.launch {
+            stop(); genJob?.join()
+            engine.unload()
+            contextUsage = 0 to 0
+            refreshLastModel()
         }
     }
 
@@ -160,6 +194,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             (engine.state.value as? EngineState.Failed)?.let { snackbar = it.message }
             if (engine.state.value is EngineState.Ready && messages.isNotEmpty()) restoreIntoEngine()
             contextUsage = engine.contextUsage()
+            refreshLastModel()
         }
     }
 
@@ -176,7 +211,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 repo.download(preset) { p -> downloads[preset.id] = DownloadState.Running(p) }
                 downloads.remove(preset.id)
                 refreshLocalModels()
-                loadPreset(preset)
+                snackbar = "${preset.title} downloaded. Tap \"Use this model\" to load it."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -250,8 +285,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             store.update(transform)
             val s = store.current()
             if (reloadNeeded) {
+                // apply to the model that is already loaded; never load one on our own
                 val m = s.modelPath
-                if (m != null && repo.exists(m) && engine.state.value !is EngineState.Loading) load(m, s.mmprojPath)
+                if (m != null && engine.state.value is EngineState.Ready) load(m, s.mmprojPath)
             } else {
                 engine.updateSampling(s.sampling, s.systemPrompt)
             }

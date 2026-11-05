@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -45,9 +46,13 @@ import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.Eject
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.FilterChip
@@ -156,6 +161,11 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
                     }
                 },
                 actions = {
+                    if (engineState is EngineState.Ready) {
+                        IconButton(onClick = vm::unload, shapes = IconButtonDefaults.shapes()) {
+                            Icon(Icons.Rounded.Eject, "Unload model (free memory)")
+                        }
+                    }
                     IconButton(onClick = vm::newChat, shapes = IconButtonDefaults.shapes()) {
                         Icon(Icons.Rounded.EditNote, "New chat")
                     }
@@ -181,14 +191,19 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
         Box(Modifier.fillMaxSize().padding(padding)) {
             when {
                 engineState is EngineState.Loading -> LoadingModel()
-                vm.messages.isEmpty() -> EmptyState(engineState, onOpenModels) { vm.input = it }
-                else -> LazyColumn(
+                vm.messages.isEmpty() -> EmptyState(engineState, vm.lastModelName, vm::loadLast, onOpenModels) { vm.input = it }
+                else -> Column(Modifier.fillMaxSize()) {
+                AnimatedVisibility(engineState !is EngineState.Ready) {
+                    LoadBanner(engineState, vm.lastModelName, vm::loadLast, onOpenModels)
+                }
+                LazyColumn(
                     state = listState,
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(vm.messages, key = { it.id }) { msg -> MessageBubble(msg) }
+                }
                 }
             }
         }
@@ -339,7 +354,37 @@ private fun LoadingModel() {
 }
 
 @Composable
-private fun EmptyState(state: EngineState, onOpenModels: () -> Unit, onSuggestion: (String) -> Unit) {
+private fun LoadBanner(state: EngineState, lastModel: String?, onLoad: () -> Unit, onOpenModels: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                (state as? EngineState.Failed)?.message ?: "No model loaded. Load one to continue this chat.",
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (lastModel != null) {
+                Button(onClick = onLoad, shapes = ButtonDefaults.shapes()) { Text("Load") }
+            } else {
+                TextButton(onClick = onOpenModels) { Text("Choose") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(
+    state: EngineState,
+    lastModel: String?,
+    onLoad: () -> Unit,
+    onOpenModels: () -> Unit,
+    onSuggestion: (String) -> Unit,
+) {
     Column(
         Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -368,7 +413,9 @@ private fun EmptyState(state: EngineState, onOpenModels: () -> Unit, onSuggestio
         Spacer(Modifier.size(8.dp))
         Text(
             if (ready) "Everything runs locally with llama.cpp — nothing leaves your device."
-            else (state as? EngineState.Failed)?.message ?: "Download or import a GGUF model to get started.",
+            else (state as? EngineState.Failed)?.message
+                ?: if (lastModel != null) "No model is loaded. Nothing uses memory until you load one."
+                else "Download or import a GGUF model to get started.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -378,6 +425,18 @@ private fun EmptyState(state: EngineState, onOpenModels: () -> Unit, onSuggestio
             listOf("What's in this photo?", "Summarize this video", "Read the text in this image").forEach {
                 SuggestionChip(onClick = { onSuggestion(it) }, label = { Text(it) })
             }
+        } else if (lastModel != null) {
+            Button(
+                onClick = onLoad,
+                shapes = ButtonDefaults.shapes(),
+                modifier = Modifier.heightIn(min = ButtonDefaults.MediumContainerHeight),
+                contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
+            ) {
+                Icon(Icons.Rounded.PlayArrow, null, Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.MediumContainerHeight)))
+                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ButtonDefaults.MediumContainerHeight)))
+                Text("Load $lastModel", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            TextButton(onClick = onOpenModels) { Text("Choose another model") }
         } else {
             FilledTonalIconButton(
                 onClick = onOpenModels,

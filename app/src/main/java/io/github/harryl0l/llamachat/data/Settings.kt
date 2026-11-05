@@ -21,6 +21,8 @@ data class AppSettings(
     val thinking: Boolean = true,
     /** CPU weight repacking: faster, but large models need more RAM (weights leave the mmapped file) */
     val repack: Boolean = true,
+    /** load the last used model when the app starts (off: only load when the user asks) */
+    val autoLoad: Boolean = false,
     val linkedFolders: Set<String> = emptySet(),
     val contextSize: Int = 4096,
     val threads: Int = defaultThreads(),
@@ -53,6 +55,7 @@ class SettingsStore(private val context: Context) {
         val system = stringPreferencesKey("system")
         val thinking = booleanPreferencesKey("thinking")
         val repack = booleanPreferencesKey("repack")
+        val autoLoad = booleanPreferencesKey("auto_load")
         val folders = stringSetPreferencesKey("folders")
     }
 
@@ -63,6 +66,7 @@ class SettingsStore(private val context: Context) {
             mmprojPath = p[K.mmproj],
             thinking = p[K.thinking] ?: d.thinking,
             repack = p[K.repack] ?: d.repack,
+            autoLoad = p[K.autoLoad] ?: d.autoLoad,
             linkedFolders = p[K.folders] ?: d.linkedFolders,
             contextSize = p[K.ctx] ?: d.contextSize,
             threads = p[K.threads] ?: d.threads,
@@ -101,6 +105,7 @@ class SettingsStore(private val context: Context) {
             p[K.system] = n.systemPrompt
             p[K.thinking] = n.thinking
             p[K.repack] = n.repack
+            p[K.autoLoad] = n.autoLoad
             p[K.folders] = n.linkedFolders
         }
     }

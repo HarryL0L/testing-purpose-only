@@ -22,6 +22,7 @@ After the model download, nothing leaves the device.
 - **Fast follow-ups with video on hybrid models**: context checkpoints, like llama-server. Qwen3.5 (hybrid/recurrent) and sliding-window models can't drop the end of their memory, so the app snapshots the small recurrent/SWA state right before the generation prompt and restores it on the next turn, instead of re-processing the whole chat. In testing, a follow-up after a 16-frame video went from 3.5 s to 0.2 s of prompt time.
 - **Video quality** (Low / Medium / Model max) caps the pixels per frame. Models like Qwen-VL ask for 672×1216 frames for a short portrait clip, which is very slow on a phone CPU. The default is Low with 8 frames, and a progress percentage shows while media is processed.
 - **Repack weights on/off**: CPU weight repacking (`use_extra_bufts`) is faster, but it copies the weights into RAM instead of reading them from the memory-mapped file. Turn it off for large models that run out of memory or load slowly.
+- **You decide when a model is in memory**: nothing loads automatically (unless "Load last model on startup" is switched on). The chat screen offers "Load *last model*", and the eject button in the top bar unloads it. Downloads finish without loading anything.
 - Streaming replies with tok/s, a stop button, a context usage readout, and settings for context size, threads, temperature, reply length, max video frames and the system prompt.
 
 | Preset | Size | Notes |

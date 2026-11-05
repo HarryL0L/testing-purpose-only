@@ -123,7 +123,7 @@ fun ModelsScreen(vm: ChatViewModel, onBack: () -> Unit) {
                     downloaded = vm.repo.isDownloaded(preset),
                     active = settings.modelPath == vm.repo.presetFiles(preset).first.absolutePath,
                     download = vm.downloads[preset.id],
-                    onDownload = { vm.download(preset); waitingForLoad = true },
+                    onDownload = { vm.download(preset) },
                     onUse = { vm.loadPreset(preset); waitingForLoad = true },
                 )
             }
@@ -345,6 +345,17 @@ private fun SettingsCard(settings: AppSettings, vm: ChatViewModel) {
             SettingSlider("CPU threads", settings.threads.toFloat(), 1f..8f, 6, { "${it.roundToInt()}" }) { v ->
                 vm.updateSettings(reloadNeeded = true) { it.copy(threads = v.roundToInt()) }
             }
+            ListItem(
+                headlineContent = { Text("Load last model on startup") },
+                supportingContent = { Text("Off: the app only loads a model when you tap Load.") },
+                trailingContent = {
+                    Switch(
+                        checked = settings.autoLoad,
+                        onCheckedChange = { on -> vm.updateSettings(reloadNeeded = false) { it.copy(autoLoad = on) } },
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            )
             ListItem(
                 headlineContent = { Text("Repack weights for speed") },
                 supportingContent = {
