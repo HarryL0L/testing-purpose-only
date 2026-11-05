@@ -34,6 +34,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -403,7 +404,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         AttachmentKind.Video -> {
                             reply.status = "Sampling video frames…"
-                            MediaDecoder.decodeVideo(app, a.uri, settings.value.maxVideoFrames, engine::videoConfig)
+                            val s = settings.value
+                            MediaDecoder.decodeVideo(
+                                app, a.uri, s.maxVideoFrames,
+                                MediaDecoder.VIDEO_QUALITY_PIXELS[s.videoQuality.coerceIn(0, 2)],
+                                engine::videoConfig,
+                            )
                                 .also { v -> reply.status = "Watching ${v.timestamps.size} frames…" }
                         }
                     }
@@ -418,10 +424,23 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 persistChat()
 
                 if (media.isEmpty()) reply.status = "Thinking…"
+                // show how far prompt processing (vision encoder + prefill) has got
+                val what = when {
+                    media.any { it is DecodedMedia.Video } -> "Processing video"
+                    media.isNotEmpty() -> "Processing image"
+                    else -> "Reading"
+                }
+                val progressJob = launch {
+                    while (true) {
+                        kotlinx.coroutines.delay(400)
+                        val p = engine.promptProgress()
+                        if (p >= 0f) reply.status = "$what… ${(p * 100).toInt()}%"
+                    }
+                }
                 var tokens = 0
                 var start = 0L
-                engine.generate(user.prompt, media).collect { piece ->
-                    if (tokens == 0) start = System.nanoTime()
+                engine.generate(user.prompt, media).onCompletion { progressJob.cancel() }.collect { piece ->
+                    if (tokens == 0) { start = System.nanoTime(); progressJob.cancel() }
                     tokens++
                     reply.text += piece
                     if (tokens % 8 == 0) reply.status = tps(tokens, start)

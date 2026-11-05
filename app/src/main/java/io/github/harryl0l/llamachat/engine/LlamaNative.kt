@@ -46,6 +46,9 @@ internal object LlamaNative {
     external fun finishTurn()
     external fun resetChat()
 
+    /** 0..1 while a prompt is processed, -1 otherwise. Safe to call from any thread. */
+    external fun promptProgress(): Float
+
     external fun setThinking(enabled: Boolean)
     external fun promptOpensThinking(): Boolean
 

@@ -7,6 +7,7 @@
 #include <jni.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -176,6 +177,23 @@ static std::vector<cache_unit> g_cache;
 // models whose memory can't be rewound partially) doesn't run the image encoder again.
 static std::unordered_map<std::string, std::vector<float>> g_embd_cache;
 static int g_image_counter = 0;
+// Context checkpoints (like llama-server): hybrid/recurrent (e.g. Qwen3.5) and SWA models can't
+// drop the end of their memory, so without these every turn re-processes the whole chat (video
+// included). A checkpoint is the small "partial" state (recurrent / SWA part) saved right before
+// the generation prompt; restoring it lets the next turn continue from there.
+struct checkpoint {
+    size_t               n_units = 0; // prompt units covered
+    llama_pos            pos_end = 0; // position of the first unit after it
+    std::vector<uint8_t> data;
+};
+static std::vector<checkpoint> g_ckpts;
+static bool g_use_ckpts = false;
+static constexpr size_t MAX_CKPTS = 2;
+
+// prompt progress, read from the UI thread while prompt() runs
+static std::atomic<int64_t> g_prog_done{0};
+static std::atomic<int64_t> g_prog_total{0};
+
 static bool g_enable_thinking = true;
 static bool g_opens_thinking  = false; // the generation prompt ends inside an open <think> block
 static std::string                                  g_system_prompt;
@@ -247,6 +265,7 @@ static void unload_all() {
     g_chat_media.clear();
     g_cache.clear();
     g_embd_cache.clear();
+    g_ckpts.clear();
     g_history.clear();
     g_tmpls.reset();
     g_batch = common_batch();
@@ -318,6 +337,7 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, ji
         return to_jstring(env, "Failed to create context (out of memory? try a smaller context size)");
     }
 
+    g_use_ckpts = llama_model_is_recurrent(g_model) || llama_model_is_hybrid(g_model) || llama_model_n_swa(g_model) > 0;
     g_tmpls = common_chat_templates_init(g_model, "");
     g_batch = common_batch(g_ctx);
     g_sampler = common_sampler_init(g_model, g_sparams);
@@ -511,6 +531,7 @@ JNIEXPORT jstring JNICALL JNI_FN(prompt)(JNIEnv * env, jobject, jstring jtext) {
         msgs.push_back(std::move(msg));
     }
     std::string formatted;
+    std::string formatted_nogen;
     try {
         common_chat_templates_inputs inputs;
         inputs.use_jinja             = true;
@@ -518,6 +539,10 @@ JNIEXPORT jstring JNICALL JNI_FN(prompt)(JNIEnv * env, jobject, jstring jtext) {
         inputs.enable_thinking       = g_enable_thinking;
         inputs.messages              = msgs;
         formatted = common_chat_templates_apply(g_tmpls.get(), inputs).prompt.str();
+        if (g_use_ckpts) {
+            inputs.add_generation_prompt = false;
+            formatted_nogen = common_chat_templates_apply(g_tmpls.get(), inputs).prompt.str();
+        }
     } catch (const std::exception & e) {
         rollback_media();
         return to_jstring(env, std::string("Chat template error: ") + e.what());
@@ -581,18 +606,69 @@ JNIEXPORT jstring JNICALL JNI_FN(prompt)(JNIEnv * env, jobject, jstring jtext) {
     const size_t k_match = k;
     llama_memory_t mem = llama_get_memory(g_ctx);
     if (!llama_memory_seq_rm(mem, 0, units[k].pos, -1)) {
-        // e.g. recurrent / hybrid models can't drop a partial range: start over
-        // (media embeddings are cached, so the vision encoder doesn't run again)
-        llama_memory_clear(mem, true);
-        k = 0;
+        // the memory can't drop a partial range (recurrent / hybrid / SWA): go back to the latest
+        // checkpoint inside the shared prefix, or start over
+        bool restored = false;
+        for (auto it = g_ckpts.rbegin(); it != g_ckpts.rend() && !restored; ++it) {
+            if (it->n_units == 0 || it->n_units > k) continue;
+            if (llama_state_seq_set_data_ext(g_ctx, it->data.data(), it->data.size(), 0,
+                                             LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY) == it->data.size() &&
+                llama_memory_seq_rm(mem, 0, it->pos_end, -1)) {
+                k = it->n_units;
+                restored = true;
+            }
+        }
+        if (!restored) {
+            // media embeddings are cached, so at least the vision encoder doesn't run again
+            llama_memory_clear(mem, true);
+            k = 0;
+        }
     }
+    g_ckpts.erase(std::remove_if(g_ckpts.begin(), g_ckpts.end(),
+                                 [&](const checkpoint & c) { return c.n_units > k; }),
+                  g_ckpts.end());
     LOGI("prompt: %zu units, prefix match %zu, reusing %zu, evaluating %zu",
          units.size(), k_match, k, units.size() - k);
+
+    // where to save the next checkpoint: just before the generation prompt, which the next turn
+    // usually renders differently (e.g. thinking tags)
+    size_t n_ckpt = 0;
+    if (g_use_ckpts) {
+        size_t tail = 16;
+        if (!formatted_nogen.empty() && formatted.compare(0, formatted_nogen.size(), formatted_nogen) == 0) {
+            tail = common_tokenize(g_vocab, formatted.substr(formatted_nogen.size()), false, true).size() + 2;
+        }
+        if (units.size() > tail && units.size() - tail > k) n_ckpt = units.size() - tail;
+    }
+
+    // progress: media weigh more than text (vision encoder + their tokens)
+    {
+        int64_t total = 0;
+        for (size_t j = k; j < units.size(); j++) {
+            total += units[j].tok == LLAMA_TOKEN_NULL ? 4 * (int64_t) mtmd_input_chunk_get_n_tokens(units[j].chunk) : 1;
+        }
+        g_prog_done  = 0;
+        g_prog_total = std::max<int64_t>(total, 1);
+    }
 
     // --- evaluate the rest
     int32_t res = 0;
     size_t i = k;
     while (i < units.size() && res == 0) {
+        if (n_ckpt > 0 && i == n_ckpt) {
+            checkpoint c;
+            c.n_units = n_ckpt;
+            c.pos_end = units[n_ckpt].pos;
+            c.data.resize(llama_state_seq_get_size_ext(g_ctx, 0, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY));
+            if (!c.data.empty() &&
+                llama_state_seq_get_data_ext(g_ctx, c.data.data(), c.data.size(), 0,
+                                             LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY) == c.data.size()) {
+                LOGI("checkpoint at unit %zu (pos %d), %.1f MiB", c.n_units, c.pos_end, c.data.size() / 1048576.0);
+                g_ckpts.push_back(std::move(c));
+                if (g_ckpts.size() > MAX_CKPTS) g_ckpts.erase(g_ckpts.begin());
+            }
+            n_ckpt = 0;
+        }
         if (units[i].tok == LLAMA_TOKEN_NULL) {
             const cache_unit & u = units[i];
             float * embd = nullptr;
@@ -613,18 +689,21 @@ JNIEXPORT jstring JNICALL JNI_FN(prompt)(JNIEnv * env, jobject, jstring jtext) {
             llama_pos new_n_past = u.pos;
             res = mtmd_helper_decode_image_chunk(g_mtmd, g_ctx, u.chunk, embd, u.pos, 0, g_n_batch,
                                                  &new_n_past, nullptr, nullptr);
+            g_prog_done += 4 * (int64_t) mtmd_input_chunk_get_n_tokens(u.chunk);
             i++;
             continue;
         }
         g_batch.clear();
         int n = 0;
-        while (i < units.size() && units[i].tok != LLAMA_TOKEN_NULL && n < g_n_batch) {
+        while (i < units.size() && units[i].tok != LLAMA_TOKEN_NULL && n < g_n_batch && !(n > 0 && i == n_ckpt)) {
             g_batch.add(units[i].tok, units[i].pos, 0, i == units.size() - 1);
             i++;
             n++;
         }
         res = llama_process(g_ctx, LLAMA_PROCESS_TYPE_DECODE, g_batch.get());
+        g_prog_done += n;
     }
+    g_prog_total = 0;
     free_chunks();
     for (auto & u : units) u.chunk = nullptr;
 
@@ -632,6 +711,7 @@ JNIEXPORT jstring JNICALL JNI_FN(prompt)(JNIEnv * env, jobject, jstring jtext) {
         // the KV cache is now in an unknown state: start from scratch next time
         llama_memory_clear(mem, true);
         g_cache.clear();
+        g_ckpts.clear();
         g_n_past = 0;
         rollback_media();
         return to_jstring(env, "Failed to evaluate the prompt (" + std::to_string(res) + ")");
@@ -698,11 +778,18 @@ JNIEXPORT void JNICALL JNI_FN(resetChat)(JNIEnv *, jobject) {
     g_chat_media.clear();
     g_cache.clear();
     g_embd_cache.clear();
+    g_ckpts.clear();
     g_n_past = 0;
     g_utf8_buf.clear();
     g_assistant_text.clear();
     if (g_ctx) llama_memory_clear(llama_get_memory(g_ctx), true);
     if (g_sampler) common_sampler_reset(g_sampler);
+}
+
+// 0..1 while a prompt is being processed, -1 otherwise. Safe to call from any thread.
+JNIEXPORT jfloat JNICALL JNI_FN(promptProgress)(JNIEnv *, jobject) {
+    const int64_t total = g_prog_total.load();
+    return total <= 0 ? -1.0f : (float) std::min<int64_t>(g_prog_done.load(), total) / (float) total;
 }
 
 JNIEXPORT void JNICALL JNI_FN(setThinking)(JNIEnv *, jobject, jboolean enabled) {
@@ -721,6 +808,7 @@ JNIEXPORT void JNICALL JNI_FN(restoreChat)(JNIEnv * env, jobject, jobjectArray r
     g_history.clear();
     g_chat_media.clear();
     g_cache.clear();
+    g_ckpts.clear();
     g_n_past = 0;
     if (g_ctx) llama_memory_clear(llama_get_memory(g_ctx), true);
     if (g_sampler) common_sampler_reset(g_sampler);

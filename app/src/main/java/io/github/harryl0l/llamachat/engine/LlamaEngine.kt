@@ -125,6 +125,9 @@ class LlamaEngine(context: Context) {
         )
     }
 
+    /** 0..1 while the prompt (text + media) is being processed, -1 otherwise. Any thread. */
+    fun promptProgress(): Float = if (initialized) LlamaNative.promptProgress() else -1f
+
     suspend fun setThinking(enabled: Boolean) = withContext(dispatcher) {
         if (initialized) LlamaNative.setThinking(enabled)
     }

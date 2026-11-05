@@ -45,6 +45,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -365,9 +368,25 @@ private fun SettingsCard(settings: AppSettings, vm: ChatViewModel) {
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 modifier = Modifier.padding(horizontal = 0.dp),
             )
-            SettingSlider("Max video frames", settings.maxVideoFrames.toFloat(), 4f..64f, 14, { "${it.roundToInt()}" }) { v ->
+            SettingSlider("Max video frames", settings.maxVideoFrames.toFloat(), 4f..32f, 6, { "${it.roundToInt()}" }) { v ->
                 vm.updateSettings(reloadNeeded = false) { it.copy(maxVideoFrames = (v / 4).roundToInt() * 4) }
             }
+            Text("Video quality", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                listOf("Low", "Medium", "Model max").forEachIndexed { i, label ->
+                    SegmentedButton(
+                        selected = settings.videoQuality == i,
+                        onClick = { vm.updateSettings(reloadNeeded = false) { it.copy(videoQuality = i) } },
+                        shape = SegmentedButtonDefaults.itemShape(i, 3),
+                    ) { Text(label) }
+                }
+            }
+            Text(
+                "Every frame goes through the vision encoder: higher quality and more frames are much " +
+                    "slower and heat up the phone, especially with large models.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             SettingSlider("Temperature", settings.sampling.temperature, 0f..2f, 19, { "%.1f".format(it) }) { v ->
                 vm.updateSettings(reloadNeeded = false) { it.copy(sampling = it.sampling.copy(temperature = v)) }
             }

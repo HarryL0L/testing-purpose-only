@@ -60,10 +60,14 @@ object MediaDecoder {
      * Frames are decoded with MediaCodec (hardware, single forward pass, see [VideoFrameGrabber]).
      * If the device decoder can't hand out YUV images, falls back to MediaMetadataRetriever.
      */
+    /** Pixel budget per frame for each video quality level (0 = no cap: the model's choice). */
+    val VIDEO_QUALITY_PIXELS = intArrayOf(100_000, 200_000, 0)
+
     suspend fun decodeVideo(
         context: Context,
         uri: Uri,
         maxFrames: Int,
+        maxPixels: Int,
         videoConfig: suspend (width: Int, height: Int, nFrames: Int, fps: Float) -> VideoConfig,
     ): DecodedMedia.Video = withContext(Dispatchers.IO) {
         // --- source properties
@@ -111,11 +115,19 @@ object MediaDecoder {
         if (cfg.template != TEMPLATE_DEFAULT && times.size % 2 == 1) times = times + times.last()
 
         // --- output frame size (after rotation)
-        val (outW, outH) = if (cfg.width > 0 && cfg.height > 0) {
+        var (outW, outH) = if (cfg.width > 0 && cfg.height > 0) {
             cfg.width to cfg.height
         } else {
             val s = min(1f, DEFAULT_FRAME_SIDE.toFloat() / max(srcW, srcH))
             ((srcW * s).roundToInt().coerceAtLeast(2) and 1.inv()) to ((srcH * s).roundToInt().coerceAtLeast(2) and 1.inv())
+        }
+        // The vision encoder's cost grows faster than linearly with pixels, and models like
+        // Qwen-VL ask for large frames for short clips (e.g. 672x1216 for a 15 s portrait video).
+        // Cap the frame size; multiples of 32 match the patch grid of common encoders.
+        if (maxPixels > 0 && outW.toLong() * outH > maxPixels) {
+            val s = kotlin.math.sqrt(maxPixels.toDouble() / (outW.toLong() * outH))
+            outW = ((outW * s / 32).roundToInt() * 32).coerceAtLeast(64)
+            outH = ((outH * s / 32).roundToInt() * 32).coerceAtLeast(64)
         }
 
         val ts = times.toFloatArray()
