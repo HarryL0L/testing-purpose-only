@@ -66,7 +66,7 @@ android {
             applicationIdSuffix = ".experimental"
             versionNameSuffix = "-vulkan-experimental"
             buildConfigField("boolean", "GPU_EXPERIMENTAL", "true")
-            externalNativeBuild { cmake { arguments += "-DLLAMACHAT_VULKAN=ON" } }
+            externalNativeBuild { cmake { arguments += listOf("-DLLAMACHAT_VULKAN=ON", "-DLLAMACHAT_MALI=ON") } }
         }
     }
 

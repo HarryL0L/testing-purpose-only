@@ -178,6 +178,10 @@ static std::vector<cache_unit> g_cache;
 static std::unordered_map<std::string, std::vector<float>> g_embd_cache;
 static int g_image_counter = 0;
 static bool g_use_gpu = false;
+// GPU mode for the current model: 0 = CPU, 1 = Vulkan, 2 = Mali (OpenCL, experimental backend)
+static int g_gpu_mode = 0;
+static ggml_backend_dev_t g_mali_dev = nullptr;
+static ggml_backend_dev_t g_vk_dev   = nullptr; // first Vulkan device in Vulkan mode
 // Context checkpoints (like llama-server): hybrid/recurrent (e.g. Qwen3.5) and SWA models can't
 // drop the end of their memory, so without these every turn re-processes the whole chat (video
 // included). A checkpoint is the small "partial" state (recurrent / SWA part) saved right before
@@ -316,6 +320,42 @@ JNIEXPORT jstring JNICALL JNI_FN(init)(JNIEnv * env, jobject, jstring native_lib
     return to_jstring(env, status);
 }
 
+#ifdef LLAMACHAT_MALI
+#include "mali/ggml-mali.h"
+#endif
+
+// Registers the experimental Mali (OpenCL) backend. Returns a status line ("" when not built in).
+JNIEXPORT jstring JNICALL JNI_FN(enableMali)(JNIEnv * env, jobject, jboolean any_device) {
+#ifdef LLAMACHAT_MALI
+    if (!g_mali_dev) {
+        ggml_backend_reg_t reg = ggml_backend_mali_reg(any_device);
+        if (reg) {
+            ggml_backend_register(reg);
+            g_mali_dev = ggml_backend_reg_dev_get(reg, 0);
+        }
+    }
+    return to_jstring(env, std::string(g_mali_dev ? "Mali backend: " : "Mali backend unavailable: ") + ggml_backend_mali_status());
+#else
+    (void) any_device;
+    return to_jstring(env, "");
+#endif
+}
+
+// "n ops, ms" of GPU matrix multiplications since the last call (Mali backend), "" otherwise
+JNIEXPORT jstring JNICALL JNI_FN(maliStats)(JNIEnv * env, jobject) {
+#ifdef LLAMACHAT_MALI
+    int64_t n = 0;
+    double ms = 0;
+    ggml_backend_mali_stats(&n, &ms);
+    ggml_backend_mali_reset_stats();
+    char buf[96];
+    snprintf(buf, sizeof(buf), "%lld GPU matmuls, %.0f ms", (long long) n, ms);
+    return to_jstring(env, n > 0 ? buf : "");
+#else
+    return to_jstring(env, "");
+#endif
+}
+
 // One line per GPU device ggml found ("" when none, e.g. the CPU-only build).
 JNIEXPORT jstring JNICALL JNI_FN(gpuInfo)(JNIEnv * env, jobject) {
     std::string out;
@@ -344,18 +384,45 @@ JNIEXPORT jstring JNICALL JNI_FN(systemInfo)(JNIEnv * env, jobject) {
 // repack: let the CPU backend repack weights into its faster interleaved layouts (extra buffer
 // types). Faster, but repacked tensors live in anonymous memory instead of the mmapped file, so
 // large models need more RAM and load slower. Off = weights stay memory-mapped.
+// gpu_mode: 0 = CPU only, 1 = Vulkan (whole model on the GPU), 2 = Mali backend (experimental:
+// weights stay in RAM, the large matrix multiplications of prompt / image processing run on the
+// GPU, generation stays on the CPU).
 JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jint fd, jint n_ctx, jint n_threads,
-                                        jboolean repack, jboolean use_gpu) {
+                                        jboolean repack, jint gpu_mode) {
     unload_all();
 
     llama_model_params mparams = llama_model_default_params();
     mparams.use_extra_bufts = repack;
     // llama.cpp offloads to every GPU it finds by default; only do that when asked
     static ggml_backend_dev_t no_devices[] = { nullptr };
-    g_use_gpu = use_gpu;
-    if (!use_gpu) {
+    static ggml_backend_dev_t vk_devices[8];
+    static ggml_backend_dev_t mali_devices[2];
+    if (gpu_mode == 2 && !g_mali_dev) gpu_mode = 0;
+    g_gpu_mode = gpu_mode;
+    g_use_gpu  = gpu_mode != 0;
+    if (gpu_mode == 0) {
         mparams.devices      = no_devices;
         mparams.n_gpu_layers = 0;
+    } else if (gpu_mode == 1) {
+        // every GPU except the Mali backend
+        size_t n = 0;
+        for (size_t i = 0; i < ggml_backend_dev_count() && n + 1 < 8; i++) {
+            ggml_backend_dev_t d = ggml_backend_dev_get(i);
+            const auto t = ggml_backend_dev_type(d);
+            if ((t == GGML_BACKEND_DEVICE_TYPE_GPU || t == GGML_BACKEND_DEVICE_TYPE_IGPU) && d != g_mali_dev) vk_devices[n++] = d;
+        }
+        vk_devices[n] = nullptr;
+        mparams.devices = vk_devices;
+        g_vk_dev = vk_devices[0];
+    } else {
+        // weights stay on the CPU side (read into RAM: the GPU wraps them without copying, which
+        // isn't safe for a read-only mmap), in plain ggml layout (no repack); big batches offload
+        mali_devices[0] = g_mali_dev;
+        mali_devices[1] = nullptr;
+        mparams.devices         = mali_devices;
+        mparams.n_gpu_layers    = 0;
+        mparams.use_extra_bufts = false;
+        mparams.load_mode       = LLAMA_LOAD_MODE_NONE;
     }
     if (fd >= 0) {
         const int own_fd = dup(fd);
@@ -381,7 +448,7 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, ji
     cparams.n_ubatch        = (uint32_t) g_n_batch;
     cparams.n_threads       = n_threads;
     cparams.n_threads_batch = n_threads;
-    cparams.op_offload      = use_gpu;
+    cparams.op_offload      = gpu_mode != 0;
     g_ctx = llama_init_from_model(g_model, cparams);
     if (!g_ctx) {
         unload_all();
@@ -406,6 +473,8 @@ JNIEXPORT jstring JNICALL JNI_FN(loadProjector)(JNIEnv * env, jobject, jstring j
     const std::string path = jstr(env, jpath);
     mtmd_context_params mp = mtmd_context_params_default();
     mp.use_gpu       = g_use_gpu;
+    if (g_gpu_mode == 2) mp.device = g_mali_dev; // not another GPU (e.g. Vulkan) the encoder might pick
+    if (g_gpu_mode == 1) mp.device = g_vk_dev;   // and not the Mali backend in Vulkan mode
     mp.n_threads     = n_threads;
     mp.print_timings = true;
     mp.warmup        = false;

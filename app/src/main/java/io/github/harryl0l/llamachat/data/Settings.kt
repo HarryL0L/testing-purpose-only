@@ -23,8 +23,8 @@ data class AppSettings(
     val repack: Boolean = true,
     /** load the last used model when the app starts (off: only load when the user asks) */
     val autoLoad: Boolean = false,
-    /** experimental build: offload the model to the GPU (Vulkan) */
-    val useGpu: Boolean = false,
+    /** experimental build: 0 = CPU, 1 = Vulkan, 2 = Mali (OpenCL, prompt/image processing only) */
+    val gpuMode: Int = 0,
     /** experimental build: id of a custom Vulkan driver (libadrenotools), null = system driver */
     val gpuDriver: String? = null,
     val linkedFolders: Set<String> = emptySet(),
@@ -63,7 +63,8 @@ class SettingsStore(private val context: Context) {
         val thinking = booleanPreferencesKey("thinking")
         val repack = booleanPreferencesKey("repack")
         val autoLoad = booleanPreferencesKey("auto_load")
-        val useGpu = booleanPreferencesKey("use_gpu")
+        val useGpu = booleanPreferencesKey("use_gpu") // old on/off switch (= Vulkan)
+        val gpuMode = intPreferencesKey("gpu_mode")
         val gpuDriver = stringPreferencesKey("gpu_driver")
         val folders = stringSetPreferencesKey("folders")
     }
@@ -76,7 +77,7 @@ class SettingsStore(private val context: Context) {
             thinking = p[K.thinking] ?: d.thinking,
             repack = p[K.repack] ?: d.repack,
             autoLoad = p[K.autoLoad] ?: d.autoLoad,
-            useGpu = p[K.useGpu] ?: d.useGpu,
+            gpuMode = p[K.gpuMode] ?: if (p[K.useGpu] == true) 1 else d.gpuMode,
             gpuDriver = p[K.gpuDriver],
             linkedFolders = p[K.folders] ?: d.linkedFolders,
             contextSize = p[K.ctx] ?: d.contextSize,
@@ -119,7 +120,8 @@ class SettingsStore(private val context: Context) {
             p[K.thinking] = n.thinking
             p[K.repack] = n.repack
             p[K.autoLoad] = n.autoLoad
-            p[K.useGpu] = n.useGpu
+            p[K.gpuMode] = n.gpuMode
+            p.remove(K.useGpu)
             if (n.gpuDriver != null) p[K.gpuDriver] = n.gpuDriver else p.remove(K.gpuDriver)
             p[K.folders] = n.linkedFolders
         }

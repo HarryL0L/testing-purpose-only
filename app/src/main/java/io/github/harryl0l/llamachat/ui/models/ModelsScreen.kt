@@ -191,16 +191,26 @@ private fun GpuCard(vm: ChatViewModel, settings: AppSettings) {
                     Text(status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
                 }
             }
-            ListItem(
-                headlineContent = { Text("Use GPU (Vulkan)") },
-                supportingContent = { Text("Off: CPU only. Changing it reloads the model.") },
-                trailingContent = {
-                    Switch(
-                        checked = settings.useGpu,
-                        onCheckedChange = { on -> vm.updateSettings(reloadNeeded = true) { it.copy(useGpu = on) } },
-                    )
-                },
-                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            Label("Run on")
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                listOf("CPU", "Vulkan", "Mali (OpenCL)").forEachIndexed { i, label ->
+                    SegmentedButton(
+                        selected = settings.gpuMode == i,
+                        onClick = { vm.updateSettings(reloadNeeded = true) { it.copy(gpuMode = i) } },
+                        shape = SegmentedButtonDefaults.itemShape(i, 3),
+                    ) { Text(label, maxLines = 1) }
+                }
+            }
+            Text(
+                when (settings.gpuMode) {
+                    1 -> "Vulkan: the whole model runs on the GPU (needs a Vulkan driver llama.cpp accepts)."
+                    2 -> "Mali: prompt, image and video processing (Q8_0 / F16 weights) run on the GPU; " +
+                        "writing the reply stays on the CPU. The model is read into RAM and repacking is off."
+                    else -> "CPU only (same as the normal app)."
+                } + " Changing it reloads the model. Each reply shows prompt time and GPU work.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
             )
             Label("Vulkan driver")
             FileRow("System driver", settings.gpuDriver == null, "The phone's own driver", { vm.selectGpuDriver(null) }, null)

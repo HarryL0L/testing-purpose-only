@@ -76,6 +76,26 @@ Caveats: custom drivers only work on Adreno GPUs. On other GPUs (e.g. Mali) only
 llama.cpp's Vulkan backend may be slower than the CPU or give wrong output depending on the driver. This build has not
 been tested on real GPUs by the author of this change.
 
+### Experimental Mali backend (OpenCL)
+
+The experimental flavor also has its own small ggml backend for **Mali GPUs**
+(`app/src/main/cpp/mali/`). It's needed because llama.cpp's OpenCL backend only accepts Adreno and Intel GPUs, and its
+kernels assume their sub-group sizes. The Mali backend:
+- implements only matrix multiplication (`MUL_MAT`) for **Q8_0** and **F16** weights. ggml's scheduler runs everything
+  else on the CPU.
+- is used for large batches only: prompt, image and video processing (≥ 32 tokens). Token-by-token generation stays on
+  the CPU, where a phone GPU doesn't win.
+- follows the approach of Google's ML Drift (Apache-2.0), which makes LiteRT fast on Mali: activations are quantized to
+  int8 and multiplied with the Arm int8 dot-product instruction (`cl_arm_integer_dot_product_accumulate_int8`), using
+  register tiles that don't depend on a sub-group size.
+- uses host memory wrapped with `CL_MEM_USE_HOST_PTR`. Mali shares RAM with the CPU, so tensors aren't copied. In Mali
+  mode the model is read into RAM (no mmap) and CPU repacking is off.
+
+Pick it in Models → GPU · experimental → Run on: **Mali (OpenCL)**. Each reply then shows the prompt time and how many
+matrix multiplications ran on the GPU, for comparing against CPU mode. Correctness was checked against ggml's CPU
+backend with PoCL (`mali/test/mali_matmul_test.cpp`); greedy outputs of Qwen3-VL 2B (text and image) were identical. It
+has **not been benchmarked on a real Mali GPU**.
+
 ## Layout
 
 ```

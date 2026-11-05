@@ -192,7 +192,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 prepareGpuDriver()
                 engine.load(
                     spec, s.contextSize, s.threads, s.sampling, s.systemPrompt, s.thinking, s.repack,
-                    useGpu = BuildConfig.GPU_EXPERIMENTAL && s.useGpu,
+                    gpuMode = if (BuildConfig.GPU_EXPERIMENTAL) s.gpuMode else io.github.harryl0l.llamachat.engine.GPU_CPU,
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -564,13 +564,26 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 var tokens = 0
                 var start = 0L
+                val promptStart = System.nanoTime()
+                var promptSec = 0.0
+                engine.gpuStats() // reset the counters
                 engine.generate(user.prompt, media).onCompletion { progressJob.cancel() }.collect { piece ->
-                    if (tokens == 0) { start = System.nanoTime(); progressJob.cancel() }
+                    if (tokens == 0) {
+                        start = System.nanoTime()
+                        promptSec = (start - promptStart) / 1e9
+                        progressJob.cancel()
+                    }
                     tokens++
                     reply.text += piece
                     if (tokens % 8 == 0) reply.status = tps(tokens, start)
                 }
-                reply.status = if (tokens > 1) tps(tokens, start) else null
+                // speed, prompt processing time and (experimental build) GPU work: handy to compare CPU vs GPU
+                val gpu = engine.gpuStats()
+                reply.status = listOfNotNull(
+                    if (tokens > 1) tps(tokens, start) else null,
+                    if (promptSec > 0) "prompt %.1f s".format(promptSec) else null,
+                    gpu.ifEmpty { null },
+                ).joinToString(" · ").ifEmpty { null }
             } catch (e: CancellationException) {
                 reply.status = "Stopped"
             } catch (e: Exception) {

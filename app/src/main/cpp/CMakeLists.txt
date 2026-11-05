@@ -97,6 +97,21 @@ target_include_directories(llamachat PRIVATE
     ${LLAMA_SRC}/tools/mtmd)
 
 target_link_libraries(llamachat PRIVATE llama llama-common mtmd android log)
+
+# Experimental Mali GPU backend (OpenCL, matrix multiplication only), see mali/ggml-mali.h
+option(LLAMACHAT_MALI "Build the experimental Mali (OpenCL) ggml backend" OFF)
+if(LLAMACHAT_MALI)
+    file(READ ${CMAKE_CURRENT_LIST_DIR}/mali/ggml-mali-kernels.cl MALI_KERNELS)
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/mali_gen/ggml-mali-kernels.inc "R\"CLC(${MALI_KERNELS})CLC\"\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/mali/ggml-mali-kernels.cl)
+    target_sources(llamachat PRIVATE mali/ggml-mali.cpp)
+    target_include_directories(llamachat PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/mali_gen
+        ${THIRD_PARTY}/OpenCL-Headers
+        ${LLAMA_SRC}/ggml/src)
+    target_compile_definitions(llamachat PRIVATE LLAMACHAT_MALI=1)
+    target_link_libraries(llamachat PRIVATE ggml ggml-base dl)
+endif()
 if(LLAMACHAT_VULKAN)
     target_compile_definitions(llamachat PRIVATE LLAMACHAT_VULKAN=1)
     target_link_libraries(llamachat PRIVATE vulkan_shim)

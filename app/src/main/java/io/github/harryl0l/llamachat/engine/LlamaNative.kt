@@ -25,7 +25,13 @@ internal object LlamaNative {
      * (used in place, e.g. a file in a folder the user linked). [repack] enables CPU weight repacking.
      * @return null on success, else an error
      */
-    external fun load(modelPath: String?, fd: Int, nCtx: Int, nThreads: Int, repack: Boolean, useGpu: Boolean): String?
+    external fun load(modelPath: String?, fd: Int, nCtx: Int, nThreads: Int, repack: Boolean, gpuMode: Int): String?
+
+    /** Registers the experimental Mali (OpenCL) backend. @return status ("" if not built in) */
+    external fun enableMali(anyDevice: Boolean): String
+
+    /** "n GPU matmuls, x ms" since the last call (Mali backend), "" if none */
+    external fun maliStats(): String
 
     /** Loads the vision projector for the loaded model. @return null on success, else an error */
     external fun loadProjector(path: String, nThreads: Int): String?
