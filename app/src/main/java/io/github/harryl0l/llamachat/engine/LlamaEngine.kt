@@ -88,13 +88,14 @@ class LlamaEngine(context: Context) {
         sampling: SamplingConfig,
         systemPrompt: String,
         thinking: Boolean,
+        repack: Boolean,
     ) = withContext(dispatcher) {
         ensureInit()
         _state.value = EngineState.Loading(spec.name)
         LlamaNative.setSampling(sampling.temperature, sampling.topP, sampling.topK, sampling.minP, sampling.maxTokens)
         LlamaNative.setSystemPrompt(systemPrompt)
         LlamaNative.setThinking(thinking)
-        var error = LlamaNative.load(spec.path, spec.fd, contextSize, threads)
+        var error = LlamaNative.load(spec.path, spec.fd, contextSize, threads, repack)
         if (error == null && spec.projector != null) {
             error = LlamaNative.loadProjector(spec.projector.path, threads)
             val fallback = spec.projector.fallback

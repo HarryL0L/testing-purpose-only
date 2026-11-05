@@ -14,9 +14,10 @@ internal object LlamaNative {
 
     /**
      * Loads the language model from [modelPath], or from the open file descriptor [fd] when >= 0
-     * (used in place, e.g. a file in a folder the user linked). @return null on success, else an error
+     * (used in place, e.g. a file in a folder the user linked). [repack] enables CPU weight repacking.
+     * @return null on success, else an error
      */
-    external fun load(modelPath: String?, fd: Int, nCtx: Int, nThreads: Int): String?
+    external fun load(modelPath: String?, fd: Int, nCtx: Int, nThreads: Int, repack: Boolean): String?
 
     /** Loads the vision projector for the loaded model. @return null on success, else an error */
     external fun loadProjector(path: String, nThreads: Int): String?

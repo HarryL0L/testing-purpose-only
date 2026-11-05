@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CreateNewFolder
@@ -45,6 +46,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -339,6 +342,29 @@ private fun SettingsCard(settings: AppSettings, vm: ChatViewModel) {
             SettingSlider("CPU threads", settings.threads.toFloat(), 1f..8f, 6, { "${it.roundToInt()}" }) { v ->
                 vm.updateSettings(reloadNeeded = true) { it.copy(threads = v.roundToInt()) }
             }
+            ListItem(
+                headlineContent = { Text("Repack weights for speed") },
+                supportingContent = {
+                    Text(
+                        "Faster on ARM, but the weights are copied into RAM instead of read from the file. " +
+                            "Turn off for large models that run out of memory or load slowly."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = settings.repack,
+                        onCheckedChange = { on -> vm.updateSettings(reloadNeeded = true) { it.copy(repack = on) } },
+                        thumbContent = {
+                            Icon(
+                                if (settings.repack) Icons.Rounded.Check else Icons.Rounded.Close, null,
+                                Modifier.size(SwitchDefaults.IconSize),
+                            )
+                        },
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                modifier = Modifier.padding(horizontal = 0.dp),
+            )
             SettingSlider("Max video frames", settings.maxVideoFrames.toFloat(), 4f..64f, 14, { "${it.roundToInt()}" }) { v ->
                 vm.updateSettings(reloadNeeded = false) { it.copy(maxVideoFrames = (v / 4).roundToInt() * 4) }
             }
@@ -363,7 +389,7 @@ private fun SettingsCard(settings: AppSettings, vm: ChatViewModel) {
                 ) { Text("Save") }
             }
             Text(
-                "Changing context size or threads reloads the model.",
+                "Changing context size, threads or repacking reloads the model.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),

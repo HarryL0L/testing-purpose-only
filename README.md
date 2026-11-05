@@ -19,6 +19,7 @@ After the model download, nothing leaves the device.
 - **Chat history**: conversations are saved on the phone and listed in a side drawer. Images and sampled video frames are stored with each chat as JPEGs, so a reopened chat gives the model its media back.
 - **Thinking on/off** (passed to the template's `enable_thinking`, e.g. Qwen3 / Qwen3.5). Reasoning appears in a collapsible "Thinking" section, and earlier turns pass it back to the template as `reasoning_content`.
 - Each turn the whole conversation is rendered and compared with the KV cache token by token (like llama-server), so only the changed part is evaluated. This works with any template, including ones that rewrite earlier turns. Vision-encoder output is cached by media ID, so hybrid/recurrent models (Qwen3.5), whose memory has to be rebuilt each turn, don't run the image encoder again.
+- **Repack weights on/off**: CPU weight repacking (`use_extra_bufts`) is faster, but it copies the weights into RAM instead of reading them from the memory-mapped file. Turn it off for large models that run out of memory or load slowly.
 - Streaming replies with tok/s, a stop button, a context usage readout, and settings for context size, threads, temperature, reply length, max video frames and the system prompt.
 
 | Preset | Size | Notes |

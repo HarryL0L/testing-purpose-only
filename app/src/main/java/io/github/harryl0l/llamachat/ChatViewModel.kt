@@ -148,7 +148,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         ModelSpec(name, null, pfd.fd, projector)
                     } else ModelSpec(name, model, -1, projector)
                 }
-                engine.load(spec, s.contextSize, s.threads, s.sampling, s.systemPrompt, s.thinking)
+                engine.load(spec, s.contextSize, s.threads, s.sampling, s.systemPrompt, s.thinking, s.repack)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

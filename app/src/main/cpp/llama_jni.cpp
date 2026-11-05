@@ -279,10 +279,15 @@ JNIEXPORT jstring JNICALL JNI_FN(systemInfo)(JNIEnv * env, jobject) {
 // Loads the language model either from a path or, when fd >= 0, from an open file descriptor
 // (e.g. a file the user picked with the Storage Access Framework; the file is used in place).
 // Returns null on success, an error message otherwise.
-JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jint fd, jint n_ctx, jint n_threads) {
+// repack: let the CPU backend repack weights into its faster interleaved layouts (extra buffer
+// types). Faster, but repacked tensors live in anonymous memory instead of the mmapped file, so
+// large models need more RAM and load slower. Off = weights stay memory-mapped.
+JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jint fd, jint n_ctx, jint n_threads,
+                                        jboolean repack) {
     unload_all();
 
     llama_model_params mparams = llama_model_default_params();
+    mparams.use_extra_bufts = repack;
     if (fd >= 0) {
         const int own_fd = dup(fd);
         g_model_fp = own_fd >= 0 ? fdopen(own_fd, "rb") : nullptr;
@@ -318,7 +323,7 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, ji
     g_sampler = common_sampler_init(g_model, g_sparams);
     g_n_past = 0;
     g_history.clear();
-    LOGI("Model loaded. n_ctx=%d threads=%d", n_ctx, n_threads);
+    LOGI("Model loaded. n_ctx=%d threads=%d repack=%d", n_ctx, n_threads, (int) repack);
     return nullptr;
 }
 
