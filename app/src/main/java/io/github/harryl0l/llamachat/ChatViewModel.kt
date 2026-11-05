@@ -436,7 +436,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     when (a.kind) {
                         AttachmentKind.Image -> {
                             reply.status = "Looking at the image…"
-                            MediaDecoder.decodeImage(app, a.uri)
+                            MediaDecoder.decodeImage(
+                                app, a.uri,
+                                MediaDecoder.IMAGE_QUALITY_PIXELS[settings.value.imageQuality.coerceIn(0, 2)],
+                            )
                         }
                         AttachmentKind.Video -> {
                             reply.status = "Sampling video frames…"

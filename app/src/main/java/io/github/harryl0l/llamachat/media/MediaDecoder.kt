@@ -40,13 +40,21 @@ object MediaDecoder {
     // must match enum mtmd_video_template
     private const val TEMPLATE_DEFAULT = 0
 
-    suspend fun decodeImage(context: Context, uri: Uri): DecodedMedia.Image = withContext(Dispatchers.IO) {
+    /**
+     * Pixel budget for still images per quality level (0 = no extra cap, only [MAX_IMAGE_SIDE]).
+     * Dynamic-resolution encoders (Qwen-VL…) turn more pixels into more tokens: on the test host a
+     * 1536x1152 photo was 494 tokens / 4.0 s vs 192 tokens / 1.4 s at 512x384.
+     */
+    val IMAGE_QUALITY_PIXELS = intArrayOf(200_000, 450_000, 0)
+
+    suspend fun decodeImage(context: Context, uri: Uri, maxPixels: Int = 0): DecodedMedia.Image = withContext(Dispatchers.IO) {
         val source = ImageDecoder.createSource(context.contentResolver, uri)
         val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             val w = info.size.width
             val h = info.size.height
-            val scale = min(1f, MAX_IMAGE_SIDE.toFloat() / max(w, h))
+            var scale = min(1f, MAX_IMAGE_SIDE.toFloat() / max(w, h))
+            if (maxPixels > 0) scale = min(scale, kotlin.math.sqrt(maxPixels.toFloat() / (w.toFloat() * h)))
             if (scale < 1f) decoder.setTargetSize((w * scale).roundToInt().coerceAtLeast(1), (h * scale).roundToInt().coerceAtLeast(1))
         }
         val rgb = bitmap.toRgb()

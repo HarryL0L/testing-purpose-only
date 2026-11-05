@@ -382,6 +382,21 @@ private fun SettingsCard(settings: AppSettings, vm: ChatViewModel) {
             SettingSlider("Max video frames", settings.maxVideoFrames.toFloat(), 4f..32f, 6, { "${it.roundToInt()}" }) { v ->
                 vm.updateSettings(reloadNeeded = false) { it.copy(maxVideoFrames = (v / 4).roundToInt() * 4) }
             }
+            Text("Image quality", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                listOf("Low", "Medium", "High").forEachIndexed { i, label ->
+                    SegmentedButton(
+                        selected = settings.imageQuality == i,
+                        onClick = { vm.updateSettings(reloadNeeded = false) { it.copy(imageQuality = i) } },
+                        shape = SegmentedButtonDefaults.itemShape(i, 3),
+                    ) { Text(label) }
+                }
+            }
+            Text(
+                "Low is fastest and coolest. Use High for documents, screenshots or small text.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text("Video quality", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 listOf("Low", "Medium", "Model max").forEachIndexed { i, label ->
