@@ -139,11 +139,15 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** Frees the model from memory. The chat stays and is restored when a model is loaded again. */
     fun unload() {
         viewModelScope.launch {
-            stop(); genJob?.join()
-            engine.unload()
-            contextUsage = 0 to 0
+            unloadModel()
             refreshLastModel()
         }
+    }
+
+    private suspend fun unloadModel() {
+        stop(); genJob?.join()
+        engine.unload()
+        contextUsage = 0 to 0
     }
 
     // ---------------------------------------------------------------- models
@@ -164,7 +168,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             stop()
             genJob?.join()
-            store.update { it.copy(modelPath = model, mmprojPath = mmproj) }
             val s = store.current()
             val resolver = getApplication<Application>().contentResolver
             val open = mutableListOf<ParcelFileDescriptor>()
@@ -192,6 +195,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 open.forEach { runCatching { it.close() } } // native code keeps its own descriptor
             }
             (engine.state.value as? EngineState.Failed)?.let { snackbar = it.message }
+            // remember the model only once it loaded, so a model that fails (or gets the app killed
+            // while loading) is not offered again / auto-loaded on every start
+            if (engine.state.value is EngineState.Ready) store.update { it.copy(modelPath = model, mmprojPath = mmproj) }
             if (engine.state.value is EngineState.Ready && messages.isNotEmpty()) restoreIntoEngine()
             contextUsage = engine.contextUsage()
             refreshLastModel()
@@ -252,7 +258,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val s = store.current()
             val usesIt = localModels.any { m -> m.folderUri == uri && (m.ref == s.modelPath || m.ref == s.mmprojPath) }
-            if (usesIt) { stop(); genJob?.join(); engine.unload() }
+            if (usesIt) unloadModel()
             repo.unlinkFolder(uri)
             store.update {
                 it.copy(
@@ -261,6 +267,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     mmprojPath = if (usesIt) null else it.mmprojPath,
                 )
             }
+            refreshLastModel()
             refreshLocalModels()
         }
     }
@@ -271,11 +278,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val s = settings.value
             if (s.modelPath == model.ref || s.mmprojPath == model.ref) {
-                stop(); genJob?.join()
-                engine.unload()
+                unloadModel()
                 store.update { it.copy(modelPath = null, mmprojPath = null) }
             }
             repo.delete(File(model.ref))
+            refreshLastModel()
             refreshLocalModels()
         }
     }
@@ -306,14 +313,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun refreshChats() { chats = chatStore.list() }
 
     fun newChat() {
-        viewModelScope.launch {
-            stop(); genJob?.join()
-            messages.clear()
-            pendingAttachments.clear()
-            currentChatId = null
-            engine.resetChat()
-            contextUsage = engine.contextUsage()
-        }
+        viewModelScope.launch { startNewChat() }
+    }
+
+    private suspend fun startNewChat() {
+        stop(); genJob?.join()
+        messages.clear()
+        pendingAttachments.clear()
+        currentChatId = null
+        engine.resetChat()
+        contextUsage = engine.contextUsage()
     }
 
     fun openChat(id: String) {
@@ -343,7 +352,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteChat(id: String) {
         viewModelScope.launch {
-            if (id == currentChatId) newChat()
+            // wait for a running reply to stop (and save) before deleting, or it re-creates the chat
+            if (id == currentChatId) startNewChat()
             chatStore.delete(id)
             refreshChats()
         }
@@ -352,7 +362,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** Puts the visible conversation into the engine; it is evaluated with the next message. */
     private suspend fun restoreIntoEngine() {
         val id = currentChatId ?: return
-        val restored = messages.filter { !it.error && (it.role == Role.User || it.text.isNotEmpty()) }.map { m ->
+        fun answered(m: ChatMessage?) = m != null && m.role == Role.Assistant && !m.error && m.text.isNotEmpty()
+        // only complete turns: a user message whose media failed to decode (or that was stopped
+        // before any reply) would otherwise come back as an empty / dangling user turn
+        val restored = messages.filterIndexed { i, m ->
+            if (m.role == Role.User) answered(messages.getOrNull(i + 1)) else answered(m)
+        }.map { m ->
             if (m.role == Role.User) {
                 val media = m.savedMedia.mapNotNull { runCatching { chatStore.loadMedia(id, it) }.getOrNull() }
                 RestoredMessage("user", m.prompt, media)
@@ -399,6 +414,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun attach(uris: List<Uri>) {
         val resolver = getApplication<Application>().contentResolver
         for (uri in uris) {
+            // the composer keys thumbnails by URI: the same file twice would crash the LazyRow
+            if (pendingAttachments.any { it.uri == uri }) continue
             val type = resolver.getType(uri) ?: ""
             val kind = if (type.startsWith("video")) AttachmentKind.Video else AttachmentKind.Image
             pendingAttachments += Attachment(uri, kind)

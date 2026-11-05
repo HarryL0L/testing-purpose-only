@@ -75,6 +75,8 @@ data class LinkedFolder(val uri: String, val name: String)
 
 private fun isProjectorName(name: String) = name.contains("mmproj", ignoreCase = true)
 
+private const val HTTP_RANGE_NOT_SATISFIABLE = 416
+
 class ModelRepository(private val context: Context) {
     val modelsDir: File = File(context.getExternalFilesDir(null) ?: context.filesDir, "models").apply { mkdirs() }
 
@@ -217,29 +219,42 @@ class ModelRepository(private val context: Context) {
         }
         try {
             val code = conn.responseCode
-            if (code == HttpURLConnection.HTTP_OK) existing = 0L // server ignored the range
-            else if (code != HttpURLConnection.HTTP_PARTIAL) error("HTTP $code while downloading ${target.name}")
-            conn.inputStream.use { input ->
-                java.io.FileOutputStream(part, existing > 0).use { out ->
-                    val buf = ByteArray(1 shl 16)
-                    var total = existing
-                    var lastReport = 0L
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
-                        total += n
-                        if (total - lastReport > (1 shl 20)) {
-                            onBytes(total); lastReport = total
-                        }
-                    }
+            if (code == HTTP_RANGE_NOT_SATISFIABLE && existing > 0) {
+                // the .part is already complete (e.g. killed before the rename): just keep it
+                val total = conn.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull()
+                if (total != existing) {
+                    part.delete()
+                    error("Partial download of ${target.name} was invalid, tap Retry to start over")
                 }
+            } else {
+                if (code == HttpURLConnection.HTTP_OK) existing = 0L // server ignored the range
+                else if (code != HttpURLConnection.HTTP_PARTIAL) error("HTTP $code while downloading ${target.name}")
+                copyResponse(conn, part, existing, onBytes)
             }
         } finally {
             conn.disconnect()
         }
         check(part.renameTo(target)) { "Could not save ${target.name}" }
+    }
+
+    private suspend fun copyResponse(conn: HttpURLConnection, part: File, existing: Long, onBytes: (Long) -> Unit) {
+        conn.inputStream.use { input ->
+            java.io.FileOutputStream(part, existing > 0).use { out ->
+                val buf = ByteArray(1 shl 16)
+                var total = existing
+                var lastReport = 0L
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    total += n
+                    if (total - lastReport > (1 shl 20)) {
+                        onBytes(total); lastReport = total
+                    }
+                }
+            }
+        }
     }
 
     /** Copies a user-picked GGUF into app storage (llama.cpp needs a real file path to mmap). */
@@ -261,13 +276,17 @@ class ModelRepository(private val context: Context) {
             part.outputStream().use { out ->
                 val buf = ByteArray(1 shl 16)
                 var total = 0L
+                var lastReport = 0L
                 while (true) {
                     currentCoroutineContext().ensureActive()
                     val n = input.read(buf)
                     if (n < 0) break
                     out.write(buf, 0, n)
                     total += n
-                    if (size > 0) onProgress(total.toFloat() / size)
+                    // throttled like downloads: a UI state write per 64 KB chunk is wasted work
+                    if (size > 0 && total - lastReport > (1 shl 20)) {
+                        onProgress(total.toFloat() / size); lastReport = total
+                    }
                 }
             }
         }

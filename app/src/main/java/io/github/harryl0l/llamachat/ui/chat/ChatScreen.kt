@@ -14,7 +14,10 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -385,8 +388,14 @@ private fun EmptyState(
     onOpenModels: () -> Unit,
     onSuggestion: (String) -> Unit,
 ) {
+    // centred when it fits, scrollable when it doesn't (small screens, keyboard open)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
+        Modifier
+            .verticalScroll(rememberScrollState())
+            .fillMaxWidth()
+            .heightIn(min = maxHeight)
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -446,6 +455,7 @@ private fun EmptyState(
             TextButton(onClick = onOpenModels) { Text("Choose a model") }
         }
     }
+}
 }
 
 @Composable
@@ -513,7 +523,8 @@ private fun MessageBubble(msg: ChatMessage) {
                 }
             }
         }
-        if (!isUser && answer.isNotEmpty() && msg.status != null) {
+        // tok/s under a reply, or "Stopped" when it was stopped before writing anything
+        if (!isUser && msg.status != null && (answer.isNotEmpty() || !msg.streaming)) {
             Text(
                 msg.status!!,
                 style = MaterialTheme.typography.labelSmall,
@@ -542,8 +553,8 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                     modifier = Modifier.padding(bottom = 10.dp),
                 ) {
                     items(vm.pendingAttachments.toList(), key = { it.uri.toString() }) { a ->
-                        Box {
-                            MediaThumbnail(a, RoundedCornerShape(20.dp), 72.dp, Modifier.animateItem())
+                        Box(Modifier.animateItem()) {
+                            MediaThumbnail(a, RoundedCornerShape(20.dp), 72.dp)
                             FilledIconButton(
                                 onClick = { vm.removeAttachment(a) },
                                 modifier = Modifier.align(Alignment.TopEnd).size(24.dp),

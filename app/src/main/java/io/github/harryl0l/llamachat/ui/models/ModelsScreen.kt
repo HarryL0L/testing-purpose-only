@@ -49,6 +49,8 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -89,6 +91,11 @@ fun ModelsScreen(vm: ChatViewModel, onBack: () -> Unit) {
         uri?.let(vm::linkFolder)
     }
     LaunchedEffect(Unit) { vm.refreshLocalModels() }
+    // download / import / link / load messages are raised while this screen is showing
+    val snackbarHost = remember { SnackbarHostState() }
+    LaunchedEffect(vm.snackbar) {
+        vm.snackbar?.let { snackbarHost.showSnackbar(it); vm.snackbar = null }
+    }
 
     // leave the screen once a model finished loading from here
     var waitingForLoad by remember { mutableStateOf(false) }
@@ -99,6 +106,7 @@ fun ModelsScreen(vm: ChatViewModel, onBack: () -> Unit) {
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHost = { SnackbarHost(snackbarHost) },
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text("Models") },
@@ -121,7 +129,9 @@ fun ModelsScreen(vm: ChatViewModel, onBack: () -> Unit) {
                 PresetCard(
                     preset = preset,
                     downloaded = vm.repo.isDownloaded(preset),
-                    active = settings.modelPath == vm.repo.presetFiles(preset).first.absolutePath,
+                    // the last used model stays in settings after unloading: only "in use" when loaded
+                    active = engineState is EngineState.Ready &&
+                        settings.modelPath == vm.repo.presetFiles(preset).first.absolutePath,
                     download = vm.downloads[preset.id],
                     onDownload = { vm.download(preset) },
                     onUse = { vm.loadPreset(preset); waitingForLoad = true },
