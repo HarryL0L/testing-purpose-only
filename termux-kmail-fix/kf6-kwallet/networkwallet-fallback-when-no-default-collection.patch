@@ -1,0 +1,50 @@
+From: Termux KMail wallet fix
+Subject: kwalletd6: fall back to the configured wallet name when no default collection exists
+
+On a fresh profile ksecretd has no collections, so
+org.freedesktop.Secret.Service.ReadAlias("default") returns "/" and
+SecretServiceClient::defaultCollection() reports failure. KWalletD::networkWallet()
+then replies with the D-Bus error "Failed to query default collection".
+
+Two client classes break on that reply:
+  * qtkeychain (used by Akonadi resources, KMail account wizard, MailTransport)
+    probes KWallet with networkWallet() and treats the error as "KWallet not
+    available", falling back to libsecret on org.freedesktop.secrets.
+  * KWallet::Wallet::NetworkWallet() (used by libkgapi for Gmail OAuth tokens)
+    returns an empty string, so openWallet("") is attempted.
+
+Before the Secret Service bridge (kwalletd <= KF 6.1x) networkWallet() returned
+the configured name unconditionally. Restore that contract: when the default
+collection does not exist yet, answer with the configured name so the first
+open() call reaches ksecretd and shows the create-wallet dialog.
+
+Upstream reference: invent.kde.org/frameworks/kwallet MR 157 introduced the
+error reply (merged 2026-07-28, shipped in KF 6.31).
+
+--- a/src/runtime/kwalletd/kwalletd.cpp
++++ b/src/runtime/kwalletd/kwalletd.cpp
+@@ -1013,8 +1013,11 @@
+     const QString defaultWallet = m_backend->defaultCollection(&ok);
+ 
+     if (!ok) {
+-        sendErrorReply(QDBusError::Failed, QStringLiteral("Failed to query default collection"));
+-        return {};
++        // No default collection exists yet (fresh profile, ReadAlias("default")
++        // returns "/"). Answer with the configured name, as kwalletd did before
++        // the Secret Service bridge, so that clients can create the first wallet
++        // through open() instead of treating KWallet as unavailable.
++        return KWallet::Backend::networkWallet();
+     }
+     return defaultWallet;
+ }
+@@ -1030,8 +1033,8 @@
+         const QString defaultWallet = m_backend->defaultCollection(&ok);
+ 
+         if (!ok) {
+-            sendErrorReply(QDBusError::Failed, QStringLiteral("Failed to query default collection"));
+-            return {};
++            // Same fallback as networkWallet(): no default collection yet.
++            return KWallet::Backend::localWallet();
+         }
+         return defaultWallet;
+     }

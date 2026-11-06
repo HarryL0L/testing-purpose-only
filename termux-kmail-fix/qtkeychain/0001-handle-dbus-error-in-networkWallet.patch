@@ -1,0 +1,21 @@
+Backport of https://github.com/frankosterfeld/qtkeychain/pull/305
+"Handle DBus error in KWallet::networkWallet" (merged 2026-08-26, not in 0.17.0).
+Without this an error reply from kwalletd6 is used as the wallet name
+(KDE bug 524718: wallet named "did not receive a reply...").
+
+diff --git a/qtkeychain/keychain_unix.cpp b/qtkeychain/keychain_unix.cpp
+index c3ee625..10a10cf 100644
+--- a/qtkeychain/keychain_unix.cpp
++++ b/qtkeychain/keychain_unix.cpp
+@@ -258,6 +258,11 @@ void JobPrivate::kwalletWalletFound(QDBusPendingCallWatcher *watcher)
+     // This allows to wait for user to unlock wallet, e.g. at Plasma startup
+     iface->setTimeout(0x7FFFFFFF);
+ 
++    if (!reply.isValid()) {
++        q->emitFinishedWithError(OtherError, reply.error().message());
++        return;
++    }
++
+     const QDBusPendingReply<int> pendingReply = iface->open(reply.value(), 0, q->service());
+     auto pendingWatcher = new QDBusPendingCallWatcher(pendingReply, this);
+     connect(pendingWatcher, &QDBusPendingCallWatcher::finished, this,
