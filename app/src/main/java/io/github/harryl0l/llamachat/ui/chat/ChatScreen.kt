@@ -119,10 +119,11 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
     LaunchedEffect(vm.snackbar) {
         vm.snackbar?.let { snackbarHost.showSnackbar(it); vm.snackbar = null }
     }
-    // keep the newest text in view while streaming
-    val lastText = vm.messages.lastOrNull()?.text
-    LaunchedEffect(vm.messages.size, lastText?.length) {
-        if (vm.messages.isNotEmpty()) listState.animateScrollToItem(vm.messages.size - 1, Int.MAX_VALUE)
+    // The list is bottom-anchored (reverseLayout): a growing reply stays in view by itself and the
+    // keyboard doesn't hide it. Jump to the newest message only when one is added (send / open chat),
+    // so scrolling up to read while a reply streams isn't undone on every token.
+    LaunchedEffect(vm.messages.size) {
+        if (vm.messages.isNotEmpty()) listState.animateScrollToItem(0)
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(8)) { uris ->
@@ -201,11 +202,12 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
                 }
                 LazyColumn(
                     state = listState,
+                    reverseLayout = true, // newest message at the bottom, anchored above the message bar
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Bottom),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    items(vm.messages, key = { it.id }) { msg -> MessageBubble(msg) }
+                    items(vm.messages.asReversed(), key = { it.id }) { msg -> MessageBubble(msg) }
                 }
                 }
             }
@@ -302,7 +304,8 @@ private fun ThinkingSection(text: String, active: Boolean) {
         modifier = Modifier
             .widthIn(max = 340.dp)
             .padding(bottom = 6.dp)
-            .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
+            // animate expand/collapse, but not while reasoning streams in (it would clip the newest line)
+            .then(if (active) Modifier else Modifier.animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())),
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -495,7 +498,7 @@ private fun MessageBubble(msg: ChatMessage) {
                 contentColor = content,
                 shape = if (isUser) RoundedCornerShape(28.dp, 28.dp, 8.dp, 28.dp)
                 else RoundedCornerShape(28.dp, 28.dp, 28.dp, 8.dp),
-                modifier = Modifier.widthIn(max = 340.dp).animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
+                modifier = Modifier.widthIn(max = 340.dp),
             ) {
                 AnimatedContent(
                     targetState = answer.isEmpty() && msg.streaming,

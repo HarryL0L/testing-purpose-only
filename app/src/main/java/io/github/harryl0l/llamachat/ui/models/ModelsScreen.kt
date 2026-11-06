@@ -6,6 +6,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -123,6 +132,8 @@ fun ModelsScreen(vm: ChatViewModel, onBack: () -> Unit) {
         },
     ) { padding ->
         LazyColumn(
+            // shrink above the keyboard so a focused text field can be scrolled into view
+            modifier = Modifier.consumeWindowInsets(padding).imePadding(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -440,6 +451,7 @@ private fun FileRow(name: String, selected: Boolean, supporting: String, onSelec
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun SettingsCard(settings: AppSettings, vm: ChatViewModel) {
     Card(shape = MaterialTheme.shapes.extraLarge, colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainer)) {
@@ -525,11 +537,24 @@ private fun SettingsCard(settings: AppSettings, vm: ChatViewModel) {
                 vm.updateSettings(reloadNeeded = false) { it.copy(sampling = it.sampling.copy(maxTokens = (v / 128).roundToInt() * 128)) }
             }
             var system by remember(settings.systemPrompt) { mutableStateOf(settings.systemPrompt) }
+            // keep the field visible above the keyboard: scroll to it once the keyboard has opened
+            val bringIntoView = remember { BringIntoViewRequester() }
+            var systemFocused by remember { mutableStateOf(false) }
+            val imeVisible = WindowInsets.isImeVisible
+            LaunchedEffect(systemFocused, imeVisible) {
+                if (systemFocused && imeVisible) {
+                    kotlinx.coroutines.delay(150) // let the list finish shrinking
+                    bringIntoView.bringIntoView()
+                }
+            }
             OutlinedTextField(
                 value = system,
                 onValueChange = { system = it },
                 label = { Text("System prompt (applies to new chats)") },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(bringIntoView)
+                    .onFocusChanged { systemFocused = it.isFocused },
                 shape = MaterialTheme.shapes.large,
             )
             if (system != settings.systemPrompt) {
