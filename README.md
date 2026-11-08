@@ -107,6 +107,12 @@ chat; tap one to view it full screen and save it to the gallery (`Pictures/Llama
 | SDXS-512 (tiny one-step model, tiny decoder built in) | 683 MB | 1 | 6.5 s |
 | SD-Turbo + TAESD decoder | 2.0 GB + 10 MB | 1–4 (default 2) | 14.9 s (2 steps) |
 
+**Your own models:** Models → Image creation → *Import a model file* accepts any stable-diffusion.cpp model
+(`.gguf`, `.safetensors`, `.ckpt`), e.g. DreamShaper 8 LCM. Defaults come from the file name: LCM models use the LCM
+sampler with 6 steps and CFG 1.0, Turbo/Lightning models use 4 steps and CFG 1.0, anything else 20 steps and CFG 7. You
+can change the sampler (Euler A / LCM / DPM++ 2M), steps and CFG. SD 1.x/2.x imports use the TAESD fast decoder when it's
+present. On the test host, DreamShaper 8 LCM Q8_0 (512×512, LCM, 6 steps) took 40 s at CFG 1.0 versus 76 s at CFG 1.5.
+
 Phones are several times slower. With SD-Turbo, the TAESD decoder cut decoding from 26 s to 2.8 s with practically
 identical images. Models download in Models → Image creation, where you also set the size (256/384/512), the number of
 steps and a negative prompt. A file you downloaded yourself can be imported there too: it needs the same file name

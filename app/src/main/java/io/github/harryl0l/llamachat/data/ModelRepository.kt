@@ -117,6 +117,33 @@ val IMAGE_PRESETS = listOf(
     ),
 )
 
+val CUSTOM_IMAGE_EXTENSIONS = setOf("gguf", "safetensors", "ckpt")
+
+/**
+ * An image model the user imported. Sampling defaults are guessed from the file name:
+ * LCM models need the LCM sampler and few steps; Turbo/Lightning models few steps without CFG.
+ */
+class CustomImageModel(val file: File) {
+    val id: String get() = "custom:" + file.name
+    val title: String get() = file.nameWithoutExtension
+    private val lower = file.name.lowercase()
+    val isLcm: Boolean get() = "lcm" in lower
+    val isFewStep: Boolean get() = isLcm || "turbo" in lower || "lightning" in lower || "hyper" in lower
+    /** SDXL-type models need a different tiny decoder (TAESDXL), so TAESD is only used for SD 1.x/2.x */
+    val isXl: Boolean get() = "xl" in lower || "pony" in lower || "illustrious" in lower
+    val defaultSteps: Int get() = when { isLcm -> 6; isFewStep -> 4; else -> 20 }
+    val maxSteps: Int get() = if (isFewStep) 12 else 50
+    // CFG 1 skips the second (negative-prompt) pass: half the time, nearly the same images for LCM/turbo
+    val defaultCfg: Float get() = if (isFewStep) 1.0f else 7.0f
+    val defaultSampler: Int get() = if (isLcm) SAMPLER_LCM else SAMPLER_EULER_A
+}
+
+// stable-diffusion.cpp sample_method_t values
+const val SAMPLER_EULER_A = 1
+const val SAMPLER_DPMPP2M = 5
+const val SAMPLER_LCM = 9
+val SAMPLERS = listOf(SAMPLER_EULER_A to "Euler A", SAMPLER_LCM to "LCM", SAMPLER_DPMPP2M to "DPM++ 2M")
+
 data class LocalModel(
     val ref: String,
     val name: String,
@@ -336,6 +363,18 @@ class ModelRepository(private val context: Context) {
 
     fun deleteImageModel(preset: ImageModelPreset) { imageDir(preset).deleteRecursively() }
 
+    /** Image models the user imported themselves (any stable-diffusion.cpp-supported file). */
+    val customImageDir: File get() = File(modelsDir, "image/custom").apply { mkdirs() }
+
+    fun customImageModels(): List<CustomImageModel> =
+        customImageDir.listFiles().orEmpty()
+            .filter { it.isFile && it.extension.lowercase() in CUSTOM_IMAGE_EXTENSIONS }
+            .sortedBy { it.name.lowercase() }
+            .map { CustomImageModel(it) }
+
+    /** TAESD decoder file, if it's present (downloaded with SD-Turbo or imported). */
+    fun taesdFile(): File? = imageFiles(IMAGE_PRESETS.first { it.taesd != null }).second?.takeIf { it.exists() }
+
     /**
      * Copies an image-model file the user downloaded themselves into place. It must be one of the
      * presets' files (same file name), or the TAESD decoder. @return what was imported
@@ -348,11 +387,12 @@ class ModelRepository(private val context: Context) {
         }
         val preset = IMAGE_PRESETS.firstOrNull { it.file.equals(name, ignoreCase = true) }
         val isTaesd = name.equals("taesd.safetensors", true) || name.equals("diffusion_pytorch_model.safetensors", true)
+        val ext = name.substringAfterLast('.', "").lowercase()
         val target = when {
             preset != null -> imageFiles(preset).first
             isTaesd -> imageFiles(IMAGE_PRESETS.first { it.taesd != null }).second!!
-            else -> error("Not a supported image model file: $name. Expected one of: " +
-                (IMAGE_PRESETS.map { it.file } + "taesd / diffusion_pytorch_model.safetensors").joinToString())
+            ext in CUSTOM_IMAGE_EXTENSIONS -> File(customImageDir, name) // your own model (e.g. a fine-tune)
+            else -> error("$name isn't an image model file (.gguf, .safetensors or .ckpt).")
         }
         target.parentFile?.mkdirs()
         val part = File(target.path + ".part")
@@ -374,6 +414,12 @@ class ModelRepository(private val context: Context) {
             }
         }
         checkImportedCopy(part, size, name)
+        if (preset == null && !isTaesd) {
+            // own model: no known checksum; complete copy + header checked above
+            target.delete()
+            check(part.renameTo(target)) { "Could not save $name" }
+            return@withContext name
+        }
         val expectedSha = preset?.sha256 ?: IMAGE_PRESETS.first { it.taesd != null }.taesd!!.sha256
         if (sha256Of(part) { onProgress(it) } != expectedSha) {
             part.delete()

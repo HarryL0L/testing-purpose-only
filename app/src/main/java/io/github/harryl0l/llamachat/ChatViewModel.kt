@@ -27,6 +27,7 @@ import io.github.harryl0l.llamachat.engine.EngineState
 import io.github.harryl0l.llamachat.engine.ImageEngine
 import io.github.harryl0l.llamachat.data.IMAGE_PRESETS
 import io.github.harryl0l.llamachat.data.ImageModelPreset
+import io.github.harryl0l.llamachat.data.SAMPLER_EULER_A
 import io.github.harryl0l.llamachat.engine.LlamaEngine
 import io.github.harryl0l.llamachat.engine.ModelSpec
 import io.github.harryl0l.llamachat.engine.ProjectorSpec
@@ -50,6 +51,19 @@ enum class AttachmentKind { Image, Video }
 data class Attachment(val uri: Uri, val kind: AttachmentKind)
 
 enum class Role { User, Assistant }
+
+/** An image model "Create image" can use: a downloaded preset or an imported model. */
+class ImageModelChoice(
+    val id: String,
+    val title: String,
+    val model: File,
+    val taesd: File?,
+    val defaultSteps: Int,
+    val maxSteps: Int,
+    val defaultCfg: Float,
+    val defaultSampler: Int,
+    val custom: Boolean,
+)
 
 class ChatMessage(
     val id: Long,
@@ -249,8 +263,36 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var imageMode by mutableStateOf(false)
     val imageCreationSupported: Boolean get() = imageEngine.available
 
-    fun selectImageModel(preset: ImageModelPreset) {
-        viewModelScope.launch { store.update { it.copy(imageModel = preset.id, imageSteps = 0) } }
+    fun selectImageModel(preset: ImageModelPreset) = selectImageModel(preset.id)
+
+    /** Selecting another model resets steps / CFG / sampler to that model's defaults. */
+    fun selectImageModel(id: String) {
+        viewModelScope.launch { store.update { it.copy(imageModel = id, imageSteps = 0, imageCfg = 0f, imageSampler = -1) } }
+    }
+
+    /** Downloaded presets and imported models, in the order shown. */
+    fun imageModelChoices(): List<ImageModelChoice> {
+        val taesd = repo.taesdFile()
+        return IMAGE_PRESETS.filter { repo.isDownloaded(it) }.map { p ->
+            val (m, t) = repo.imageFiles(p)
+            ImageModelChoice(p.id, p.title, m, t, p.defaultSteps, p.maxSteps, p.cfgScale, SAMPLER_EULER_A, custom = false)
+        } + repo.customImageModels().map { c ->
+            ImageModelChoice(
+                c.id, c.title, c.file, if (c.isXl) null else taesd,
+                c.defaultSteps, c.maxSteps, c.defaultCfg, c.defaultSampler, custom = true,
+            )
+        }
+    }
+
+    fun deleteCustomImageModel(choice: ImageModelChoice) {
+        if (!choice.custom) return
+        viewModelScope.launch {
+            stop(); genJob?.join()
+            imageEngine.unload()
+            choice.model.delete()
+            if (store.current().imageModel == choice.id) store.update { it.copy(imageModel = null) }
+            imageFilesVersion++
+        }
     }
 
     fun downloadImageModel(preset: ImageModelPreset) {
@@ -283,15 +325,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** The image model to use: the selected one if downloaded, else any downloaded one. */
-    private fun currentImagePreset(s: AppSettings): ImageModelPreset? =
-        IMAGE_PRESETS.firstOrNull { it.id == s.imageModel && repo.isDownloaded(it) }
-            ?: IMAGE_PRESETS.firstOrNull { repo.isDownloaded(it) }
+    /** The image model to use: the selected one if present, else any available one. */
+    fun currentImageModel(s: AppSettings = settings.value): ImageModelChoice? {
+        val all = imageModelChoices()
+        return all.firstOrNull { it.id == s.imageModel } ?: all.firstOrNull()
+    }
 
     private fun createImage(prompt: String) {
         val s = settings.value
-        val preset = currentImagePreset(s)
-        if (preset == null) { snackbar = "Download an image model first (Models → Image creation)"; return }
+        val preset = currentImageModel(s)
+        if (preset == null) { snackbar = "Download or import an image model first (Models → Image creation)"; return }
         input = ""
         val chatId = currentChatId ?: System.currentTimeMillis().toString().also { currentChatId = it }
         messages += ChatMessage(nextId++, Role.User, prompt, imageRequest = true)
@@ -303,6 +346,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         messages += reply
         generating = true
         val steps = (if (s.imageSteps > 0) s.imageSteps else preset.defaultSteps).coerceIn(1, preset.maxSteps)
+        val cfg = if (s.imageCfg > 0f) s.imageCfg else preset.defaultCfg
+        val sampler = if (s.imageSampler >= 0) s.imageSampler else preset.defaultSampler
         val size = s.imageSize
         val seed = kotlin.random.Random.nextLong(0, Int.MAX_VALUE.toLong())
 
@@ -324,9 +369,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
             val t0 = System.nanoTime()
             try {
-                val (model, taesd) = repo.imageFiles(preset)
                 val img = imageEngine.generate(
-                    model, taesd, s.threads, prompt, s.imageNegative, size, size, steps, preset.cfgScale, seed,
+                    preset.model, preset.taesd, s.threads, prompt, s.imageNegative, size, size, steps, cfg, seed, sampler,
                 )
                 progressJob.cancel()
                 val saved = chatStore.saveMedia(chatId, DecodedMedia.Image(img.rgb, img.width, img.height))
@@ -357,9 +401,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             importProgress = 0f
             try {
                 val what = repo.importImageFile(uri) { importProgress = it }
-                IMAGE_PRESETS.firstOrNull { it.title == what }?.let { p ->
-                    if (store.current().imageModel == null && repo.isDownloaded(p)) selectImageModel(p)
-                }
+                val choice = imageModelChoices().firstOrNull { it.title == what || it.model.name == what }
+                if (choice != null && store.current().imageModel == null) selectImageModel(choice.id)
                 snackbar = "Imported $what"
                 imageFilesVersion++
             } catch (e: CancellationException) {

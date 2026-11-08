@@ -293,7 +293,8 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
             )
             @Suppress("UNUSED_VARIABLE") val filesVersion = vm.imageFilesVersion // re-check after download / import / delete
             val downloaded = IMAGE_PRESETS.filter { vm.repo.isDownloaded(it) }
-            val selected = IMAGE_PRESETS.firstOrNull { it.id == settings.imageModel && it in downloaded } ?: downloaded.firstOrNull()
+            val choices = vm.imageModelChoices()
+            val current = vm.currentImageModel(settings)
             IMAGE_PRESETS.forEach { preset ->
                 val isDownloaded = preset in downloaded
                 val dl = vm.downloads["img:" + preset.id]
@@ -321,7 +322,7 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                         }
                     },
                     leadingContent = {
-                        RadioButton(selected = preset == selected, enabled = isDownloaded, onClick = { vm.selectImageModel(preset) })
+                        RadioButton(selected = current?.id == preset.id, enabled = isDownloaded, onClick = { vm.selectImageModel(preset) })
                     },
                     trailingContent = {
                         if (isDownloaded) {
@@ -336,6 +337,28 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                     },
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     modifier = Modifier.clickable(enabled = isDownloaded) { vm.selectImageModel(preset) },
+                )
+            }
+            // models you imported yourself (e.g. DreamShaper 8 LCM)
+            choices.filter { it.custom }.forEach { c ->
+                ListItem(
+                    headlineContent = { Text(c.title) },
+                    supportingContent = {
+                        Text(
+                            Formatter.formatShortFileSize(context, c.model.length()) + " · imported · " +
+                                (if (c.defaultSampler == io.github.harryl0l.llamachat.data.SAMPLER_LCM) "LCM, " else "") +
+                                "${c.defaultSteps} steps by default" + (if (c.taesd != null) " · fast decoder" else ""),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    },
+                    leadingContent = { RadioButton(selected = current?.id == c.id, onClick = { vm.selectImageModel(c.id) }) },
+                    trailingContent = {
+                        IconButton(onClick = { vm.deleteCustomImageModel(c) }, shapes = IconButtonDefaults.shapes()) {
+                            Icon(Icons.Rounded.Delete, "Delete ${c.title}")
+                        }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    modifier = Modifier.clickable { vm.selectImageModel(c.id) },
                 )
             }
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -355,12 +378,38 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (selected != null && selected.maxSteps > 1) {
-                    val steps = if (settings.imageSteps > 0) settings.imageSteps else selected.defaultSteps
+                if (current != null && current.maxSteps > 1) {
+                    val steps = if (settings.imageSteps > 0) settings.imageSteps else current.defaultSteps
                     SettingSlider(
-                        "Steps (${selected.title})", steps.coerceIn(1, selected.maxSteps).toFloat(),
-                        1f..selected.maxSteps.toFloat(), selected.maxSteps - 2, { "${it.roundToInt()}" },
+                        "Steps (${current.title})", steps.coerceIn(1, current.maxSteps).toFloat(),
+                        1f..current.maxSteps.toFloat(), current.maxSteps - 2, { "${it.roundToInt()}" },
                     ) { v -> vm.updateSettings(reloadNeeded = false) { it.copy(imageSteps = v.roundToInt()) } }
+                }
+                if (current != null && current.custom) {
+                    // imported models: sampler + CFG matter (LCM models need the LCM sampler)
+                    Text("Sampler", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+                    val sampler = if (settings.imageSampler >= 0) settings.imageSampler else current.defaultSampler
+                    val samplers = io.github.harryl0l.llamachat.data.SAMPLERS
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        samplers.forEachIndexed { i, (id, label) ->
+                            SegmentedButton(
+                                selected = sampler == id,
+                                onClick = { vm.updateSettings(reloadNeeded = false) { it.copy(imageSampler = id) } },
+                                shape = SegmentedButtonDefaults.itemShape(i, samplers.size),
+                            ) { Text(label, maxLines = 1) }
+                        }
+                    }
+                    val cfg = if (settings.imageCfg > 0f) settings.imageCfg else current.defaultCfg
+                    SettingSlider("Guidance (CFG)", cfg, 1f..10f, 17, { "%.1f".format(it) }) { v ->
+                        vm.updateSettings(reloadNeeded = false) { it.copy(imageCfg = (v * 2).roundToInt() / 2f) }
+                    }
+                    Text(
+                        "LCM / Turbo models: LCM sampler (for LCM), 4–8 steps, CFG 1.0. CFG above 1 uses the " +
+                            "negative prompt but takes twice as long." +
+                            if (current.taesd == null) " Import taesd.safetensors (or download SD-Turbo) for ~10× faster final decoding." else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 OutlinedButton(
                     onClick = { imageImporter.launch(arrayOf("*/*")) },
@@ -370,7 +419,7 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                 ) {
                     Icon(Icons.Rounded.FileOpen, null, Modifier.size(ButtonDefaults.IconSize))
                     Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                    Text("Import a downloaded file")
+                    Text("Import a model file")
                 }
                 var negative by remember(settings.imageNegative) { mutableStateOf(settings.imageNegative) }
                 OutlinedTextField(

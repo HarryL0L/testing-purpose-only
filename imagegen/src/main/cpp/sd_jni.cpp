@@ -91,8 +91,10 @@ JNIEXPORT void JNICALL JNI_FN(unload)(JNIEnv *, jobject) {
 }
 
 // Returns RGB pixels (width * height * 3), or null on failure / cancellation (see lastError()).
+// sampler: a sample_method_t (e.g. 1 = Euler A, 9 = LCM for LCM-distilled models)
 JNIEXPORT jbyteArray JNICALL JNI_FN(generate)(JNIEnv * env, jobject, jstring jprompt, jstring jnegative,
-                                               jint width, jint height, jint steps, jfloat cfg, jlong seed) {
+                                               jint width, jint height, jint steps, jfloat cfg, jlong seed,
+                                               jint sampler) {
     if (!g_ctx) { g_error = "No image model loaded"; return nullptr; }
     const std::string prompt = jstr(env, jprompt), negative = jstr(env, jnegative);
 
@@ -110,8 +112,9 @@ JNIEXPORT jbyteArray JNICALL JNI_FN(generate)(JNIEnv * env, jobject, jstring jpr
     gp.height          = height;
     gp.seed            = seed;
     gp.batch_count     = 1;
-    gp.sample_params.sample_method        = EULER_A_SAMPLE_METHOD;
-    gp.sample_params.scheduler            = sd_get_default_scheduler(g_ctx, EULER_A_SAMPLE_METHOD);
+    const auto method = (sampler >= 0 && sampler < SAMPLE_METHOD_COUNT) ? (sample_method_t) sampler : EULER_A_SAMPLE_METHOD;
+    gp.sample_params.sample_method        = method;
+    gp.sample_params.scheduler            = sd_get_default_scheduler(g_ctx, method);
     gp.sample_params.sample_steps         = steps;
     gp.sample_params.guidance.txt_cfg     = cfg;
 

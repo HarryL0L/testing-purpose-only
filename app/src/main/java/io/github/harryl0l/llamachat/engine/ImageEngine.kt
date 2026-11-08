@@ -27,6 +27,7 @@ class ImageEngine {
     suspend fun generate(
         model: File, taesd: File?, threads: Int,
         prompt: String, negative: String, width: Int, height: Int, steps: Int, cfg: Float, seed: Long,
+        sampler: Int,
     ): ImageResult = withContext(dispatcher) {
         if (!available) throw EngineException("Image creation isn't supported on this device's CPU")
         val key = model.absolutePath + "|" + taesd?.absolutePath + "|" + threads
@@ -35,7 +36,7 @@ class ImageEngine {
             ImageGenNative.load(model.absolutePath, taesd?.absolutePath, threads)?.let { throw EngineException(it) }
             loadedKey = key
         }
-        val rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed)
+        val rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler)
             ?: throw EngineException(ImageGenNative.lastError().ifEmpty { "Image generation failed" })
         ImageResult(rgb, width, height)
     }

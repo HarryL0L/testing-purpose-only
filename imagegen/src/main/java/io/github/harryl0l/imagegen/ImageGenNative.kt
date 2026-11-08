@@ -30,6 +30,8 @@ object ImageGenNative {
     external fun generate(
         prompt: String, negativePrompt: String, width: Int, height: Int,
         steps: Int, cfgScale: Float, seed: Long,
+        /** stable-diffusion.cpp sample_method_t: 1 = Euler A, 5 = DPM++ 2M, 9 = LCM */
+        sampler: Int,
     ): ByteArray?
 
     /** "stage|completed|total" while generating, "" otherwise */

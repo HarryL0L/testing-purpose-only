@@ -28,6 +28,10 @@ data class AppSettings(
     val imageSteps: Int = 0,
     val imageSize: Int = 512,
     val imageNegative: String = "blurry, low quality, deformed, watermark, text",
+    /** 0 = model default */
+    val imageCfg: Float = 0f,
+    /** -1 = model default, else a stable-diffusion.cpp sample_method_t */
+    val imageSampler: Int = -1,
     /** experimental build: 0 = CPU, 1 = Vulkan, 2 = Mali (OpenCL, prompt/image processing only) */
     val gpuMode: Int = 0,
     /** experimental build: id of a custom Vulkan driver (libadrenotools), null = system driver */
@@ -72,6 +76,8 @@ class SettingsStore(private val context: Context) {
         val imageSteps = intPreferencesKey("image_steps")
         val imageSize = intPreferencesKey("image_size")
         val imageNegative = stringPreferencesKey("image_negative")
+        val imageCfg = floatPreferencesKey("image_cfg")
+        val imageSampler = intPreferencesKey("image_sampler")
         val useGpu = booleanPreferencesKey("use_gpu") // old on/off switch (= Vulkan)
         val gpuMode = intPreferencesKey("gpu_mode")
         val gpuDriver = stringPreferencesKey("gpu_driver")
@@ -90,6 +96,8 @@ class SettingsStore(private val context: Context) {
             imageSteps = p[K.imageSteps] ?: d.imageSteps,
             imageSize = p[K.imageSize] ?: d.imageSize,
             imageNegative = p[K.imageNegative] ?: d.imageNegative,
+            imageCfg = p[K.imageCfg] ?: d.imageCfg,
+            imageSampler = p[K.imageSampler] ?: d.imageSampler,
             gpuMode = p[K.gpuMode] ?: if (p[K.useGpu] == true) 1 else d.gpuMode,
             gpuDriver = p[K.gpuDriver],
             linkedFolders = p[K.folders] ?: d.linkedFolders,
@@ -137,6 +145,8 @@ class SettingsStore(private val context: Context) {
             p[K.imageSteps] = n.imageSteps
             p[K.imageSize] = n.imageSize
             p[K.imageNegative] = n.imageNegative
+            p[K.imageCfg] = n.imageCfg
+            p[K.imageSampler] = n.imageSampler
             p[K.gpuMode] = n.gpuMode
             p.remove(K.useGpu)
             if (n.gpuDriver != null) p[K.gpuDriver] = n.gpuDriver else p.remove(K.gpuDriver)
