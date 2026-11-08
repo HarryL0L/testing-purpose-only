@@ -12,3 +12,5 @@
 *.apk
 *.aab
 *.gguf
+/imagegen/build/
+/imagegen/.cxx/

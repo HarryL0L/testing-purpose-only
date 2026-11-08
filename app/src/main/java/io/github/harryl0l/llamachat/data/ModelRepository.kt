@@ -60,6 +60,45 @@ val MODEL_PRESETS = listOf(
  * A GGUF the app can load. [ref] is an absolute path (app storage) or a content:// URI of a file
  * in a folder the user linked (used in place, never copied or deleted by the app).
  */
+/** A text-to-image model for stable-diffusion.cpp. */
+data class ImageModelPreset(
+    val id: String,
+    val title: String,
+    val summary: String,
+    val url: String,
+    val file: String,
+    val sizeBytes: Long,
+    val defaultSteps: Int,
+    val maxSteps: Int,
+    val cfgScale: Float,
+    /** small replacement decoder (TAESD): ~10x faster final decoding, near identical images */
+    val taesd: TaesdFile? = null,
+)
+
+data class TaesdFile(val url: String, val file: String, val sizeBytes: Long)
+
+private val TAESD = TaesdFile(
+    "https://huggingface.co/madebyollin/taesd/resolve/main/diffusion_pytorch_model.safetensors?download=true",
+    "taesd.safetensors", 9_793_292L,
+)
+
+val IMAGE_PRESETS = listOf(
+    ImageModelPreset(
+        "sdxs-512", "SDXS-512",
+        "Tiny one-step model. Fastest (about 6 s on a desktop CPU, several times that on a phone); simpler images.",
+        "https://huggingface.co/concedo/sdxs-512-tinySDdistilled-GGUF/resolve/main/sdxs-512-tinySDdistilled_Q8_0.gguf?download=true",
+        "sdxs-512-tinySDdistilled_Q8_0.gguf", 682_847_200L,
+        defaultSteps = 1, maxSteps = 2, cfgScale = 1.0f,
+    ),
+    ImageModelPreset(
+        "sd-turbo", "SD-Turbo",
+        "Better images in 1–4 steps (about 15 s for 2 steps on a desktop CPU). Uses the TAESD fast decoder.",
+        "https://huggingface.co/Green-Sky/SD-Turbo-GGUF/resolve/main/sd_turbo-f16-q8_0.gguf?download=true",
+        "sd_turbo-f16-q8_0.gguf", 2_023_745_376L,
+        defaultSteps = 2, maxSteps = 4, cfgScale = 1.0f, taesd = TAESD,
+    ),
+)
+
 data class LocalModel(
     val ref: String,
     val name: String,
@@ -205,6 +244,76 @@ class ModelRepository(private val context: Context) {
             doneBefore += target.length()
         }
         onProgress(1f)
+    }
+
+    // ------------------------------------------------------------------ image models
+
+    fun imageDir(preset: ImageModelPreset) = File(modelsDir, "image/" + preset.id)
+
+    fun imageFiles(preset: ImageModelPreset): Pair<File, File?> =
+        File(imageDir(preset), preset.file) to preset.taesd?.let { File(File(modelsDir, "image/taesd"), it.file) }
+
+    fun isDownloaded(preset: ImageModelPreset): Boolean {
+        val (m, t) = imageFiles(preset)
+        return m.exists() && (t == null || t.exists())
+    }
+
+    /** Downloads an image model (and the small TAESD decoder it uses, if any). Resumable. */
+    suspend fun download(preset: ImageModelPreset, onProgress: (Float) -> Unit) = withContext(Dispatchers.IO) {
+        val (model, taesd) = imageFiles(preset)
+        val parts = listOfNotNull(preset.taesd?.let { it.url to taesd!! }, preset.url to model)
+        val total = preset.sizeBytes + (preset.taesd?.sizeBytes ?: 0L)
+        var doneBefore = 0L
+        for ((url, target) in parts) {
+            target.parentFile?.mkdirs()
+            if (target.exists()) { doneBefore += target.length(); continue }
+            val base = doneBefore
+            downloadFile(url, target) { bytes -> onProgress(((base + bytes).toFloat() / total).coerceIn(0f, 1f)) }
+            doneBefore += target.length()
+        }
+        onProgress(1f)
+    }
+
+    fun deleteImageModel(preset: ImageModelPreset) { imageDir(preset).deleteRecursively() }
+
+    /**
+     * Copies an image-model file the user downloaded themselves into place. It must be one of the
+     * presets' files (same file name), or the TAESD decoder. @return what was imported
+     */
+    suspend fun importImageFile(uri: Uri, onProgress: (Float) -> Unit): String = withContext(Dispatchers.IO) {
+        var name = ""
+        var size = -1L
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst()) { name = c.getString(0) ?: ""; size = c.getLong(1) }
+        }
+        val preset = IMAGE_PRESETS.firstOrNull { it.file.equals(name, ignoreCase = true) }
+        val isTaesd = name.equals("taesd.safetensors", true) || name.equals("diffusion_pytorch_model.safetensors", true)
+        val target = when {
+            preset != null -> imageFiles(preset).first
+            isTaesd -> imageFiles(IMAGE_PRESETS.first { it.taesd != null }).second!!
+            else -> error("Not a supported image model file: $name. Expected one of: " +
+                (IMAGE_PRESETS.map { it.file } + "taesd / diffusion_pytorch_model.safetensors").joinToString())
+        }
+        target.parentFile?.mkdirs()
+        val part = File(target.path + ".part")
+        context.contentResolver.openInputStream(uri)!!.use { input ->
+            part.outputStream().use { out ->
+                val buf = ByteArray(1 shl 16)
+                var total = 0L
+                var last = 0L
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    total += n
+                    if (size > 0 && total - last > (1 shl 20)) { onProgress(total.toFloat() / size); last = total }
+                }
+            }
+        }
+        target.delete()
+        check(part.renameTo(target)) { "Could not save $name" }
+        preset?.title ?: "TAESD decoder"
     }
 
     private suspend fun downloadFile(url: String, target: File, onBytes: (Long) -> Unit) {

@@ -96,12 +96,39 @@ matrix multiplications ran on the GPU, for comparing against CPU mode. Correctne
 backend with PoCL (`mali/test/mali_matmul_test.cpp`); greedy outputs of Qwen3-VL 2B (text and image) were identical. It
 has **not been benchmarked on a real Mali GPU**.
 
+## Image creation (stable-diffusion.cpp)
+
+Turn on **Create image** in the message bar and describe a picture. It's generated on the phone with
+[stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) and shown in the chat. Images are saved with the
+chat; tap one to view it full screen and save it to the gallery (`Pictures/LlamaChat`).
+
+| Model | Download | Steps | Desktop CPU, 4 threads, 512×512 |
+| --- | --- | --- | --- |
+| SDXS-512 (tiny one-step model, tiny decoder built in) | 683 MB | 1 | 6.5 s |
+| SD-Turbo + TAESD decoder | 2.0 GB + 10 MB | 1–4 (default 2) | 14.9 s (2 steps) |
+
+Phones are several times slower. With SD-Turbo, the TAESD decoder cut decoding from 26 s to 2.8 s with practically
+identical images. Models download in Models → Image creation, where you also set the size (256/384/512), the number of
+steps and a negative prompt. A file you downloaded yourself can be imported there too: it needs the same file name
+(`sdxs-512-tinySDdistilled_Q8_0.gguf`, `sd_turbo-f16-q8_0.gguf`, `diffusion_pytorch_model.safetensors` for TAESD).
+
+stable-diffusion.cpp bundles a patched ggml that isn't compatible with llama.cpp's. It's therefore built in its own
+Gradle module (`imagegen/`) and CMake project, statically into `libimagegen.so` with all internal symbols hidden
+(`-Wl,--exclude-libs,ALL`; only the JNI functions are exported). Both engines run in one process. This was tested on the
+host: chat → image → chat in one JVM. The library is built for ARMv8.2 + dot product + fp16, and the app checks
+`/proc/cpuinfo` before loading it.
+
+Only the `ggml` submodule of stable-diffusion.cpp is needed:
+`git submodule update --init third_party/stable-diffusion.cpp && git -C third_party/stable-diffusion.cpp submodule update --init ggml`.
+
 ## Layout
 
 ```
 third_party/llama.cpp/                 llama.cpp submodule pinned to b12111
 third_party/libadrenotools, Vulkan-Headers, SPIRV-Headers   experimental GPU flavor only
 app/src/main/cpp/vulkan/               libvulkan shim (trampolines) for custom Vulkan drivers
+imagegen/                              text-to-image module: stable-diffusion.cpp (+ its own ggml) in libimagegen.so
+third_party/stable-diffusion.cpp/      submodule
 app/src/main/cpp/llama_jni.cpp         JNI: model/context/mtmd, chat template, sampling, lazy video bitmaps
 app/src/main/java/.../engine/          LlamaNative (JNI decls) + LlamaEngine (single-thread engine, Flow streaming)
 app/src/main/java/.../media/           Image decoding, MediaCodec video frame grabber

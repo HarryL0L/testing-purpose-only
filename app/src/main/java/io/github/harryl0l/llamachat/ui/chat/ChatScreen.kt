@@ -13,6 +13,23 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.outlined.Brush
+import androidx.compose.material.icons.rounded.Brush
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import io.github.harryl0l.llamachat.Attachment
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -130,6 +147,8 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
         vm.attach(uris)
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+    var viewing by remember { mutableStateOf<Attachment?>(null) }
+    viewing?.let { a -> ImageViewer(a, onSave = { vm.saveToGallery(a.uri) }, onDismiss = { viewing = null }) }
     val scope = rememberCoroutineScope()
     val settings by vm.settings.collectAsStateWithLifecycle()
 
@@ -207,7 +226,7 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Bottom),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    items(vm.messages.asReversed(), key = { it.id }) { msg -> MessageBubble(msg) }
+                    items(vm.messages.asReversed(), key = { it.id }) { msg -> MessageBubble(msg) { viewing = it } }
                 }
                 }
             }
@@ -462,8 +481,12 @@ private fun EmptyState(
 }
 
 @Composable
-private fun MessageBubble(msg: ChatMessage) {
+private fun MessageBubble(msg: ChatMessage, onOpenImage: (Attachment) -> Unit) {
     val isUser = msg.role == Role.User
+    if (!isUser && msg.imageRequest && !msg.error) {
+        CreatedImage(msg, onOpenImage)
+        return
+    }
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
@@ -538,6 +561,82 @@ private fun MessageBubble(msg: ChatMessage) {
     }
 }
 
+/** An image being created (progress) or the finished image, large and tappable. */
+@Composable
+private fun CreatedImage(msg: ChatMessage, onOpen: (Attachment) -> Unit) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+        val image = msg.attachments.firstOrNull()
+        if (image != null) {
+            MediaThumbnail(
+                image, RoundedCornerShape(28.dp), 300.dp,
+                Modifier.clickable { onOpen(image) },
+            )
+        } else if (msg.streaming) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(28.dp),
+                modifier = Modifier.size(300.dp),
+            ) {
+                Column(
+                    Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    LoadingIndicator(Modifier.size(64.dp))
+                    Spacer(Modifier.size(16.dp))
+                    Text(msg.status ?: "Creating…", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                    Spacer(Modifier.size(12.dp))
+                    val p = msg.progress
+                    if (p != null) LinearWavyProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+        if (!msg.streaming && msg.status != null) {
+            Text(
+                msg.status!!,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+            )
+        }
+    }
+}
+
+/** Full-screen view of a created image with "save to gallery". */
+@Composable
+private fun ImageViewer(attachment: Attachment, onSave: () -> Unit, onDismiss: () -> Unit) {
+    val bitmap by produceState<android.graphics.Bitmap?>(null, attachment.uri) {
+        value = withContext(Dispatchers.IO) { runCatching { android.graphics.BitmapFactory.decodeFile(attachment.uri.path) }.getOrNull() }
+    }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) {
+            Column(
+                Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                val bmp = bitmap
+                if (bmp != null) {
+                    Image(
+                        bmp.asImageBitmap(), "Created image",
+                        modifier = Modifier.fillMaxWidth().weight(1f, fill = false).clip(RoundedCornerShape(24.dp)),
+                        contentScale = ContentScale.Fit,
+                    )
+                } else LoadingIndicator()
+                Spacer(Modifier.size(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text("Close") }
+                    Button(onClick = onSave, shapes = ButtonDefaults.shapes()) {
+                        Icon(Icons.Rounded.Download, null, Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text("Save to gallery")
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, canAttach: Boolean, onAttach: () -> Unit) {
     Surface(
@@ -566,8 +665,25 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                     }
                 }
             }
+            // image mode works without a chat model
+            val canType = enabled || vm.imageMode
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)) {
-                FilterChip(
+                if (vm.imageCreationSupported) {
+                    FilterChip(
+                        selected = vm.imageMode,
+                        onClick = { vm.imageMode = !vm.imageMode },
+                        label = { Text("Create image") },
+                        leadingIcon = {
+                            Icon(
+                                if (vm.imageMode) Icons.Rounded.Brush else Icons.Outlined.Brush, null,
+                                Modifier.size(FilterChipDefaults.IconSize),
+                            )
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                    Spacer(Modifier.size(8.dp))
+                }
+                if (!vm.imageMode) FilterChip(
                     selected = thinking,
                     onClick = { vm.setThinking(!thinking) },
                     label = { Text("Thinking") },
@@ -581,7 +697,11 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                 )
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    if (thinking) "Reasons before answering (if the model supports it)" else "Answers directly",
+                    when {
+                        vm.imageMode -> "Your message becomes an image (runs on this phone)"
+                        thinking -> "Reasons before answering (if the model supports it)"
+                        else -> "Answers directly"
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -591,7 +711,7 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
             Row(verticalAlignment = Alignment.Bottom) {
                 FilledTonalIconButton(
                     onClick = onAttach,
-                    enabled = enabled && canAttach && !vm.generating,
+                    enabled = enabled && canAttach && !vm.generating && !vm.imageMode,
                     shapes = IconButtonDefaults.shapes(),
                     modifier = Modifier.size(56.dp),
                 ) { Icon(Icons.Rounded.AddPhotoAlternate, "Attach image or video") }
@@ -599,8 +719,16 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                 TextField(
                     value = vm.input,
                     onValueChange = { vm.input = it },
-                    enabled = enabled,
-                    placeholder = { Text(if (enabled) "Message" else "Load a model first") },
+                    enabled = canType,
+                    placeholder = {
+                        Text(
+                            when {
+                                vm.imageMode -> "Describe the image to create"
+                                enabled -> "Message"
+                                else -> "Load a model first"
+                            }
+                        )
+                    },
                     maxLines = 6,
                     shape = RoundedCornerShape(28.dp),
                     colors = TextFieldDefaults.colors(
@@ -618,11 +746,12 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                 ) { generating ->
                     FilledIconButton(
                         onClick = { if (generating) vm.stop() else vm.send() },
-                        enabled = enabled,
+                        enabled = canType || generating,
                         shapes = IconButtonDefaults.shapes(),
                         modifier = Modifier.size(56.dp),
                     ) {
                         if (generating) Icon(Icons.Rounded.Stop, "Stop")
+                        else if (vm.imageMode) Icon(Icons.Rounded.Brush, "Create image")
                         else Icon(Icons.AutoMirrored.Rounded.Send, "Send")
                     }
                 }

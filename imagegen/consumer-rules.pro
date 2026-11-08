@@ -1,0 +1,1 @@
+-keep class io.github.harryl0l.imagegen.ImageGenNative { *; }

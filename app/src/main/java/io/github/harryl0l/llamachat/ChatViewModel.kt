@@ -24,6 +24,9 @@ import io.github.harryl0l.llamachat.data.SavedMedia
 import io.github.harryl0l.llamachat.data.SavedMessage
 import io.github.harryl0l.llamachat.data.SettingsStore
 import io.github.harryl0l.llamachat.engine.EngineState
+import io.github.harryl0l.llamachat.engine.ImageEngine
+import io.github.harryl0l.llamachat.data.IMAGE_PRESETS
+import io.github.harryl0l.llamachat.data.ImageModelPreset
 import io.github.harryl0l.llamachat.engine.LlamaEngine
 import io.github.harryl0l.llamachat.engine.ModelSpec
 import io.github.harryl0l.llamachat.engine.ProjectorSpec
@@ -57,7 +60,11 @@ class ChatMessage(
     var prompt: String = text,
     /** user: media as saved with the chat (restorable) */
     var savedMedia: List<SavedMedia> = emptyList(),
+    /** part of image creation (prompt or result): shown in the chat, never given to the chat model */
+    val imageRequest: Boolean = false,
 ) {
+    /** 0..1 while an image is being created */
+    var progress by mutableStateOf<Float?>(null)
     var text by mutableStateOf(text)          // assistant: raw reply, "<think>…</think>" included
     var attachments by mutableStateOf(attachments)
     var status by mutableStateOf<String?>(null)   // "Reading video…", tokens/s, …
@@ -72,6 +79,7 @@ sealed interface DownloadState {
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
     val engine = LlamaEngine(app)
+    val imageEngine = ImageEngine()
     val repo = ModelRepository(app)
     private val store = SettingsStore(app)
     private val chatStore = ChatStore(app)
@@ -150,6 +158,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun unloadModel() {
         stop(); genJob?.join()
         engine.unload()
+        imageEngine.unload()
         contextUsage = 0 to 0
     }
 
@@ -230,6 +239,160 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 downloads[preset.id] = DownloadState.Failed(e.message ?: "Download failed")
             }
+        }
+    }
+
+    // ---------------------------------------------------------------- image creation
+
+    /** composer toggle: the next message creates an image instead of chatting */
+    var imageMode by mutableStateOf(false)
+    val imageCreationSupported: Boolean get() = imageEngine.available
+
+    fun selectImageModel(preset: ImageModelPreset) {
+        viewModelScope.launch { store.update { it.copy(imageModel = preset.id, imageSteps = 0) } }
+    }
+
+    fun downloadImageModel(preset: ImageModelPreset) {
+        val key = "img:" + preset.id
+        if (downloads[key] is DownloadState.Running) return
+        downloads[key] = DownloadState.Running(0f)
+        viewModelScope.launch {
+            try {
+                repo.download(preset) { p -> downloads[key] = DownloadState.Running(p) }
+                downloads.remove(key)
+                imageFilesVersion++
+                if (store.current().imageModel == null) selectImageModel(preset)
+                snackbar = "${preset.title} downloaded. Turn on \"Create image\" in the chat to use it."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                downloads[key] = DownloadState.Failed(e.message ?: "Download failed")
+            }
+        }
+    }
+
+    fun deleteImageModel(preset: ImageModelPreset) {
+        viewModelScope.launch {
+            stop(); genJob?.join()
+            imageEngine.unload()
+            repo.deleteImageModel(preset)
+            imageFilesVersion++
+            if (store.current().imageModel == preset.id) store.update { it.copy(imageModel = null) }
+            downloads.remove("img:" + preset.id)
+        }
+    }
+
+    /** The image model to use: the selected one if downloaded, else any downloaded one. */
+    private fun currentImagePreset(s: AppSettings): ImageModelPreset? =
+        IMAGE_PRESETS.firstOrNull { it.id == s.imageModel && repo.isDownloaded(it) }
+            ?: IMAGE_PRESETS.firstOrNull { repo.isDownloaded(it) }
+
+    private fun createImage(prompt: String) {
+        val s = settings.value
+        val preset = currentImagePreset(s)
+        if (preset == null) { snackbar = "Download an image model first (Models → Image creation)"; return }
+        input = ""
+        val chatId = currentChatId ?: System.currentTimeMillis().toString().also { currentChatId = it }
+        messages += ChatMessage(nextId++, Role.User, prompt, imageRequest = true)
+        val reply = ChatMessage(nextId++, Role.Assistant, "", imageRequest = true).apply {
+            streaming = true
+            status = "Loading ${preset.title}…"
+            progress = 0f
+        }
+        messages += reply
+        generating = true
+        val steps = (if (s.imageSteps > 0) s.imageSteps else preset.defaultSteps).coerceIn(1, preset.maxSteps)
+        val size = s.imageSize
+        val seed = kotlin.random.Random.nextLong(0, Int.MAX_VALUE.toLong())
+
+        genJob = viewModelScope.launch {
+            val progressJob = launch {
+                while (true) {
+                    kotlinx.coroutines.delay(300)
+                    val p = imageEngine.progress() ?: continue
+                    when (p.stage) {
+                        "sampling" -> if (p.total > 0) {
+                            reply.status = "Creating… step ${minOf(p.done + 1, p.total)} of ${p.total}"
+                            // sampling is most of the work; leave the last 15% for decoding
+                            reply.progress = 0.05f + 0.8f * p.done / p.total
+                            if (p.done >= p.total) { reply.status = "Finishing…"; reply.progress = 0.9f }
+                        }
+                        "conditioning", "preparing" -> { reply.status = "Reading the prompt…"; reply.progress = 0.03f }
+                    }
+                }
+            }
+            val t0 = System.nanoTime()
+            try {
+                val (model, taesd) = repo.imageFiles(preset)
+                val img = imageEngine.generate(
+                    model, taesd, s.threads, prompt, s.imageNegative, size, size, steps, preset.cfgScale, seed,
+                )
+                progressJob.cancel()
+                val saved = chatStore.saveMedia(chatId, DecodedMedia.Image(img.rgb, img.width, img.height))
+                reply.savedMedia = listOf(saved)
+                reply.attachments = listOf(saved.toAttachment(chatStore.dir(chatId)))
+                reply.status = "%s · %d×%d · %d step%s · seed %d · %.1f s".format(
+                    preset.title, img.width, img.height, steps, if (steps == 1) "" else "s", seed, (System.nanoTime() - t0) / 1e9,
+                )
+            } catch (e: CancellationException) {
+                reply.status = "Stopped"
+            } catch (e: Exception) {
+                reply.error = true
+                reply.status = null
+                reply.text = e.message ?: "Image creation failed"
+            } finally {
+                progressJob.cancel()
+                reply.progress = null
+                reply.streaming = false
+                generating = false
+                withContext(NonCancellable) { runCatching { persistChat() } }
+            }
+        }
+    }
+
+    /** Imports an image-model file downloaded outside the app. */
+    fun importImageModel(uri: Uri) {
+        viewModelScope.launch {
+            importProgress = 0f
+            try {
+                val what = repo.importImageFile(uri) { importProgress = it }
+                IMAGE_PRESETS.firstOrNull { it.title == what }?.let { p ->
+                    if (store.current().imageModel == null && repo.isDownloaded(p)) selectImageModel(p)
+                }
+                snackbar = "Imported $what"
+                imageFilesVersion++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                snackbar = e.message ?: "Import failed"
+            } finally {
+                importProgress = null
+            }
+        }
+    }
+
+    /** bumped when image model files change, so the UI re-checks what's downloaded */
+    var imageFilesVersion by mutableStateOf(0)
+        private set
+
+    /** Copies an image file into the phone's gallery (Pictures/LlamaChat). */
+    fun saveToGallery(uri: Uri) {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val values = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "llamachat_${System.currentTimeMillis()}.jpg")
+                        put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                        put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/LlamaChat")
+                    }
+                    val target = app.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
+                    app.contentResolver.openOutputStream(target)!!.use { out ->
+                        app.contentResolver.openInputStream(uri)!!.use { it.copyTo(out) }
+                    }
+                }.isSuccess
+            }
+            snackbar = if (ok) "Saved to Pictures/LlamaChat" else "Could not save the image"
         }
     }
 
@@ -413,6 +576,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     attachments = m.media.map { it.toAttachment(dir) },
                     prompt = m.prompt,
                     savedMedia = m.media,
+                    imageRequest = m.kind == "image",
                 )
             }
             if (engine.state.value is EngineState.Ready) restoreIntoEngine()
@@ -434,8 +598,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         fun answered(m: ChatMessage?) = m != null && m.role == Role.Assistant && !m.error && m.text.isNotEmpty()
         // only complete turns: a user message whose media failed to decode (or that was stopped
         // before any reply) would otherwise come back as an empty / dangling user turn
-        val restored = messages.filterIndexed { i, m ->
-            if (m.role == Role.User) answered(messages.getOrNull(i + 1)) else answered(m)
+        // image-creation prompts and results aren't part of the conversation with the chat model
+        val chatTurns = messages.filter { !it.imageRequest }
+        val restored = chatTurns.filterIndexed { i, m ->
+            if (m.role == Role.User) answered(chatTurns.getOrNull(i + 1)) else answered(m)
         }.map { m ->
             if (m.role == Role.User) {
                 val media = m.savedMedia.mapNotNull { runCatching { chatStore.loadMedia(id, it) }.getOrNull() }
@@ -466,6 +632,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         text = m.text,
                         prompt = m.prompt,
                         media = m.savedMedia,
+                        kind = if (m.imageRequest) "image" else "",
                     )
                 },
             )
@@ -493,9 +660,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeAttachment(a: Attachment) { pendingAttachments.remove(a) }
 
-    fun stop() { genJob?.cancel() }
+    fun stop() {
+        imageEngine.cancel() // a running image generation only notices this, not coroutine cancellation
+        genJob?.cancel()
+    }
 
     fun send() {
+        if (imageMode) {
+            val prompt = input.trim()
+            if (prompt.isNotEmpty() && !generating) createImage(prompt)
+            return
+        }
         val text = input.trim()
         val attachments = pendingAttachments.toList()
         if ((text.isEmpty() && attachments.isEmpty()) || generating) return

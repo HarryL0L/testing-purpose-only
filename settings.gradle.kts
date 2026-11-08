@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "LlamaChat"
 include(":app")
+include(":imagegen")

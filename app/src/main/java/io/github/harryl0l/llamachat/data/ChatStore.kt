@@ -24,7 +24,14 @@ sealed interface SavedMedia {
  * One message. For user messages [prompt] is what the model saw (may differ from [text] when the
  * user only sent media); for assistant messages [text] is the raw reply, reasoning included.
  */
-class SavedMessage(val role: String, val text: String, val prompt: String, val media: List<SavedMedia>)
+class SavedMessage(
+    val role: String,
+    val text: String,
+    val prompt: String,
+    val media: List<SavedMedia>,
+    /** "image" for an image-creation prompt and its result (never given to the chat model) */
+    val kind: String = "",
+)
 
 class SavedChat(val id: String, val title: String, val updated: Long, val messages: List<SavedMessage>)
 
@@ -61,6 +68,7 @@ class ChatStore(context: Context) {
                         text = m.getString("text"),
                         prompt = m.optString("prompt", m.getString("text")),
                         media = List(media.length()) { j -> media.getJSONObject(j).toMedia() },
+                        kind = m.optString("kind", ""),
                     )
                 },
             )
@@ -78,6 +86,7 @@ class ChatStore(context: Context) {
                         .put("role", m.role)
                         .put("text", m.text)
                         .put("prompt", m.prompt)
+                        .put("kind", m.kind)
                         .put("media", JSONArray().apply { m.media.forEach { put(it.toJson()) } }))
                 }
             })

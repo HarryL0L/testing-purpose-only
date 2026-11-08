@@ -23,6 +23,11 @@ data class AppSettings(
     val repack: Boolean = true,
     /** load the last used model when the app starts (off: only load when the user asks) */
     val autoLoad: Boolean = false,
+    /** image creation: preset id, steps (0 = model default), size, negative prompt */
+    val imageModel: String? = null,
+    val imageSteps: Int = 0,
+    val imageSize: Int = 512,
+    val imageNegative: String = "blurry, low quality, deformed, watermark, text",
     /** experimental build: 0 = CPU, 1 = Vulkan, 2 = Mali (OpenCL, prompt/image processing only) */
     val gpuMode: Int = 0,
     /** experimental build: id of a custom Vulkan driver (libadrenotools), null = system driver */
@@ -63,6 +68,10 @@ class SettingsStore(private val context: Context) {
         val thinking = booleanPreferencesKey("thinking")
         val repack = booleanPreferencesKey("repack")
         val autoLoad = booleanPreferencesKey("auto_load")
+        val imageModel = stringPreferencesKey("image_model")
+        val imageSteps = intPreferencesKey("image_steps")
+        val imageSize = intPreferencesKey("image_size")
+        val imageNegative = stringPreferencesKey("image_negative")
         val useGpu = booleanPreferencesKey("use_gpu") // old on/off switch (= Vulkan)
         val gpuMode = intPreferencesKey("gpu_mode")
         val gpuDriver = stringPreferencesKey("gpu_driver")
@@ -77,6 +86,10 @@ class SettingsStore(private val context: Context) {
             thinking = p[K.thinking] ?: d.thinking,
             repack = p[K.repack] ?: d.repack,
             autoLoad = p[K.autoLoad] ?: d.autoLoad,
+            imageModel = p[K.imageModel],
+            imageSteps = p[K.imageSteps] ?: d.imageSteps,
+            imageSize = p[K.imageSize] ?: d.imageSize,
+            imageNegative = p[K.imageNegative] ?: d.imageNegative,
             gpuMode = p[K.gpuMode] ?: if (p[K.useGpu] == true) 1 else d.gpuMode,
             gpuDriver = p[K.gpuDriver],
             linkedFolders = p[K.folders] ?: d.linkedFolders,
@@ -120,6 +133,10 @@ class SettingsStore(private val context: Context) {
             p[K.thinking] = n.thinking
             p[K.repack] = n.repack
             p[K.autoLoad] = n.autoLoad
+            if (n.imageModel != null) p[K.imageModel] = n.imageModel else p.remove(K.imageModel)
+            p[K.imageSteps] = n.imageSteps
+            p[K.imageSize] = n.imageSize
+            p[K.imageNegative] = n.imageNegative
             p[K.gpuMode] = n.gpuMode
             p.remove(K.useGpu)
             if (n.gpuDriver != null) p[K.gpuDriver] = n.gpuDriver else p.remove(K.gpuDriver)

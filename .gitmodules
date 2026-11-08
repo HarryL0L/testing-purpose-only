@@ -13,3 +13,6 @@
 [submodule "third_party/OpenCL-Headers"]
 	path = third_party/OpenCL-Headers
 	url = https://github.com/KhronosGroup/OpenCL-Headers
+[submodule "third_party/stable-diffusion.cpp"]
+	path = third_party/stable-diffusion.cpp
+	url = https://github.com/leejet/stable-diffusion.cpp

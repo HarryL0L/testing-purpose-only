@@ -82,6 +82,7 @@ import io.github.harryl0l.llamachat.BuildConfig
 import io.github.harryl0l.llamachat.ChatViewModel
 import io.github.harryl0l.llamachat.DownloadState
 import io.github.harryl0l.llamachat.data.AppSettings
+import io.github.harryl0l.llamachat.data.IMAGE_PRESETS
 import io.github.harryl0l.llamachat.data.LinkedFolder
 import io.github.harryl0l.llamachat.data.LocalModel
 import io.github.harryl0l.llamachat.data.MODEL_PRESETS
@@ -167,6 +168,8 @@ fun ModelsScreen(vm: ChatViewModel, onBack: () -> Unit) {
                 )
             }
 
+            item { SectionTitle("Image creation") }
+            item { ImageModelsCard(vm, settings) }
             if (BuildConfig.GPU_EXPERIMENTAL) {
                 item { SectionTitle("GPU · experimental") }
                 item { GpuCard(vm, settings) }
@@ -262,6 +265,122 @@ private fun GpuCard(vm: ChatViewModel, settings: AppSettings) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
+    val context = LocalContext.current
+    val imageImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(vm::importImageModel)
+    }
+    Card(shape = MaterialTheme.shapes.extraLarge, colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainer)) {
+        Column(Modifier.padding(vertical = 12.dp)) {
+            if (!vm.imageCreationSupported) {
+                Text(
+                    "Image creation needs a CPU with ARMv8.2 dot-product and fp16 support, which this phone doesn't report.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                return@Column
+            }
+            Text(
+                "Create images from text with stable-diffusion.cpp, fully on this phone. Turn on \"Create image\" " +
+                    "in the chat. It's heavy work: unloading the chat model (eject button) frees memory.",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            @Suppress("UNUSED_VARIABLE") val filesVersion = vm.imageFilesVersion // re-check after download / import / delete
+            val downloaded = IMAGE_PRESETS.filter { vm.repo.isDownloaded(it) }
+            val selected = IMAGE_PRESETS.firstOrNull { it.id == settings.imageModel && it in downloaded } ?: downloaded.firstOrNull()
+            IMAGE_PRESETS.forEach { preset ->
+                val isDownloaded = preset in downloaded
+                val dl = vm.downloads["img:" + preset.id]
+                ListItem(
+                    headlineContent = { Text(preset.title) },
+                    supportingContent = {
+                        Column {
+                            Text(
+                                Formatter.formatShortFileSize(context, preset.sizeBytes + (preset.taesd?.sizeBytes ?: 0)) + " · " + preset.summary,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            when (dl) {
+                                is DownloadState.Running -> LinearWavyProgressIndicator(
+                                    progress = { dl.progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                                )
+                                is DownloadState.Failed -> Text(dl.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                null -> {}
+                            }
+                        }
+                    },
+                    leadingContent = {
+                        RadioButton(selected = preset == selected, enabled = isDownloaded, onClick = { vm.selectImageModel(preset) })
+                    },
+                    trailingContent = {
+                        if (isDownloaded) {
+                            IconButton(onClick = { vm.deleteImageModel(preset) }, shapes = IconButtonDefaults.shapes()) {
+                                Icon(Icons.Rounded.Delete, "Delete ${preset.title}")
+                            }
+                        } else if (dl !is DownloadState.Running) {
+                            IconButton(onClick = { vm.downloadImageModel(preset) }, shapes = IconButtonDefaults.shapes()) {
+                                Icon(Icons.Rounded.Download, "Download ${preset.title}")
+                            }
+                        }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    modifier = Modifier.clickable(enabled = isDownloaded) { vm.selectImageModel(preset) },
+                )
+            }
+            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Size", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                val sizes = listOf(256, 384, 512)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    sizes.forEachIndexed { i, px ->
+                        SegmentedButton(
+                            selected = settings.imageSize == px,
+                            onClick = { vm.updateSettings(reloadNeeded = false) { it.copy(imageSize = px) } },
+                            shape = SegmentedButtonDefaults.itemShape(i, sizes.size),
+                        ) { Text("$px") }
+                    }
+                }
+                Text(
+                    "These models are trained for 512×512; smaller is much faster but less detailed.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (selected != null && selected.maxSteps > 1) {
+                    val steps = if (settings.imageSteps > 0) settings.imageSteps else selected.defaultSteps
+                    SettingSlider(
+                        "Steps (${selected.title})", steps.coerceIn(1, selected.maxSteps).toFloat(),
+                        1f..selected.maxSteps.toFloat(), selected.maxSteps - 2, { "${it.roundToInt()}" },
+                    ) { v -> vm.updateSettings(reloadNeeded = false) { it.copy(imageSteps = v.roundToInt()) } }
+                }
+                OutlinedButton(
+                    onClick = { imageImporter.launch(arrayOf("*/*")) },
+                    enabled = vm.importProgress == null,
+                    shapes = ButtonDefaults.shapes(),
+                    modifier = Modifier.padding(top = 4.dp),
+                ) {
+                    Icon(Icons.Rounded.FileOpen, null, Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                    Text("Import a downloaded file")
+                }
+                var negative by remember(settings.imageNegative) { mutableStateOf(settings.imageNegative) }
+                OutlinedTextField(
+                    value = negative,
+                    onValueChange = { negative = it },
+                    label = { Text("Avoid (negative prompt)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                )
+                if (negative != settings.imageNegative) {
+                    Button(
+                        onClick = { vm.updateSettings(reloadNeeded = false) { it.copy(imageNegative = negative) } },
+                        shapes = ButtonDefaults.shapes(),
+                    ) { Text("Save") }
+                }
+            }
         }
     }
 }
