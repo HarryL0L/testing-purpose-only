@@ -73,7 +73,8 @@ class ChatMessage(
 }
 
 sealed interface DownloadState {
-    data class Running(val progress: Float) : DownloadState
+    /** [verifying]: the download finished and its checksum is being checked */
+    data class Running(val progress: Float, val verifying: Boolean = false) : DownloadState
     data class Failed(val message: String) : DownloadState
 }
 
@@ -230,7 +231,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         downloads[preset.id] = DownloadState.Running(0f)
         viewModelScope.launch {
             try {
-                repo.download(preset) { p -> downloads[preset.id] = DownloadState.Running(p) }
+                repo.download(preset) { p, verifying -> downloads[preset.id] = DownloadState.Running(p, verifying) }
                 downloads.remove(preset.id)
                 refreshLocalModels()
                 snackbar = "${preset.title} downloaded. Tap \"Use this model\" to load it."
@@ -258,7 +259,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         downloads[key] = DownloadState.Running(0f)
         viewModelScope.launch {
             try {
-                repo.download(preset) { p -> downloads[key] = DownloadState.Running(p) }
+                repo.download(preset) { p, verifying -> downloads[key] = DownloadState.Running(p, verifying) }
                 downloads.remove(key)
                 imageFilesVersion++
                 if (store.current().imageModel == null) selectImageModel(preset)

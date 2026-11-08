@@ -306,9 +306,15 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             when (dl) {
-                                is DownloadState.Running -> LinearWavyProgressIndicator(
-                                    progress = { dl.progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                                )
+                                is DownloadState.Running -> Column {
+                                    LinearWavyProgressIndicator(
+                                        progress = { dl.progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                                    )
+                                    Text(
+                                        (if (dl.verifying) "Checking file… " else "Downloading… ") + "${(dl.progress * 100).roundToInt()}%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
                                 is DownloadState.Failed -> Text(dl.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                                 null -> {}
                             }
@@ -431,7 +437,10 @@ private fun PresetCard(
                 download is DownloadState.Running -> {
                     LinearWavyProgressIndicator(progress = { download.progress }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.size(6.dp))
-                    Text("Downloading… ${(download.progress * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        (if (download.verifying) "Checking file… " else "Downloading… ") + "${(download.progress * 100).roundToInt()}%",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                 }
                 downloaded -> Button(onClick = onUse, enabled = !active, shapes = ButtonDefaults.shapes()) {
                     Text(if (active) "In use" else "Use this model")
