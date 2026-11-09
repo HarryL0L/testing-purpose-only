@@ -123,7 +123,8 @@ val IMAGE_PRESETS = listOf(
     ),
     ImageModelPreset(
         "sdxl-turbo", "SDXL-Turbo",
-        "SD-Turbo's big brother: better anatomy, detail and prompt following, about 3× slower. Needs ~4.5 GB RAM " +
+        "SD-Turbo's big brother: better anatomy, detail and prompt following (about 30 s for 2 steps on a desktop " +
+            "CPU, ~2× SD-Turbo). Needs ~4.5 GB RAM " +
             "(unload the chat model first). Uses the TAESDXL fast decoder. Non-commercial license.",
         "https://huggingface.co/OlegSkutte/sdxl-turbo-GGUF/resolve/62a28b8b2c3cb4bf76d9aad45a5b798047dc786c/sd_xl_turbo_1.0.q8_0.gguf?download=true",
         "sd_xl_turbo_1.0.q8_0.gguf", 4_098_988_672L,
