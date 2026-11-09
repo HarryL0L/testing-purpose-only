@@ -1,0 +1,46 @@
+#!/bin/sh
+# glslc wrapper for the experimental flavor (see ggml_vk11_patch.cmake): compiles llama.cpp's
+# Vulkan 1.2 shaders for Vulkan 1.1 so they load on 1.1-only drivers (e.g. Mali r32).
+#   1. --target-env=vulkan1.1 (SPIR-V 1.3)
+#   2. --target-env=vulkan1.1 --target-spv=spv1.4 without -O (needs VK_KHR_spirv_1_4;
+#      the NDK's spirv-opt refuses to optimize 1.4 modules under Vulkan 1.1)
+#   3. the original arguments (Vulkan 1.2; such shaders won't load on a 1.1 device)
+# Shaders that needed a fallback are listed in @VK11_LOG@.
+GLSLC="@GLSLC_REAL@"
+LOG="@VK11_LOG@"
+
+case " $* " in
+    *" --target-env=vulkan1.2 "*) ;;
+    *) exec "$GLSLC" "$@" ;;
+esac
+
+out=""; prev=""
+for a in "$@"; do
+    [ "$prev" = "-o" ] && out="$a"
+    prev="$a"
+done
+
+
+try() { # $1 = env args, $2 = keep -O (1/0), rest = original args
+    env_args="$1"; keep_o="$2"; shift 2
+    set -- "$@"
+    n=$#
+    i=0
+    while [ $i -lt $n ]; do
+        a="$1"; shift
+        case "$a" in
+            --target-env=vulkan1.2) set -- "$@" $env_args ;;
+            -O) [ "$keep_o" = 1 ] && set -- "$@" -O ;;
+            *) set -- "$@" "$a" ;;
+        esac
+        i=$((i + 1))
+    done
+    "$GLSLC" "$@" 2>/dev/null
+}
+
+if try "--target-env=vulkan1.1" 1 "$@"; then exit 0; fi
+if try "--target-env=vulkan1.1 --target-spv=spv1.4" 0 "$@"; then
+    echo "spv1.4 $out" >> "$LOG"; exit 0
+fi
+echo "vulkan1.2 $out" >> "$LOG"
+exec "$GLSLC" "$@"

@@ -80,6 +80,17 @@ Caveats: custom drivers only work on Adreno GPUs. On other GPUs (e.g. Mali) only
 llama.cpp's Vulkan backend may be slower than the CPU or give wrong output depending on the driver. This build has not
 been tested on real GPUs by the author of this change.
 
+**Vulkan 1.1 devices.** Upstream llama.cpp needs Vulkan 1.2, but many Mali phones (e.g. Mali-G77, driver r32) only
+offer 1.1 plus the extensions that 1.2 later made standard. This flavor builds a patched copy of `ggml-vulkan.cpp`
+(`app/src/main/cpp/vulkan/ggml_vk11_patch.cmake`; the submodule itself is untouched). On 1.1 devices the patched copy:
+
+- reads and enables 16-bit and 8-bit storage, fp16/int8 and timeline semaphores through their `VK_KHR_*` extensions;
+- clears the feature structures before querying them;
+- leaves buffer device address and the Vulkan memory model off.
+
+A glslc wrapper (`glslc_vk11.sh.in`) compiles the shaders for Vulkan 1.1 (SPIR-V 1.3). Devices with Vulkan 1.2 or
+newer behave exactly as upstream.
+
 ### Experimental Mali backend (OpenCL)
 
 The experimental flavor also has its own small ggml backend for **Mali GPUs**

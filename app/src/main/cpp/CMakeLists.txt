@@ -78,8 +78,19 @@ if(LLAMACHAT_VULKAN)
     else()
         set(NDK_HOST_TAG linux-x86_64)
     endif()
-    find_program(Vulkan_GLSLC_EXECUTABLE glslc
+    find_program(LLAMACHAT_GLSLC glslc
         HINTS ${ANDROID_NDK}/shader-tools/${NDK_HOST_TAG} NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+    if(CMAKE_HOST_WIN32)
+        set(Vulkan_GLSLC_EXECUTABLE ${LLAMACHAT_GLSLC} CACHE FILEPATH "" FORCE)
+    else()
+        # compile the shaders for Vulkan 1.1 (see vulkan/ggml_vk11_patch.cmake)
+        set(GLSLC_REAL ${LLAMACHAT_GLSLC})
+        set(VK11_LOG ${CMAKE_CURRENT_BINARY_DIR}/vk11_patch/shader-fallbacks.txt)
+        configure_file(${CMAKE_CURRENT_LIST_DIR}/vulkan/glslc_vk11.sh.in
+            ${CMAKE_CURRENT_BINARY_DIR}/vk11_patch/glslc_vk11.sh @ONLY
+            FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+        set(Vulkan_GLSLC_EXECUTABLE ${CMAKE_CURRENT_BINARY_DIR}/vk11_patch/glslc_vk11.sh CACHE FILEPATH "" FORCE)
+    endif()
     set(SPIRV-Headers_DIR ${CMAKE_CURRENT_LIST_DIR}/vulkan CACHE PATH "" FORCE)
     set(GGML_VULKAN ON CACHE BOOL "" FORCE)
 endif()
@@ -87,6 +98,9 @@ if(NOT EXISTS ${LLAMA_SRC}/CMakeLists.txt)
     message(FATAL_ERROR "llama.cpp sources not found. Run: git submodule update --init --recursive")
 endif()
 add_subdirectory(${LLAMA_SRC} build-llama)
+if(LLAMACHAT_VULKAN)
+    include(${CMAKE_CURRENT_LIST_DIR}/vulkan/ggml_vk11_patch.cmake)
+endif()
 
 add_library(llamachat SHARED llama_jni.cpp)
 
