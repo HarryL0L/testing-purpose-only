@@ -14,7 +14,7 @@ internal object LlamaNative {
      * Vulkan driver loaded through libadrenotools (null: system driver). Fixed for the process
      * lifetime. @return a status line about the GPU driver ("" in the CPU-only build)
      */
-    external fun init(nativeLibDir: String, driverDir: String?, driverName: String?): String
+    external fun init(nativeLibDir: String, driverDir: String?, driverName: String?, vulkanCompat: Boolean): String
 
     /** GPU devices ggml found, one per line ("" if none). */
     external fun gpuInfo(): String

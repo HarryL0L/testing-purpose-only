@@ -297,7 +297,20 @@ extern "C" int llamachat_vk_init(const char * hook_lib_dir, const char * driver_
 // driver_dir/driver_name are set) must be chosen before the backends are loaded, and can't be
 // changed afterwards without restarting the process.
 JNIEXPORT jstring JNICALL JNI_FN(init)(JNIEnv * env, jobject, jstring native_lib_dir,
-                                        jstring jdriver_dir, jstring jdriver_name) {
+                                        jstring jdriver_dir, jstring jdriver_name, jboolean vk_compat) {
+    // Vulkan compatibility mode: turn off the features older mobile drivers (e.g. Mali r32) tend to
+    // crash on. llama.cpp's Vulkan backend reads these when it sets up the device, so they must be
+    // set before the backends load (changing them needs an app restart).
+    if (vk_compat) {
+        static const char * const vk_off[] = {
+            "GGML_VK_DISABLE_F16", "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT", "GGML_VK_DISABLE_DOT2",
+            "GGML_VK_DISABLE_COOPMAT", "GGML_VK_DISABLE_COOPMAT2", "GGML_VK_DISABLE_BFLOAT16",
+            "GGML_VK_DISABLE_FUSION", "GGML_VK_DISABLE_MULTI_ADD", "GGML_VK_DISABLE_GRAPH_OPTIMIZE",
+            "GGML_VK_DISABLE_ASYNC", "GGML_VK_DISABLE_MMVQ", "GGML_VK_SERIALIZE_SUBMISSIONS",
+        };
+        for (const char * name : vk_off) setenv(name, "1", 1);
+        setenv("GGML_VK_FORCE_MAX_ALLOCATION_SIZE", "268435456", 1); // 256 MiB per allocation
+    }
     llama_log_set(android_log_cb, nullptr);
     mtmd_helper_log_set(android_log_cb, nullptr);
     const std::string dir = jstr(env, native_lib_dir);

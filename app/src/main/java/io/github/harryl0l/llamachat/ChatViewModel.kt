@@ -227,8 +227,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val trace = runCatching { last.traceInputStream?.use { it.readBytes() } }.getOrNull()
                 if (trace != null) {
                     val lines = String(trace, Charsets.ISO_8859_1).split(Regex("[^\\x20-\\x7e]+"))
-                        .filter { it.length >= 6 && (".so" in it || "signal" in it.lowercase() || "abort" in it.lowercase() || "fault" in it.lowercase()) }
-                        .distinct().take(25)
+                        .filter { l ->
+                            val x = l.lowercase()
+                            l.length >= 6 && (".so" in x || ".cpp:" in x || "signal" in x || "abort" in x || "fault" in x ||
+                                "assert" in x || "error" in x || "ggml" in x || "vk_" in x || "vulkan" in x || "failed" in x)
+                        }
+                        .distinct().take(40)
                     if (lines.isNotEmpty()) append("\n").append(lines.joinToString("\n"))
                 }
             }
@@ -686,7 +690,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     /** the Vulkan driver chosen in settings differs from the one this process loaded */
     val gpuRestartNeeded: Boolean
-        get() = engine.initializedDriverId != null && engine.initializedDriverId != (settings.value.gpuDriver ?: "")
+        get() = (engine.initializedDriverId != null && engine.initializedDriverId != (settings.value.gpuDriver ?: "")) ||
+            (engine.initializedVulkanCompat != null && engine.initializedVulkanCompat != settings.value.vulkanCompat)
 
     fun refreshGpuDrivers() {
         if (!BuildConfig.GPU_EXPERIMENTAL) return
@@ -696,7 +701,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** Tells the engine which custom driver to load when it initializes (once per process). */
     private suspend fun prepareGpuDriver() {
         if (!BuildConfig.GPU_EXPERIMENTAL) return
-        engine.driverForInit = store.current().gpuDriver?.let { driverStore.get(it) }
+        val s = store.current()
+        engine.driverForInit = s.gpuDriver?.let { driverStore.get(it) }
+        engine.vulkanCompatForInit = s.vulkanCompat
     }
 
     /** Loads the GPU driver now (without a model) so the GPU can be shown in settings. */

@@ -85,6 +85,13 @@ class LlamaEngine(context: Context) {
      */
     @Volatile var driverForInit: io.github.harryl0l.llamachat.data.GpuDriver? = null
 
+    /** Vulkan compatibility mode for init (experimental build); fixed for the process lifetime */
+    @Volatile var vulkanCompatForInit: Boolean = true
+
+    /** the compatibility mode the engine was initialized with, null before init */
+    var initializedVulkanCompat: Boolean? = null
+        private set
+
     /** id of the driver the engine was initialized with ("" = system driver), null before init */
     var initializedDriverId: String? = null
         private set
@@ -95,8 +102,9 @@ class LlamaEngine(context: Context) {
     private fun ensureInit() {
         if (!initialized) {
             val d = driverForInit
-            val status = LlamaNative.init(nativeLibDir, d?.dir?.absolutePath, d?.library)
+            val status = LlamaNative.init(nativeLibDir, d?.dir?.absolutePath, d?.library, vulkanCompatForInit)
             initializedDriverId = d?.id ?: ""
+            initializedVulkanCompat = vulkanCompatForInit
             initialized = true
             val gpus = LlamaNative.gpuInfo()
             val mali = LlamaNative.enableMali(false)

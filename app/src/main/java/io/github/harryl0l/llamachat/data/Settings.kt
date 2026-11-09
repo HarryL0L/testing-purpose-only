@@ -36,6 +36,8 @@ data class AppSettings(
     val gpuMode: Int = 0,
     /** experimental build: id of a custom Vulkan driver (libadrenotools), null = system driver */
     val gpuDriver: String? = null,
+    /** experimental build: Vulkan compatibility mode (risky driver features off) */
+    val vulkanCompat: Boolean = true,
     val linkedFolders: Set<String> = emptySet(),
     val contextSize: Int = 4096,
     /** 0 = Auto: the fast cores (see CpuInfo) */
@@ -82,6 +84,7 @@ class SettingsStore(private val context: Context) {
         val useGpu = booleanPreferencesKey("use_gpu") // old on/off switch (= Vulkan)
         val gpuMode = intPreferencesKey("gpu_mode")
         val gpuDriver = stringPreferencesKey("gpu_driver")
+        val vulkanCompat = booleanPreferencesKey("vulkan_compat")
         val folders = stringSetPreferencesKey("folders")
     }
 
@@ -101,6 +104,7 @@ class SettingsStore(private val context: Context) {
             imageSampler = p[K.imageSampler] ?: d.imageSampler,
             gpuMode = p[K.gpuMode] ?: if (p[K.useGpu] == true) 1 else d.gpuMode,
             gpuDriver = p[K.gpuDriver],
+            vulkanCompat = p[K.vulkanCompat] ?: d.vulkanCompat,
             linkedFolders = p[K.folders] ?: d.linkedFolders,
             contextSize = p[K.ctx] ?: d.contextSize,
             threads = p[K.threads] ?: d.threads,
@@ -151,6 +155,7 @@ class SettingsStore(private val context: Context) {
             p[K.gpuMode] = n.gpuMode
             p.remove(K.useGpu)
             if (n.gpuDriver != null) p[K.gpuDriver] = n.gpuDriver else p.remove(K.gpuDriver)
+            p[K.vulkanCompat] = n.vulkanCompat
             p[K.folders] = n.linkedFolders
         }
     }

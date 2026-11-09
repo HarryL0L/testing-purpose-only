@@ -252,6 +252,22 @@ private fun GpuCard(vm: ChatViewModel, settings: AppSettings) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
             )
+            ListItem(
+                headlineContent = { Text("Vulkan compatibility mode") },
+                supportingContent = {
+                    Text(
+                        "Turns off Vulkan features older drivers (e.g. Mali) often crash on: fp16, integer dot " +
+                            "products, cooperative matrices, fusion, big allocations. Slower but safer. Applies after a restart.",
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = settings.vulkanCompat,
+                        onCheckedChange = { on -> vm.updateSettings(reloadNeeded = false) { it.copy(vulkanCompat = on) } },
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            )
             Label("Vulkan driver")
             FileRow("System driver", settings.gpuDriver == null, "The phone's own driver", { vm.selectGpuDriver(null) }, null)
             vm.gpuDrivers.forEach { d ->
@@ -267,7 +283,7 @@ private fun GpuCard(vm: ChatViewModel, settings: AppSettings) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "A driver can only be swapped at startup.",
+                        "Driver changes and compatibility mode apply at startup.",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f),
                     )
