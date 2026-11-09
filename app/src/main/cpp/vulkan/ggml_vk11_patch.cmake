@@ -185,7 +185,24 @@ _vk_patch([[
     return storage16.storageBuffer16BitAccess;
 ]])
 
-# 7. Remaining (query-only) uses: zero-initialize so a 1.1 driver leaves them false
+# 7. Queues: use vkGetDeviceQueue (1.0) unless the queue needs creation flags. Equivalent per spec,
+#    but on the Android 13 loader + Mali r32 vkGetDeviceQueue2 handed back a queue that crashed in
+#    vkQueueSubmit. Fail with an error instead of crashing if the driver returns no queue.
+_vk_patch([[
+    h->queue = device->device.getQueue2(queue_info2);
+]] [[
+    if (queue_info2.flags) {
+        h->queue = device->device.getQueue2(queue_info2);
+    } else {
+        h->queue = device->device.getQueue(queue_family_index, queue_index);
+    }
+    if (!h->queue) {
+        std::cerr << "ggml_vulkan: driver returned no queue (family " << queue_family_index << ", index " << queue_index << ")" << std::endl;
+        throw std::runtime_error("ggml_vulkan: no device queue");
+    }
+]])
+
+# 8. Remaining (query-only) uses: zero-initialize so a 1.1 driver leaves them false
 _vk_patch("VkPhysicalDeviceVulkan11Features vk11_features;" "VkPhysicalDeviceVulkan11Features vk11_features {};")
 _vk_patch("VkPhysicalDeviceVulkan12Features vk12_features;" "VkPhysicalDeviceVulkan12Features vk12_features {};")
 
