@@ -16,6 +16,7 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.foundation.layout.Box
@@ -210,6 +211,24 @@ private fun GpuCard(vm: ChatViewModel, settings: AppSettings) {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
                 ) {
                     Text(status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+                }
+            }
+            vm.gpuCrashReport?.let { report ->
+                val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Switched back to CPU after a crash", style = MaterialTheme.typography.titleSmall)
+                        Text(report, style = MaterialTheme.typography.bodySmall, maxLines = 8, overflow = TextOverflow.Ellipsis)
+                        Row {
+                            TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(report)) }) { Text("Copy details") }
+                            TextButton(onClick = { vm.gpuCrashReport = null }) { Text("Dismiss") }
+                        }
+                    }
                 }
             }
             Label("Run on")

@@ -134,10 +134,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var lastModelName by mutableStateOf<String?>(null)
         private set
 
+    /** see checkGpuCrash() */
+    private val gpuMarker = File(app.noBackupFilesDir, "gpu_in_use")
+
+    /** What Android recorded about the crash, shown in the GPU card (copyable) */
+    var gpuCrashReport by mutableStateOf<String?>(null)
+
     init {
         viewModelScope.launch {
             refreshChats()
             refreshLocalModels()
+            checkGpuCrash() // before any auto-load, so a GPU mode that crashed isn't tried again
             val s = store.current()
             refreshLastModel()
             // only load on start when the user opted in; otherwise wait for "Load"
@@ -175,8 +182,58 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun unloadModel() {
         stop(); genJob?.join()
         engine.unload()
+        markGpuInUse(io.github.harryl0l.llamachat.engine.GPU_CPU)
         imageEngine.unload()
         contextUsage = 0 to 0
+    }
+
+    // ---------------------------------------------------------------- GPU crash guard
+
+    /**
+     * A GPU driver can crash the whole process (native code; it can't be caught). While a model
+     * runs in a GPU mode a marker file exists; if the app's last exit was a crash and the marker
+     * is still there, the next start switches back to CPU instead of crashing again.
+     */
+
+    private fun markGpuInUse(mode: Int) {
+        runCatching {
+            if (mode == io.github.harryl0l.llamachat.engine.GPU_CPU) gpuMarker.delete()
+            else gpuMarker.writeText(if (mode == io.github.harryl0l.llamachat.engine.GPU_VULKAN) "Vulkan" else "Mali (OpenCL)")
+        }
+    }
+
+    private suspend fun checkGpuCrash() {
+        if (!BuildConfig.GPU_EXPERIMENTAL || !gpuMarker.exists()) return
+        val mode = runCatching { gpuMarker.readText() }.getOrDefault("the GPU")
+        gpuMarker.delete()
+        val app = getApplication<Application>()
+        val last = runCatching {
+            app.getSystemService(android.app.ActivityManager::class.java)
+                .getHistoricalProcessExitReasons(null, 0, 1).firstOrNull()
+        }.getOrNull() ?: return
+        val reasons = mapOf(
+            android.app.ApplicationExitInfo.REASON_CRASH_NATIVE to "native crash",
+            android.app.ApplicationExitInfo.REASON_CRASH to "crash",
+            android.app.ApplicationExitInfo.REASON_ANR to "not responding",
+        )
+        val reason = reasons[last.reason] ?: return // closed normally: nothing to do
+        store.update { it.copy(gpuMode = io.github.harryl0l.llamachat.engine.GPU_CPU) }
+        gpuCrashReport = withContext(Dispatchers.IO) {
+            buildString {
+                append("Last exit: $reason while running on $mode")
+                last.description?.takeIf { it.isNotBlank() }?.let { append(" — ").append(it) }
+                append("\nDevice: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE}")
+                // the native crash report (tombstone) is binary; keep its readable lines
+                val trace = runCatching { last.traceInputStream?.use { it.readBytes() } }.getOrNull()
+                if (trace != null) {
+                    val lines = String(trace, Charsets.ISO_8859_1).split(Regex("[^\\x20-\\x7e]+"))
+                        .filter { it.length >= 6 && (".so" in it || "signal" in it.lowercase() || "abort" in it.lowercase() || "fault" in it.lowercase()) }
+                        .distinct().take(25)
+                    if (lines.isNotEmpty()) append("\n").append(lines.joinToString("\n"))
+                }
+            }
+        }
+        snackbar = "The app crashed while using $mode, so it's back on CPU. Details are in Models → GPU."
     }
 
     // ---------------------------------------------------------------- models
@@ -216,6 +273,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     } else ModelSpec(name, model, -1, projector)
                 }
                 prepareGpuDriver()
+                markGpuInUse(if (BuildConfig.GPU_EXPERIMENTAL) s.gpuMode else io.github.harryl0l.llamachat.engine.GPU_CPU)
                 engine.load(
                     spec, s.contextSize, s.effectiveThreads, s.sampling, s.systemPrompt, s.thinking, s.repack,
                     gpuMode = if (BuildConfig.GPU_EXPERIMENTAL) s.gpuMode else io.github.harryl0l.llamachat.engine.GPU_CPU,
@@ -228,6 +286,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 open.forEach { runCatching { it.close() } } // native code keeps its own descriptor
             }
             (engine.state.value as? EngineState.Failed)?.let { snackbar = it.message }
+            if (engine.state.value !is EngineState.Ready) markGpuInUse(io.github.harryl0l.llamachat.engine.GPU_CPU)
             // remember the model only once it loaded, so a model that fails (or gets the app killed
             // while loading) is not offered again / auto-loaded on every start
             if (engine.state.value is EngineState.Ready) store.update { it.copy(modelPath = model, mmprojPath = mmproj) }
