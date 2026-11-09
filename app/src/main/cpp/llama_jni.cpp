@@ -958,6 +958,59 @@ JNIEXPORT void JNICALL JNI_FN(restoreChat)(JNIEnv * env, jobject, jobjectArray r
     g_media.clear();
 }
 
+// Benchmark of the loaded model, like llama-bench: prompt processing of pp tokens (one batch run,
+// as for reading a message / image) and generation of tg tokens one by one, with n_threads.
+// Returns [prompt tok/s, generation tok/s] or null. Clears the KV cache: the caller restores the
+// conversation afterwards. The context keeps n_threads until the next call / reload.
+JNIEXPORT jfloatArray JNICALL JNI_FN(bench)(JNIEnv * env, jobject, jint pp, jint tg, jint n_threads) {
+    if (!g_ctx || pp < 1 || tg < 1) return nullptr;
+    llama_set_n_threads(g_ctx, n_threads, n_threads);
+    llama_memory_t mem = llama_get_memory(g_ctx);
+    auto reset = [&]() {
+        llama_memory_clear(mem, true);
+        g_cache.clear();
+        g_ckpts.clear();
+        g_n_past = 0;
+    };
+    reset();
+    const int32_t n_vocab = llama_vocab_n_tokens(g_vocab);
+    uint32_t rng = 1234567u;
+    auto next_token = [&]() { rng = rng * 1664525u + 1013904223u; return (llama_token) (rng % (uint32_t) n_vocab); };
+
+    // prompt processing
+    const int64_t t0 = ggml_time_us();
+    for (int i = 0; i < pp; i += g_n_batch) {
+        g_batch.clear();
+        const int n = std::min(g_n_batch, pp - i);
+        for (int j = 0; j < n; j++) g_batch.add(next_token(), i + j, 0, i + j == pp - 1);
+        if (llama_process(g_ctx, LLAMA_PROCESS_TYPE_DECODE, g_batch.get()) != 0) { reset(); return nullptr; }
+    }
+    llama_synchronize(g_ctx);
+    const int64_t t1 = ggml_time_us();
+
+    // generation, one token at a time
+    for (int i = 0; i < tg; i++) {
+        g_batch.clear();
+        g_batch.add(next_token(), pp + i, 0, true);
+        if (llama_process(g_ctx, LLAMA_PROCESS_TYPE_DECODE, g_batch.get()) != 0) { reset(); return nullptr; }
+    }
+    llama_synchronize(g_ctx);
+    const int64_t t2 = ggml_time_us();
+    reset();
+
+    const float out[2] = {
+        (float) (pp * 1e6 / std::max<int64_t>(t1 - t0, 1)),
+        (float) (tg * 1e6 / std::max<int64_t>(t2 - t1, 1)),
+    };
+    jfloatArray arr = env->NewFloatArray(2);
+    env->SetFloatArrayRegion(arr, 0, 2, out);
+    return arr;
+}
+
+JNIEXPORT void JNICALL JNI_FN(setThreads)(JNIEnv *, jobject, jint n_threads) {
+    if (g_ctx) llama_set_n_threads(g_ctx, n_threads, n_threads);
+}
+
 // [used, total]
 JNIEXPORT jintArray JNICALL JNI_FN(contextUsage)(JNIEnv * env, jobject) {
     jint out[2] = {(jint) g_n_past, g_ctx ? (jint) llama_n_ctx(g_ctx) : 0};

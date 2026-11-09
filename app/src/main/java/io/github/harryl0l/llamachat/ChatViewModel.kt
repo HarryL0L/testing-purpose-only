@@ -11,8 +11,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.harryl0l.llamachat.data.AppSettings
+import io.github.harryl0l.llamachat.data.effectiveThreads
 import io.github.harryl0l.llamachat.data.ChatStore
 import io.github.harryl0l.llamachat.data.ChatSummary
+import io.github.harryl0l.llamachat.data.CpuInfo
 import io.github.harryl0l.llamachat.data.GpuDriver
 import io.github.harryl0l.llamachat.data.GpuDriverStore
 import io.github.harryl0l.llamachat.data.LinkedFolder
@@ -215,7 +217,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 prepareGpuDriver()
                 engine.load(
-                    spec, s.contextSize, s.threads, s.sampling, s.systemPrompt, s.thinking, s.repack,
+                    spec, s.contextSize, s.effectiveThreads, s.sampling, s.systemPrompt, s.thinking, s.repack,
                     gpuMode = if (BuildConfig.GPU_EXPERIMENTAL) s.gpuMode else io.github.harryl0l.llamachat.engine.GPU_CPU,
                 )
             } catch (e: CancellationException) {
@@ -370,7 +372,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             val t0 = System.nanoTime()
             try {
                 val img = imageEngine.generate(
-                    preset.model, preset.taesd, s.threads, prompt, s.imageNegative, size, size, steps, cfg, seed, sampler,
+                    preset.model, preset.taesd, s.effectiveThreads, prompt, s.imageNegative, size, size, steps, cfg, seed, sampler,
                 )
                 progressJob.cancel()
                 val saved = chatStore.saveMedia(chatId, DecodedMedia.Image(img.rgb, img.width, img.height))
@@ -520,6 +522,102 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             store.update { it.copy(thinking = enabled) }
             engine.setThinking(enabled)
         }
+    }
+
+    // ---------------------------------------------------------------- benchmark
+
+    data class BenchResult(val threads: Int, val promptTps: Float? = null, val genTps: Float? = null, val imageSec: Float? = null)
+
+    val benchResults = mutableStateListOf<BenchResult>()
+    var benchStatus by mutableStateOf<String?>(null)
+        private set
+    var benchRunning by mutableStateOf(false)
+        private set
+    private var benchJob: Job? = null
+
+    /** Thread counts worth comparing: around the fast cores, up to all cores (max 8). */
+    private fun benchThreadOptions(): List<Int> {
+        val total = CpuInfo.totalCores.coerceAtMost(8)
+        return (listOf(2, CpuInfo.fastCores, 4, 6, total)).filter { it in 1..total }.distinct().sorted()
+    }
+
+    private fun benchRow(threads: Int, f: (BenchResult) -> BenchResult) {
+        val i = benchResults.indexOfFirst { it.threads == threads }
+        if (i >= 0) benchResults[i] = f(benchResults[i]) else benchResults += f(BenchResult(threads))
+    }
+
+    /** Chat model: prompt processing (128 tokens) and generation (32 tokens) per thread count. */
+    fun runChatBenchmark() {
+        if (engine.state.value !is EngineState.Ready) { snackbar = "Load a chat model first"; return }
+        if (benchRunning) return
+        benchJob = viewModelScope.launch {
+            stop(); genJob?.join()
+            benchRunning = true
+            try {
+                benchStatus = "Warming up…"
+                engine.bench(32, 4, CpuInfo.fastCores)
+                for (t in benchThreadOptions()) {
+                    benchStatus = "Chat model: testing $t threads…"
+                    val r = engine.bench(128, 32, t) ?: error("Benchmark failed")
+                    benchRow(t) { it.copy(promptTps = r.first, genTps = r.second) }
+                }
+                val best = benchResults.filter { it.genTps != null }.maxByOrNull { it.genTps!! }
+                benchStatus = best?.let { "Fastest replies with ${it.threads} threads" }
+            } catch (e: CancellationException) {
+                benchStatus = "Stopped"
+            } catch (e: Exception) {
+                benchStatus = e.message ?: "Benchmark failed"
+            } finally {
+                // the chat's KV cache was cleared: the next message re-reads the conversation
+                withContext(NonCancellable) {
+                    engine.setThreads(settings.value.effectiveThreads)
+                    contextUsage = engine.contextUsage()
+                }
+                benchRunning = false
+            }
+        }
+    }
+
+    /** Image model: one small (256×256) image per thread count. */
+    fun runImageBenchmark() {
+        val model = currentImageModel()
+        if (model == null) { snackbar = "Download or import an image model first"; return }
+        if (benchRunning) return
+        benchJob = viewModelScope.launch {
+            stop(); genJob?.join()
+            benchRunning = true
+            try {
+                val steps = minOf(2, model.defaultSteps)
+                for (t in benchThreadOptions()) {
+                    benchStatus = "${model.title}: testing $t threads (256×256, $steps step${if (steps == 1) "" else "s"})…"
+                    imageEngine.preload(model.model, model.taesd, t) // loading isn't part of the timing
+                    val t0 = System.nanoTime()
+                    imageEngine.generate(
+                        model.model, model.taesd, t, "a lighthouse on a cliff at sunset", "", 256, 256,
+                        steps, model.defaultCfg, 1L, model.defaultSampler,
+                    )
+                    benchRow(t) { it.copy(imageSec = ((System.nanoTime() - t0) / 1e9).toFloat()) }
+                }
+                val best = benchResults.filter { it.imageSec != null }.minByOrNull { it.imageSec!! }
+                benchStatus = best?.let { "Fastest images with ${it.threads} threads" }
+            } catch (e: CancellationException) {
+                benchStatus = "Stopped"
+            } catch (e: Exception) {
+                benchStatus = e.message ?: "Benchmark failed"
+            } finally {
+                benchRunning = false
+            }
+        }
+    }
+
+    fun stopBenchmark() {
+        imageEngine.cancel()
+        benchJob?.cancel()
+    }
+
+    fun applyThreads(threads: Int) {
+        updateSettings(reloadNeeded = true) { it.copy(threads = threads) }
+        snackbar = "Using $threads threads"
     }
 
     // ---------------------------------------------------------------- GPU (experimental build)

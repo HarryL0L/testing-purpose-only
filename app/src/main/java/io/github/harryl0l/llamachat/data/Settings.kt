@@ -38,7 +38,8 @@ data class AppSettings(
     val gpuDriver: String? = null,
     val linkedFolders: Set<String> = emptySet(),
     val contextSize: Int = 4096,
-    val threads: Int = defaultThreads(),
+    /** 0 = Auto: the fast cores (see CpuInfo) */
+    val threads: Int = 0,
     val maxVideoFrames: Int = 8,
     /** 0 = low, 1 = medium, 2 = what the model recommends (can be very slow on a phone) */
     val videoQuality: Int = 0,
@@ -48,7 +49,7 @@ data class AppSettings(
     val systemPrompt: String = "You are a helpful assistant running fully offline on the user's phone.",
 ) {
     companion object {
-        fun defaultThreads(): Int = (Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, 6)
+        fun defaultThreads(): Int = CpuInfo.fastCores.coerceIn(1, 8)
     }
 }
 
@@ -154,3 +155,6 @@ class SettingsStore(private val context: Context) {
         }
     }
 }
+
+/** Threads actually used: the setting, or the fast cores for Auto (0). */
+val AppSettings.effectiveThreads: Int get() = if (threads > 0) threads else AppSettings.defaultThreads()

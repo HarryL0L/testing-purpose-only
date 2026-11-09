@@ -69,6 +69,10 @@ internal object LlamaNative {
     /** Restores a saved chat (not evaluated until the next prompt). Media added before belong to it. */
     external fun restoreChat(roles: Array<String>, contents: Array<String>)
 
+    /** [prompt tok/s, generation tok/s] for pp / tg tokens with n threads; clears the KV cache */
+    external fun bench(pp: Int, tg: Int, threads: Int): FloatArray?
+    external fun setThreads(threads: Int)
+
     /** [used, total] tokens */
     external fun contextUsage(): IntArray
 }

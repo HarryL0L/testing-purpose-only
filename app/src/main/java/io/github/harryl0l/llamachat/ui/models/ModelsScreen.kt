@@ -16,6 +16,9 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -82,6 +85,8 @@ import io.github.harryl0l.llamachat.BuildConfig
 import io.github.harryl0l.llamachat.ChatViewModel
 import io.github.harryl0l.llamachat.DownloadState
 import io.github.harryl0l.llamachat.data.AppSettings
+import io.github.harryl0l.llamachat.data.CpuInfo
+import io.github.harryl0l.llamachat.data.effectiveThreads
 import io.github.harryl0l.llamachat.data.IMAGE_PRESETS
 import io.github.harryl0l.llamachat.data.LinkedFolder
 import io.github.harryl0l.llamachat.data.LocalModel
@@ -174,6 +179,8 @@ fun ModelsScreen(vm: ChatViewModel, onBack: () -> Unit) {
                 item { SectionTitle("GPU · experimental") }
                 item { GpuCard(vm, settings) }
             }
+            item { SectionTitle("Benchmark") }
+            item { BenchmarkCard(vm, settings) }
             item { SectionTitle("Settings") }
             item { SettingsCard(settings, vm) }
         }
@@ -441,6 +448,80 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
 }
 
 @Composable
+private fun BenchmarkCard(vm: ChatViewModel, settings: AppSettings) {
+    Card(shape = MaterialTheme.shapes.extraLarge, colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainer)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(CpuInfo.describe(), style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Measures this phone with the loaded chat model (prompt = reading text / images, reply = writing) " +
+                    "and the selected image model, at several thread counts. Phones mix fast and slow cores, so " +
+                    "more threads isn't always faster. Currently using ${settings.effectiveThreads} threads" +
+                    (if (settings.threads == 0) " (Auto)." else ".") +
+                    (if (BuildConfig.GPU_EXPERIMENTAL && settings.gpuMode != 0) " GPU mode is on: prompt speed includes it." else ""),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = vm::runChatBenchmark, enabled = !vm.benchRunning, shapes = ButtonDefaults.shapes()) { Text("Chat model") }
+                OutlinedButton(onClick = vm::runImageBenchmark, enabled = !vm.benchRunning, shapes = ButtonDefaults.shapes()) { Text("Image model") }
+                if (vm.benchRunning) TextButton(onClick = vm::stopBenchmark) { Text("Stop") }
+            }
+            vm.benchStatus?.let { status ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (vm.benchRunning) {
+                        LoadingIndicator(Modifier.size(28.dp))
+                        Spacer(Modifier.size(8.dp))
+                    }
+                    Text(status, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            val rows = vm.benchResults.sortedBy { it.threads }
+            if (rows.isNotEmpty()) {
+                val bestGen = rows.filter { it.genTps != null }.maxByOrNull { it.genTps!! }?.threads
+                val bestPrompt = rows.filter { it.promptTps != null }.maxByOrNull { it.promptTps!! }?.threads
+                val bestImage = rows.filter { it.imageSec != null }.minByOrNull { it.imageSec!! }?.threads
+                @Composable fun cell(text: String, best: Boolean, weight: Float) = Text(
+                    text,
+                    style = if (best) MaterialTheme.typography.labelLargeEmphasized else MaterialTheme.typography.labelLarge,
+                    color = if (best) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth(weight),
+                )
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row {
+                            Text("Threads", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(0.7f))
+                            Text("Prompt tok/s", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                            Text("Reply tok/s", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                            Text("Image", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(0.8f))
+                        }
+                        rows.forEach { r ->
+                            Row {
+                                Text("${r.threads}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(0.7f))
+                                Box(Modifier.weight(1f)) { cell(r.promptTps?.let { "%.1f".format(it) } ?: "–", r.threads == bestPrompt, 1f) }
+                                Box(Modifier.weight(1f)) { cell(r.genTps?.let { "%.1f".format(it) } ?: "–", r.threads == bestGen, 1f) }
+                                Box(Modifier.weight(0.8f)) { cell(r.imageSec?.let { "%.1f s".format(it) } ?: "–", r.threads == bestImage, 1f) }
+                            }
+                        }
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (bestGen != null && bestGen != settings.effectiveThreads) {
+                        Button(onClick = { vm.applyThreads(bestGen) }, enabled = !vm.benchRunning, shapes = ButtonDefaults.shapes()) {
+                            Text("Use $bestGen (fastest replies)")
+                        }
+                    }
+                    if (bestImage != null && bestImage != settings.effectiveThreads && bestImage != bestGen) {
+                        OutlinedButton(onClick = { vm.applyThreads(bestImage) }, enabled = !vm.benchRunning, shapes = ButtonDefaults.shapes()) {
+                            Text("Use $bestImage (fastest images)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SectionTitle(text: String) {
     Text(
         text,
@@ -636,7 +717,10 @@ private fun SettingsCard(settings: AppSettings, vm: ChatViewModel) {
             SettingSlider("Context size", settings.contextSize.toFloat(), 1024f..16384f, 14, { "${it.roundToInt()} tokens" }) { v ->
                 vm.updateSettings(reloadNeeded = true) { it.copy(contextSize = (v / 1024).roundToInt() * 1024) }
             }
-            SettingSlider("CPU threads", settings.threads.toFloat(), 1f..8f, 6, { "${it.roundToInt()}" }) { v ->
+            SettingSlider(
+                "CPU threads", settings.threads.toFloat(), 0f..8f, 7,
+                { if (it.roundToInt() == 0) "Auto (${AppSettings.defaultThreads()} fast cores)" else "${it.roundToInt()}" },
+            ) { v ->
                 vm.updateSettings(reloadNeeded = true) { it.copy(threads = v.roundToInt()) }
             }
             ListItem(

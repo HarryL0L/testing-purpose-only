@@ -207,6 +207,13 @@ class LlamaEngine(context: Context) {
         VideoConfig(c[0].toInt(), c[1], c[2].toInt(), c[3].toInt(), c[4].toInt())
     }
 
+    /** (prompt tok/s, generation tok/s) of the loaded model with [threads], or null */
+    suspend fun bench(pp: Int, tg: Int, threads: Int): Pair<Float, Float>? = withContext(dispatcher) {
+        if (!initialized) null else LlamaNative.bench(pp, tg, threads)?.let { it[0] to it[1] }
+    }
+
+    suspend fun setThreads(threads: Int) = withContext(dispatcher) { if (initialized) LlamaNative.setThreads(threads) }
+
     suspend fun resetChat() = withContext(dispatcher) {
         if (initialized) LlamaNative.resetChat()
     }

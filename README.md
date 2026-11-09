@@ -24,6 +24,10 @@ After the model download, nothing leaves the device.
 - **Video quality** (Low / Medium / Model max) caps the pixels per frame. Models like Qwen-VL ask for 672×1216 frames for a short portrait clip, which is very slow on a phone CPU. The default is Low with 8 frames, and a progress percentage shows while media is processed.
 - **Repack weights on/off**: CPU weight repacking (`use_extra_bufts`) is faster, but it copies the weights into RAM instead of reading them from the memory-mapped file. Turn it off for large models that run out of memory or load slowly.
 - **You decide when a model is in memory**: nothing loads automatically (unless "Load last model on startup" is switched on). The chat screen offers "Load *last model*", and the eject button in the top bar unloads it. Downloads finish without loading anything.
+- **Benchmark** (Models → Benchmark): measures the loaded chat model's prompt and reply speed (tok/s, like
+  llama-bench, with threads switched on the live context) and the selected image model (one 256×256 image), at several
+  thread counts. One tap applies the fastest. It also shows the CPU layout (fast/slow cores from cpufreq). The **Auto**
+  thread setting, now the default, uses only the fast cores, since ggml threads on slow cores hold the others back.
 - Streaming replies with tok/s, a stop button, a context usage readout, and settings for context size, threads, temperature, reply length, max video frames and the system prompt.
 
 | Preset | Size | Notes |
