@@ -91,7 +91,31 @@ data class ImageModelPreset(
     val sha256: String = "",
     /** stable-diffusion.cpp sample_method_t (see SAMPLERS) */
     val sampler: Int = SAMPLER_EULER_A,
+    /** stable-diffusion.cpp scheduler_t, -1 = the model's default */
+    val scheduler: Int = -1,
+    /**
+     * >= 0: [url] is the original (e.g. bf16) file, downloaded as [sourceFile] and quantized on the
+     * device to this sd_type_t, saved as [file]. Lets the app use the publisher's own file instead
+     * of a third-party quantization.
+     */
+    val convertType: Int = -1,
+    val sourceFile: String = "",
+    /** LLM text encoder, for diffusion-only models (then [file] is just the diffusion model) */
+    val llm: ModelSource? = null,
+    /** image sizes offered (square), and the default */
+    val sizes: List<Int> = listOf(256, 384, 512),
+    val defaultSize: Int = 512,
 )
+
+/** An extra model file; with [convertType] >= 0 it's downloaded as [sourceFile] and quantized on the device. */
+data class ModelSource(
+    val url: String, val file: String, val sizeBytes: Long, val sha256: String,
+    val convertType: Int = -1, val sourceFile: String = "",
+)
+
+const val SD_TYPE_Q8_0 = 8
+const val SD_TYPE_Q5_K = 13
+const val SCHEDULER_SGM_UNIFORM = 5
 
 data class TaesdFile(val url: String, val file: String, val sizeBytes: Long, val sha256: String)
 
@@ -104,6 +128,12 @@ private val TAESD = TaesdFile(
 private val TAESDXL = TaesdFile(
     "https://huggingface.co/madebyollin/taesdxl/resolve/b20258aaef75ef61e659c1e0f14f251cf0ad153e/diffusion_pytorch_model.safetensors?download=true",
     "taesdxl.safetensors", 9_793_292L, "ff4824aca94dd6111e0340fa749347fb74101060d9712cb5ef1ca8f1cf17502f",
+)
+
+/** TAEHV decoder for the Wan 2.1 / Qwen-Image VAE (used by Anima) */
+private val TAEW2_1 = TaesdFile(
+    "https://raw.githubusercontent.com/madebyollin/taehv/9055eee0391548d1787938d040a161cbe396bf98/safetensors/taew2_1.safetensors",
+    "taew2_1.safetensors", 22_642_902L, "04766eac0221b5390b985ae3fdcca652cbb4b1e8b82b28ea7ff89dfad1b1a93f",
 )
 
 val IMAGE_PRESETS = listOf(
@@ -143,6 +173,25 @@ val IMAGE_PRESETS = listOf(
         defaultSteps = 2, maxSteps = 4, cfgScale = 1.0f, taesd = TAESDXL,
         sha256 = "f5659e6cdad699b1432870cc9fe811359e45c8a331687be505d0ba05c8364720",
     ),
+    ImageModelPreset(
+        "anima-turbo", "Anima Turbo (anime)",
+        "Best quality of the presets, anime style only. 768 px recommended (about 2 min on a desktop CPU, " +
+            "probably 4–6 min on a phone). Official files from circlestone-labs (5.4 GB download), converted on " +
+            "this phone once to 2.1 GB. Needs ~3 GB RAM. Non-commercial license.",
+        "https://huggingface.co/circlestone-labs/Anima/resolve/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/diffusion_models/anima-turbo-v1.1.safetensors?download=true",
+        "anima-turbo-v1.1-q5_k.gguf", 4_182_230_656L,
+        defaultSteps = 6, maxSteps = 12, cfgScale = 1.0f, taesd = TAEW2_1,
+        sha256 = "fba11953276b57edf59d1dc4f1857ac05aa079c56f982b4d7c20298d57d3f7eb",
+        sampler = SAMPLER_EULER, scheduler = SCHEDULER_SGM_UNIFORM,
+        convertType = SD_TYPE_Q5_K, sourceFile = "anima-turbo-v1.1.safetensors",
+        llm = ModelSource(
+            "https://huggingface.co/circlestone-labs/Anima/resolve/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/text_encoders/qwen_3_06b_base.safetensors?download=true",
+            "qwen_3_06b_base-q8_0.gguf", 1_192_135_096L,
+            "cd2a512003e2f9f3cd3c32a9c3573f820bb28c940f73c57b1ddaa983d9223eba",
+            convertType = SD_TYPE_Q8_0, sourceFile = "qwen_3_06b_base.safetensors",
+        ),
+        sizes = listOf(512, 768, 1024), defaultSize = 768,
+    ),
 )
 
 /** The fast decoders the app knows, by the file name they're stored under. */
@@ -170,6 +219,7 @@ class CustomImageModel(val file: File) {
 }
 
 // stable-diffusion.cpp sample_method_t values
+const val SAMPLER_EULER = 0
 const val SAMPLER_EULER_A = 1
 const val SAMPLER_DPMPP2M = 5
 const val SAMPLER_LCM = 9
@@ -374,22 +424,66 @@ class ModelRepository(private val context: Context) {
     fun imageFiles(preset: ImageModelPreset): Pair<File, File?> =
         File(imageDir(preset), preset.file) to preset.taesd?.let { File(taesdDir(), it.file) }
 
-    fun isDownloaded(preset: ImageModelPreset): Boolean {
-        val (m, t) = imageFiles(preset)
-        return isVerified(m, preset.sizeBytes, preset.sha256) &&
-            (t == null || isVerified(t, preset.taesd!!.sizeBytes, preset.taesd.sha256))
+    /** The LLM text encoder file of a preset that uses one. */
+    fun imageLlmFile(preset: ImageModelPreset): File? = preset.llm?.let { File(imageDir(preset), it.file) }
+
+    /** A model file converted on the device: its marker names the verified source and the type. */
+    private fun convertedMarker(sha256: String, type: Int) = "converted:$sha256:$type"
+    private fun isConverted(file: File, sha256: String, type: Int): Boolean =
+        file.length() > 0 && runCatching { markerOf(file).readText().trim() == convertedMarker(sha256, type) }.getOrDefault(false)
+
+    /** One file of a preset: downloaded as-is, or downloaded as a source and converted. */
+    private class ImagePart(val url: String, val target: File, val size: Long, val sha256: String, val convertType: Int, val source: File?)
+
+    private fun imageParts(preset: ImageModelPreset): List<ImagePart> {
+        val dir = imageDir(preset)
+        val (model, taesd) = imageFiles(preset)
+        return listOfNotNull(
+            preset.taesd?.let { ImagePart(it.url, taesd!!, it.sizeBytes, it.sha256, -1, null) },
+            preset.llm?.let {
+                ImagePart(it.url, File(dir, it.file), it.sizeBytes, it.sha256, it.convertType,
+                    if (it.convertType >= 0) File(dir, it.sourceFile) else null)
+            },
+            ImagePart(preset.url, model, preset.sizeBytes, preset.sha256, preset.convertType,
+                if (preset.convertType >= 0) File(dir, preset.sourceFile) else null),
+        )
     }
 
-    /** Downloads an image model (and the small TAESD decoder it uses, if any). Resumable. */
-    suspend fun download(preset: ImageModelPreset, onProgress: (Float, Boolean) -> Unit) = withContext(Dispatchers.IO) {
-        val (model, taesd) = imageFiles(preset)
-        downloadAll(
-            listOfNotNull(
-                preset.taesd?.let { RemoteFile(it.url, taesd!!, it.sizeBytes, it.sha256) },
-                RemoteFile(preset.url, model, preset.sizeBytes, preset.sha256),
-            ),
-            onProgress,
-        )
+    private fun isReady(p: ImagePart) =
+        if (p.convertType >= 0) isConverted(p.target, p.sha256, p.convertType) else isVerified(p.target, p.size, p.sha256)
+
+    fun isDownloaded(preset: ImageModelPreset): Boolean = imageParts(preset).all { isReady(it) }
+
+    /**
+     * Downloads an image model (and the decoder / text encoder it uses). Resumable, verified.
+     * Files with a conversion are downloaded as the publisher's original, quantized with
+     * [convert] (input, output, sd_type_t), and the original is deleted.
+     * [onProgress]: 0..1, verifying; [onConverting] is called before each conversion.
+     */
+    suspend fun download(
+        preset: ImageModelPreset,
+        convert: suspend (File, File, Int) -> Unit = { _, _, _ -> error("conversion not available") },
+        onConverting: () -> Unit = {},
+        onProgress: (Float, Boolean) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        val todo = imageParts(preset).filter { !isReady(it) }
+        downloadAll(todo.map { RemoteFile(it.url, it.source ?: it.target, it.size, it.sha256) }, onProgress)
+        for (p in todo.filter { it.convertType >= 0 }) {
+            onConverting()
+            val part = File(p.target.path + ".part")
+            part.delete()
+            try {
+                convert(p.source!!, part, p.convertType)
+                check(part.length() > 0) { "Converting ${p.source.name} produced no output" }
+                p.target.delete()
+                check(part.renameTo(p.target)) { "Could not save ${p.target.name}" }
+            } finally {
+                part.delete()
+            }
+            markerOf(p.target).writeText(convertedMarker(p.sha256, p.convertType))
+            p.source.delete() // the original isn't needed any more
+            markerOf(p.source).delete()
+        }
     }
 
     fun deleteImageModel(preset: ImageModelPreset) { imageDir(preset).deleteRecursively() }

@@ -58,13 +58,21 @@ class ImageModelChoice(
     val id: String,
     val title: String,
     val model: File,
+    /** LLM text encoder (diffusion-only models such as Anima), else null */
+    val llm: File?,
     val taesd: File?,
     val defaultSteps: Int,
     val maxSteps: Int,
     val defaultCfg: Float,
     val defaultSampler: Int,
     val custom: Boolean,
-)
+    val scheduler: Int = -1,
+    val sizes: List<Int> = listOf(256, 384, 512),
+    val defaultSize: Int = 512,
+) {
+    /** the size to use: the chosen one if this model offers it, else the model's default */
+    fun sizeFor(chosen: Int): Int = if (chosen in sizes) chosen else defaultSize
+}
 
 class ChatMessage(
     val id: Long,
@@ -89,7 +97,7 @@ class ChatMessage(
 
 sealed interface DownloadState {
     /** [verifying]: the download finished and its checksum is being checked */
-    data class Running(val progress: Float, val verifying: Boolean = false) : DownloadState
+    data class Running(val progress: Float, val verifying: Boolean = false, val converting: Boolean = false) : DownloadState
     data class Failed(val message: String) : DownloadState
 }
 
@@ -338,10 +346,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun imageModelChoices(): List<ImageModelChoice> {
         return IMAGE_PRESETS.filter { repo.isDownloaded(it) }.map { p ->
             val (m, t) = repo.imageFiles(p)
-            ImageModelChoice(p.id, p.title, m, t, p.defaultSteps, p.maxSteps, p.cfgScale, p.sampler, custom = false)
+            ImageModelChoice(
+                p.id, p.title, m, repo.imageLlmFile(p), t, p.defaultSteps, p.maxSteps, p.cfgScale, p.sampler, custom = false,
+                scheduler = p.scheduler, sizes = p.sizes, defaultSize = p.defaultSize,
+            )
         } + repo.customImageModels().map { c ->
             ImageModelChoice(
-                c.id, c.title, c.file, repo.taesdFile(xl = c.isXl),
+                c.id, c.title, c.file, null, repo.taesdFile(xl = c.isXl),
                 c.defaultSteps, c.maxSteps, c.defaultCfg, c.defaultSampler, custom = true,
             )
         }
@@ -364,7 +375,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         downloads[key] = DownloadState.Running(0f)
         viewModelScope.launch {
             try {
-                repo.download(preset) { p, verifying -> downloads[key] = DownloadState.Running(p, verifying) }
+                repo.download(
+                    preset,
+                    convert = { input, output, type ->
+                        stop(); genJob?.join() // conversion runs on the image engine's thread
+                        imageEngine.convert(input, output, type, settings.value.effectiveThreads)
+                    },
+                    onConverting = { downloads[key] = DownloadState.Running(1f, converting = true) },
+                ) { p, verifying -> downloads[key] = DownloadState.Running(p, verifying) }
                 downloads.remove(key)
                 imageFilesVersion++
                 if (store.current().imageModel == null) selectImageModel(preset)
@@ -411,7 +429,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val steps = (if (s.imageSteps > 0) s.imageSteps else preset.defaultSteps).coerceIn(1, preset.maxSteps)
         val cfg = if (s.imageCfg > 0f) s.imageCfg else preset.defaultCfg
         val sampler = if (s.imageSampler >= 0) s.imageSampler else preset.defaultSampler
-        val size = s.imageSize
+        val size = preset.sizeFor(s.imageSize)
         val seed = kotlin.random.Random.nextLong(0, Int.MAX_VALUE.toLong())
 
         genJob = viewModelScope.launch {
@@ -433,7 +451,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             val t0 = System.nanoTime()
             try {
                 val img = imageEngine.generate(
-                    preset.model, preset.taesd, s.effectiveThreads, prompt, s.imageNegative, size, size, steps, cfg, seed, sampler,
+                    preset.model, preset.llm, preset.taesd, s.effectiveThreads, prompt, s.imageNegative, size, size,
+                    steps, cfg, seed, sampler, preset.scheduler,
                 )
                 progressJob.cancel()
                 val saved = chatStore.saveMedia(chatId, DecodedMedia.Image(img.rgb, img.width, img.height))
@@ -651,11 +670,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val steps = minOf(2, model.defaultSteps)
                 for (t in benchThreadOptions()) {
                     benchStatus = "${model.title}: testing $t threads (256×256, $steps step${if (steps == 1) "" else "s"})…"
-                    imageEngine.preload(model.model, model.taesd, t) // loading isn't part of the timing
+                    imageEngine.preload(model.model, model.llm, model.taesd, t) // loading isn't part of the timing
                     val t0 = System.nanoTime()
                     imageEngine.generate(
-                        model.model, model.taesd, t, "a lighthouse on a cliff at sunset", "", 256, 256,
-                        steps, model.defaultCfg, 1L, model.defaultSampler,
+                        model.model, model.llm, model.taesd, t, "a lighthouse on a cliff at sunset", "", 256, 256,
+                        steps, model.defaultCfg, 1L, model.defaultSampler, model.scheduler,
                     )
                     benchRow(t) { it.copy(imageSec = ((System.nanoTime() - t0) / 1e9).toFloat()) }
                 }

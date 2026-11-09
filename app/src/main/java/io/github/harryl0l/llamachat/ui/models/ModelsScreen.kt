@@ -345,7 +345,9 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                     supportingContent = {
                         Column {
                             Text(
-                                Formatter.formatShortFileSize(context, preset.sizeBytes + (preset.taesd?.sizeBytes ?: 0)) + " · " + preset.summary,
+                                Formatter.formatShortFileSize(
+                                    context, preset.sizeBytes + (preset.taesd?.sizeBytes ?: 0) + (preset.llm?.sizeBytes ?: 0),
+                                ) + " · " + preset.summary,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             when (dl) {
@@ -354,7 +356,11 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                                         progress = { dl.progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                                     )
                                     Text(
-                                        (if (dl.verifying) "Checking file… " else "Downloading… ") + "${(dl.progress * 100).roundToInt()}%",
+                                        when {
+                                            dl.converting -> "Converting for this phone (a minute or two)…"
+                                            dl.verifying -> "Checking file… ${(dl.progress * 100).roundToInt()}%"
+                                            else -> "Downloading… ${(dl.progress * 100).roundToInt()}%"
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                     )
                                 }
@@ -405,18 +411,21 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
             }
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Size", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
-                val sizes = listOf(256, 384, 512)
+                val sizes = current?.sizes ?: listOf(256, 384, 512)
+                val size = current?.sizeFor(settings.imageSize) ?: settings.imageSize
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     sizes.forEachIndexed { i, px ->
                         SegmentedButton(
-                            selected = settings.imageSize == px,
+                            selected = size == px,
                             onClick = { vm.updateSettings(reloadNeeded = false) { it.copy(imageSize = px) } },
                             shape = SegmentedButtonDefaults.itemShape(i, sizes.size),
                         ) { Text("$px") }
                     }
                 }
                 Text(
-                    "These models are trained for 512×512; smaller is much faster but less detailed.",
+                    if (current != null && current.defaultSize > 512)
+                        "This model is trained for about 1024×1024: 768 is a good balance; larger is sharper but much slower."
+                    else "These models are trained for 512×512; smaller is much faster but less detailed.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

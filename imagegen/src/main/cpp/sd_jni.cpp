@@ -60,15 +60,22 @@ static std::string jstr(JNIEnv * env, jstring s) {
 extern "C" {
 
 // Returns null on success, an error message otherwise.
-JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jstring jtaesd, jint n_threads) {
+// jmodel: a full checkpoint, or (with jllm) only the diffusion model of a model whose text encoder
+// is a separate LLM (e.g. Anima + Qwen3-0.6B); its VAE is then replaced by the tiny decoder (jtaesd).
+JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jstring jllm, jstring jtaesd, jint n_threads) {
     if (g_ctx) { free_sd_ctx(g_ctx); g_ctx = nullptr; }
     sd_set_log_callback(log_cb, nullptr);
     g_error.clear();
 
-    const std::string model = jstr(env, jmodel), taesd = jstr(env, jtaesd);
+    const std::string model = jstr(env, jmodel), llm = jstr(env, jllm), taesd = jstr(env, jtaesd);
     sd_ctx_params_t p;
     sd_ctx_params_init(&p);
-    p.model_path  = model.c_str();
+    if (llm.empty()) {
+        p.model_path = model.c_str();
+    } else {
+        p.diffusion_model_path = model.c_str();
+        p.llm_path             = llm.c_str();
+    }
     p.taesd_path  = taesd.empty() ? nullptr : taesd.c_str(); // tiny decoder: ~10x faster decoding
     p.n_threads   = n_threads;
     p.enable_mmap = true;
@@ -92,9 +99,10 @@ JNIEXPORT void JNICALL JNI_FN(unload)(JNIEnv *, jobject) {
 
 // Returns RGB pixels (width * height * 3), or null on failure / cancellation (see lastError()).
 // sampler: a sample_method_t (e.g. 1 = Euler A, 9 = LCM for LCM-distilled models)
+// scheduler: a scheduler_t, or -1 for the model's default
 JNIEXPORT jbyteArray JNICALL JNI_FN(generate)(JNIEnv * env, jobject, jstring jprompt, jstring jnegative,
                                                jint width, jint height, jint steps, jfloat cfg, jlong seed,
-                                               jint sampler) {
+                                               jint sampler, jint scheduler) {
     if (!g_ctx) { g_error = "No image model loaded"; return nullptr; }
     const std::string prompt = jstr(env, jprompt), negative = jstr(env, jnegative);
 
@@ -114,7 +122,8 @@ JNIEXPORT jbyteArray JNICALL JNI_FN(generate)(JNIEnv * env, jobject, jstring jpr
     gp.batch_count     = 1;
     const auto method = (sampler >= 0 && sampler < SAMPLE_METHOD_COUNT) ? (sample_method_t) sampler : EULER_A_SAMPLE_METHOD;
     gp.sample_params.sample_method        = method;
-    gp.sample_params.scheduler            = sd_get_default_scheduler(g_ctx, method);
+    gp.sample_params.scheduler            = (scheduler >= 0 && scheduler < SCHEDULER_COUNT)
+                                                ? (scheduler_t) scheduler : sd_get_default_scheduler(g_ctx, method);
     gp.sample_params.sample_steps         = steps;
     gp.sample_params.guidance.txt_cfg     = cfg;
 
@@ -156,6 +165,19 @@ JNIEXPORT jstring JNICALL JNI_FN(progress)(JNIEnv * env, jobject) {
 
 JNIEXPORT void JNICALL JNI_FN(cancel)(JNIEnv *, jobject) {
     if (g_ctx) sd_cancel_generation(g_ctx, SD_CANCEL_ALL);
+}
+
+// Converts (quantizes) a model file to GGUF, streaming, tensor by tensor. type: an sd_type_t
+// (e.g. 8 = Q8_0, 13 = Q5_K). Returns null on success, an error message otherwise.
+JNIEXPORT jstring JNICALL JNI_FN(convert)(JNIEnv * env, jobject, jstring jin, jstring jout, jint type, jint n_threads) {
+    sd_set_log_callback(log_cb, nullptr);
+    { std::lock_guard<std::mutex> lock(g_stage_mutex); g_error.clear(); }
+    const std::string in = jstr(env, jin), out = jstr(env, jout);
+    const bool ok = convert_with_components(in.c_str(), "", "", "", "", "", out.c_str(), (sd_type_t) type, "", false,
+                                            n_threads, nullptr, 0);
+    if (ok) return nullptr;
+    std::lock_guard<std::mutex> lock(g_stage_mutex);
+    return env->NewStringUTF(g_error.empty() ? "Model conversion failed" : g_error.c_str());
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(lastError)(JNIEnv * env, jobject) {

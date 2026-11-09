@@ -22,8 +22,12 @@ object ImageGenNative {
 
     fun available(): Boolean = loaded
 
-    /** @return null on success, else an error */
-    external fun load(modelPath: String, taesdPath: String?, nThreads: Int): String?
+    /**
+     * @param modelPath a full checkpoint, or with [llmPath] only the diffusion model (e.g. Anima)
+     * @param llmPath LLM text encoder for models that use one, else null
+     * @return null on success, else an error
+     */
+    external fun load(modelPath: String, llmPath: String?, taesdPath: String?, nThreads: Int): String?
     external fun unload()
 
     /** RGB pixels (width * height * 3) or null on failure / cancel (see [lastError]) */
@@ -32,7 +36,12 @@ object ImageGenNative {
         steps: Int, cfgScale: Float, seed: Long,
         /** stable-diffusion.cpp sample_method_t: 1 = Euler A, 5 = DPM++ 2M, 9 = LCM */
         sampler: Int,
+        /** stable-diffusion.cpp scheduler_t, -1 = the model's default */
+        scheduler: Int,
     ): ByteArray?
+
+    /** Quantizes a model file to GGUF (streaming). type: sd_type_t, 8 = Q8_0, 13 = Q5_K. @return null on success, else an error */
+    external fun convert(inPath: String, outPath: String, type: Int, nThreads: Int): String?
 
     /** "stage|completed|total" while generating, "" otherwise */
     external fun progress(): String
