@@ -337,13 +337,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Downloaded presets and imported models, in the order shown. */
     fun imageModelChoices(): List<ImageModelChoice> {
-        val taesd = repo.taesdFile()
         return IMAGE_PRESETS.filter { repo.isDownloaded(it) }.map { p ->
             val (m, t) = repo.imageFiles(p)
             ImageModelChoice(p.id, p.title, m, t, p.defaultSteps, p.maxSteps, p.cfgScale, SAMPLER_EULER_A, custom = false)
         } + repo.customImageModels().map { c ->
             ImageModelChoice(
-                c.id, c.title, c.file, if (c.isXl) null else taesd,
+                c.id, c.title, c.file, repo.taesdFile(xl = c.isXl),
                 c.defaultSteps, c.maxSteps, c.defaultCfg, c.defaultSampler, custom = true,
             )
         }

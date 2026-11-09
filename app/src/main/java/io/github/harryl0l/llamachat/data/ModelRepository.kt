@@ -98,6 +98,12 @@ private val TAESD = TaesdFile(
     "taesd.safetensors", 9_793_292L, "db169d69145ec4ff064e49d99c95fa05d3eb04ee453de35824a6d0f325513549",
 )
 
+/** TAESD for SDXL models (different latent space; the SD 1.x/2.x TAESD gives garbage with SDXL) */
+private val TAESDXL = TaesdFile(
+    "https://huggingface.co/madebyollin/taesdxl/resolve/b20258aaef75ef61e659c1e0f14f251cf0ad153e/diffusion_pytorch_model.safetensors?download=true",
+    "taesdxl.safetensors", 9_793_292L, "ff4824aca94dd6111e0340fa749347fb74101060d9712cb5ef1ca8f1cf17502f",
+)
+
 val IMAGE_PRESETS = listOf(
     ImageModelPreset(
         "sdxs-512", "SDXS-512",
@@ -115,7 +121,19 @@ val IMAGE_PRESETS = listOf(
         defaultSteps = 2, maxSteps = 4, cfgScale = 1.0f, taesd = TAESD,
         sha256 = "d50be7655f0a554cf8041c145d88b210bd5f3c545423119dee62ae08cae51580",
     ),
+    ImageModelPreset(
+        "sdxl-turbo", "SDXL-Turbo",
+        "SD-Turbo's big brother: better anatomy, detail and prompt following, about 3× slower. Needs ~4.5 GB RAM " +
+            "(unload the chat model first). Uses the TAESDXL fast decoder. Non-commercial license.",
+        "https://huggingface.co/OlegSkutte/sdxl-turbo-GGUF/resolve/62a28b8b2c3cb4bf76d9aad45a5b798047dc786c/sd_xl_turbo_1.0.q8_0.gguf?download=true",
+        "sd_xl_turbo_1.0.q8_0.gguf", 4_098_988_672L,
+        defaultSteps = 2, maxSteps = 4, cfgScale = 1.0f, taesd = TAESDXL,
+        sha256 = "f5659e6cdad699b1432870cc9fe811359e45c8a331687be505d0ba05c8364720",
+    ),
 )
+
+/** The fast decoders the app knows, by the file name they're stored under. */
+val TAESD_FILES = listOf(TAESD, TAESDXL)
 
 val CUSTOM_IMAGE_EXTENSIONS = setOf("gguf", "safetensors", "ckpt")
 
@@ -341,7 +359,7 @@ class ModelRepository(private val context: Context) {
     fun imageDir(preset: ImageModelPreset) = File(modelsDir, "image/" + preset.id)
 
     fun imageFiles(preset: ImageModelPreset): Pair<File, File?> =
-        File(imageDir(preset), preset.file) to preset.taesd?.let { File(File(modelsDir, "image/taesd"), it.file) }
+        File(imageDir(preset), preset.file) to preset.taesd?.let { File(taesdDir(), it.file) }
 
     fun isDownloaded(preset: ImageModelPreset): Boolean {
         val (m, t) = imageFiles(preset)
@@ -372,12 +390,15 @@ class ModelRepository(private val context: Context) {
             .sortedBy { it.name.lowercase() }
             .map { CustomImageModel(it) }
 
-    /** TAESD decoder file, if it's present (downloaded with SD-Turbo or imported). */
-    fun taesdFile(): File? = imageFiles(IMAGE_PRESETS.first { it.taesd != null }).second?.takeIf { it.exists() }
+    fun taesdDir() = File(modelsDir, "image/taesd")
+
+    /** Fast decoder for SD 1.x/2.x ([xl] false) or SDXL ([xl] true) models, if present (downloaded with a preset or imported). */
+    fun taesdFile(xl: Boolean): File? =
+        File(taesdDir(), (if (xl) TAESDXL else TAESD).file).takeIf { isVerified(it, TAESD.sizeBytes, (if (xl) TAESDXL else TAESD).sha256) }
 
     /**
      * Copies an image-model file the user downloaded themselves into place. It must be one of the
-     * presets' files (same file name), or the TAESD decoder. @return what was imported
+     * presets' files (same file name), a TAESD / TAESDXL decoder, or the user's own model. @return what was imported
      */
     suspend fun importImageFile(uri: Uri, onProgress: (Float) -> Unit): String = withContext(Dispatchers.IO) {
         var name = ""
@@ -386,11 +407,12 @@ class ModelRepository(private val context: Context) {
             if (c.moveToFirst()) { name = c.getString(0) ?: ""; size = c.getLong(1) }
         }
         val preset = IMAGE_PRESETS.firstOrNull { it.file.equals(name, ignoreCase = true) }
-        val isTaesd = name.equals("taesd.safetensors", true) || name.equals("diffusion_pytorch_model.safetensors", true)
+        // taesd.safetensors / taesdxl.safetensors, or the upstream name (which one is decided by checksum)
+        val isTaesd = TAESD_FILES.any { it.file.equals(name, true) } || name.equals("diffusion_pytorch_model.safetensors", true)
         val ext = name.substringAfterLast('.', "").lowercase()
-        val target = when {
+        var target = when {
             preset != null -> imageFiles(preset).first
-            isTaesd -> imageFiles(IMAGE_PRESETS.first { it.taesd != null }).second!!
+            isTaesd -> File(taesdDir(), TAESD_FILES.firstOrNull { it.file.equals(name, true) }?.file ?: name)
             ext in CUSTOM_IMAGE_EXTENSIONS -> File(customImageDir, name) // your own model (e.g. a fine-tune)
             else -> error("$name isn't an image model file (.gguf, .safetensors or .ckpt).")
         }
@@ -420,15 +442,18 @@ class ModelRepository(private val context: Context) {
             check(part.renameTo(target)) { "Could not save $name" }
             return@withContext name
         }
-        val expectedSha = preset?.sha256 ?: IMAGE_PRESETS.first { it.taesd != null }.taesd!!.sha256
-        if (sha256Of(part) { onProgress(it) } != expectedSha) {
+        val sha = sha256Of(part) { onProgress(it) }
+        val taesdMatch = if (isTaesd) TAESD_FILES.firstOrNull { it.sha256 == sha } else null
+        val expectedSha = preset?.sha256 ?: taesdMatch?.sha256
+        if (expectedSha == null || sha != expectedSha) {
             part.delete()
             error("$name doesn't match the expected file (checksum mismatch): it's corrupted or a different version.")
         }
+        if (taesdMatch != null) target = File(taesdDir(), taesdMatch.file)
         target.delete()
         check(part.renameTo(target)) { "Could not save $name" }
         markerOf(target).writeText(expectedSha)
-        preset?.title ?: "TAESD decoder"
+        preset?.title ?: if (taesdMatch == TAESDXL) "TAESDXL decoder" else "TAESD decoder"
     }
 
     /** Copies a user-picked GGUF into app storage (llama.cpp needs a real file path to mmap). */

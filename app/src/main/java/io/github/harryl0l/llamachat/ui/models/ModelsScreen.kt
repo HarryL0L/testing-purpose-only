@@ -448,7 +448,8 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                     Text(
                         "LCM / Turbo models: LCM sampler (for LCM), 4–8 steps, CFG 1.0. CFG above 1 uses the " +
                             "negative prompt but takes twice as long." +
-                            if (current.taesd == null) " Import taesd.safetensors (or download SD-Turbo) for ~10× faster final decoding." else "",
+                            if (current.taesd == null) " Download SD-Turbo / SDXL-Turbo (or import taesd.safetensors / taesdxl.safetensors " +
+                                "for SDXL models) for ~10× faster final decoding." else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
