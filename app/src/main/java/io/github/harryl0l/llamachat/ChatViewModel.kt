@@ -29,7 +29,6 @@ import io.github.harryl0l.llamachat.engine.EngineState
 import io.github.harryl0l.llamachat.engine.ImageEngine
 import io.github.harryl0l.llamachat.data.IMAGE_PRESETS
 import io.github.harryl0l.llamachat.data.ImageModelPreset
-import io.github.harryl0l.llamachat.data.SAMPLER_EULER_A
 import io.github.harryl0l.llamachat.engine.LlamaEngine
 import io.github.harryl0l.llamachat.engine.ModelSpec
 import io.github.harryl0l.llamachat.engine.ProjectorSpec
@@ -339,7 +338,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun imageModelChoices(): List<ImageModelChoice> {
         return IMAGE_PRESETS.filter { repo.isDownloaded(it) }.map { p ->
             val (m, t) = repo.imageFiles(p)
-            ImageModelChoice(p.id, p.title, m, t, p.defaultSteps, p.maxSteps, p.cfgScale, SAMPLER_EULER_A, custom = false)
+            ImageModelChoice(p.id, p.title, m, t, p.defaultSteps, p.maxSteps, p.cfgScale, p.sampler, custom = false)
         } + repo.customImageModels().map { c ->
             ImageModelChoice(
                 c.id, c.title, c.file, repo.taesdFile(xl = c.isXl),

@@ -89,6 +89,8 @@ data class ImageModelPreset(
     /** small replacement decoder (TAESD): ~10x faster final decoding, near identical images */
     val taesd: TaesdFile? = null,
     val sha256: String = "",
+    /** stable-diffusion.cpp sample_method_t (see SAMPLERS) */
+    val sampler: Int = SAMPLER_EULER_A,
 )
 
 data class TaesdFile(val url: String, val file: String, val sizeBytes: Long, val sha256: String)
@@ -120,6 +122,16 @@ val IMAGE_PRESETS = listOf(
         "sd_turbo-f16-q8_0.gguf", 2_023_745_376L,
         defaultSteps = 2, maxSteps = 4, cfgScale = 1.0f, taesd = TAESD,
         sha256 = "d50be7655f0a554cf8041c145d88b210bd5f3c545423119dee62ae08cae51580",
+    ),
+    ImageModelPreset(
+        "dreamshaper-8-lcm", "DreamShaper 8 LCM",
+        "Best faces and people of the presets (SD 1.5 fine-tune, LCM sampler, 6 steps; about 45 s on a desktop " +
+            "CPU). Official file from the author (Lykon). Uses the TAESD fast decoder.",
+        "https://huggingface.co/Lykon/dreamshaper-8-lcm/resolve/4645d8bc6a8e6b106d21606d63e8460cdad4f1a6/DreamShaper8_LCM.safetensors?download=true",
+        "DreamShaper8_LCM.safetensors", 2_133_804_992L,
+        defaultSteps = 6, maxSteps = 12, cfgScale = 1.0f, taesd = TAESD,
+        sha256 = "a4f3e1526c5dc4fcbe342f5c410d83ae202c7a415fcefcbb92e0f93fcd0a87c3",
+        sampler = SAMPLER_LCM,
     ),
     ImageModelPreset(
         "sdxl-turbo", "SDXL-Turbo",

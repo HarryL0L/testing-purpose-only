@@ -427,8 +427,8 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                         1f..current.maxSteps.toFloat(), current.maxSteps - 2, { "${it.roundToInt()}" },
                     ) { v -> vm.updateSettings(reloadNeeded = false) { it.copy(imageSteps = v.roundToInt()) } }
                 }
-                if (current != null && current.custom) {
-                    // imported models: sampler + CFG matter (LCM models need the LCM sampler)
+                if (current != null && (current.custom || current.defaultSampler == io.github.harryl0l.llamachat.data.SAMPLER_LCM)) {
+                    // imported and LCM models: sampler + CFG matter (LCM models need the LCM sampler)
                     Text("Sampler", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
                     val sampler = if (settings.imageSampler >= 0) settings.imageSampler else current.defaultSampler
                     val samplers = io.github.harryl0l.llamachat.data.SAMPLERS
