@@ -25,6 +25,18 @@ sh run.sh                       # everything: 15-40 min, keep the screen on
 Then share `report.txt` (e.g. `cp report.txt /sdcard/Download/`). The long-dispatch test may
 freeze the screen for a few seconds; that is expected.
 
-## Build (developers)
+## Build
 
-`./build.sh` (needs the Android NDK) → `out/gpuprobe.tar.gz`.
+* On the phone, in Termux (vkprobe only):
+  `pkg install clang shaderc vulkan-headers vulkan-loader-android`, then `sh build-termux.sh`.
+* On a PC with the Android NDK (vkprobe + test-backend-ops), from a full checkout of this repo
+  with submodules: `./build.sh` → `out/gpuprobe.tar.gz`.
+
+## Files
+
+* `vkprobe.cpp` — the probe (plain Vulkan C API, no other dependencies)
+* `shaders/*.comp` — its compute shaders (GLSL), compiled to SPIR-V at build time
+* `run.sh` — runs everything, writes `report.txt`
+* `CMakeLists.txt`, `bin2h.cmake`, `build.sh` — Android build incl. test-backend-ops (uses
+  `third_party/stable-diffusion.cpp/ggml` and the app's Vulkan 1.1 patch in `app/src/main/cpp/vulkan`)
+* `build-termux.sh` — on-phone build of vkprobe
