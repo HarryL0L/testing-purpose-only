@@ -17,7 +17,7 @@
 #include <random>
 #include <vector>
 
-struct Shape { int M, K, N; };
+struct Shape { int M, K, N, B = 1; }; // B: batch (e.g. attention heads)
 
 static double now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
@@ -26,8 +26,8 @@ static std::vector<float> run(ggml_backend_t backend, ggml_type type, const Shap
                               const std::vector<float> & xdata, int reps, double * sec) {
     ggml_init_params ip = { ggml_tensor_overhead() * 8 + ggml_graph_overhead(), nullptr, true };
     ggml_context * ctx = ggml_init(ip);
-    ggml_tensor * w = ggml_new_tensor_2d(ctx, type, s.K, s.M);
-    ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, s.K, s.N);
+    ggml_tensor * w = ggml_new_tensor_3d(ctx, type, s.K, s.M, s.B);
+    ggml_tensor * x = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, s.K, s.N, s.B);
     ggml_tensor * out = ggml_mul_mat(ctx, w, x);
     ggml_cgraph * gf = ggml_new_graph(ctx);
     ggml_build_forward_expand(gf, out);
@@ -42,7 +42,7 @@ static std::vector<float> run(ggml_backend_t backend, ggml_type type, const Shap
         best = std::min(best, now() - t0);
     }
     *sec = best;
-    std::vector<float> res((size_t) s.M * s.N);
+    std::vector<float> res((size_t) s.M * s.N * s.B);
     ggml_backend_tensor_get(out, res.data(), 0, res.size() * sizeof(float));
     ggml_backend_buffer_free(buf);
     ggml_free(ctx);
@@ -51,6 +51,7 @@ static std::vector<float> run(ggml_backend_t backend, ggml_type type, const Shap
 
 int main(int argc, char ** argv) {
     const bool quick = argc > 1 && strcmp(argv[1], "--quick") == 0;
+    setenv("LLAMACHAT_MALI_GEMM_KQUANTS", "1", 0); // check the K-quant path too (off by default in the app)
     ggml_backend_t gpu = ggml_backend_init_by_name("Vulkan0", nullptr);
     if (!gpu) { fprintf(stderr, "no Vulkan0 backend\n"); return 1; }
     ggml_backend_t cpu = ggml_backend_cpu_init();
@@ -59,8 +60,10 @@ int main(int argc, char ** argv) {
     // sizes from image models: Anima (2048 hidden, 8192 MLP), SD 1.5 (320/640/1280), small checks
     std::vector<Shape> shapes = quick ? std::vector<Shape>{ {256, 512, 128}, {2048, 2048, 1024} }
                                       : std::vector<Shape>{ {256, 512, 128}, {320, 320, 4096}, {2048, 2048, 1024},
-                                                            {8192, 2048, 512}, {2048, 8192, 512}, {96, 1024, 64} };
-    const ggml_type types[] = { GGML_TYPE_F16, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, GGML_TYPE_Q5_K, GGML_TYPE_F32 };
+                                                            {8192, 2048, 512}, {2048, 8192, 512}, {96, 1024, 64},
+                                                            // attention, 4 heads: Q K^T (M = keys, K = head dim) and P V (M = head dim, K = keys)
+                                                            {576, 128, 576, 4}, {128, 576, 576, 4} };
+    const ggml_type types[] = { GGML_TYPE_F16, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, GGML_TYPE_Q4_K, GGML_TYPE_Q5_K, GGML_TYPE_Q6_K, GGML_TYPE_F32 };
     const char * mode = getenv("LLAMACHAT_MALI_GEMM");
     printf("LLAMACHAT_MALI_GEMM=%s\n", mode ? mode : "(unset: on for ARM GPUs)");
     printf("%-6s %18s %12s %10s %10s\n", "type", "M x K x N", "rel. error", "GPU ms", "GPU GFLOPS");
@@ -68,14 +71,15 @@ int main(int argc, char ** argv) {
     std::normal_distribution<float> nd(0.0f, 1.0f);
     int bad = 0;
     for (const Shape & s : shapes) {
-        std::vector<float> wf((size_t) s.M * s.K), xf((size_t) s.K * s.N);
+        std::vector<float> wf((size_t) s.M * s.K * s.B), xf((size_t) s.K * s.N * s.B);
         for (auto & v : wf) v = nd(rng) * 0.05f; // weights ~ trained-model scale
         for (auto & v : xf) v = nd(rng);
         for (ggml_type t : types) {
             if (ggml_blck_size(t) > 1 && s.K % ggml_blck_size(t)) continue;
-            std::vector<uint8_t> wd(ggml_row_size(t, s.K) * s.M);
+            if (s.B > 1 && t != GGML_TYPE_F16 && t != GGML_TYPE_F32) continue; // attention operands are f16 / f32
+            std::vector<uint8_t> wd(ggml_row_size(t, s.K) * s.M * s.B);
             if (t == GGML_TYPE_F32) memcpy(wd.data(), wf.data(), wd.size());
-            else ggml_quantize_chunk(t, wf.data(), wd.data(), 0, s.M, s.K, nullptr);
+            else ggml_quantize_chunk(t, wf.data(), wd.data(), 0, s.M * s.B, s.K, nullptr);
             double tg = 0, tc = 0;
             const std::vector<float> rg = run(gpu, t, s, wd, xf, quick ? 3 : 5, &tg);
             const std::vector<float> rc = run(cpu, t, s, wd, xf, 1, &tc);
@@ -88,12 +92,27 @@ int main(int argc, char ** argv) {
                 r2 += (double) rc[i] * rc[i];
             }
             const double rel = std::sqrt(e2 / std::max(r2, 1e-30));
+            if (getenv("MALIGEMM_DUMP") && rel > 2e-2) {
+                // pattern of the error: per output column (m) within the first token row
+                int wrong = 0;
+                for (int m = 0; m < s.M; m++) if (std::fabs(rg[m] - rc[m]) > 0.05 * (std::fabs(rc[m]) + 0.1)) wrong++;
+                printf("  token 0: %d of %d outputs wrong; first values GPU/CPU:", wrong, s.M);
+                for (int m = 0; m < 8; m++) printf(" %.3f/%.3f", rg[m], rc[m]);
+                printf("\n  wrong rows (m) by block of 16:");
+                for (int m0 = 0; m0 < s.M; m0 += 16) {
+                    int w = 0;
+                    for (int m = m0; m < m0 + 16; m++) if (std::fabs(rg[m] - rc[m]) > 0.05 * (std::fabs(rc[m]) + 0.1)) w++;
+                    printf(" %d", w);
+                }
+                printf("\n");
+            }
             const bool ok = finite && rel < 2e-2;
             if (!ok) bad++;
             char dims[32];
-            snprintf(dims, sizeof dims, "%dx%dx%d", s.M, s.K, s.N);
+            if (s.B > 1) snprintf(dims, sizeof dims, "%dx%dx%d x%d", s.M, s.K, s.N, s.B);
+            else snprintf(dims, sizeof dims, "%dx%dx%d", s.M, s.K, s.N);
             printf("%-6s %18s %12.2e%s %9.2f %10.1f\n", ggml_type_name(t), dims, rel, ok ? " " : "!", tg * 1e3,
-                   2.0 * s.M * s.N * s.K / tg * 1e-9);
+                   2.0 * s.M * s.N * s.K * s.B / tg * 1e-9);
             fflush(stdout);
         }
     }

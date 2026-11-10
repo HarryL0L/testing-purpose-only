@@ -104,20 +104,36 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
     const int mode = lc_mali_mode(ctx->device);
     if (mode == 0) return false;
     if (src1->type != GGML_TYPE_F32 || dst->type != GGML_TYPE_F32) return false;
-    if (src0->ne[2] != 1 || src0->ne[3] != 1 || src1->ne[2] != 1 || src1->ne[3] != 1) return false;
+    // 2D, or a batch of independent 2D multiplies with the same batch shape (e.g. attention heads)
+    if (src0->ne[2] != src1->ne[2] || src0->ne[3] != src1->ne[3]) return false;
     if (!ggml_is_contiguous(src0) || !ggml_is_contiguous(src1) || !ggml_is_contiguous(dst)) return false;
     if (get_misalign_bytes(ctx, src0) || get_misalign_bytes(ctx, src1) || get_misalign_bytes(ctx, dst)) return false;
     const uint32_t M = (uint32_t) src0->ne[1], K = (uint32_t) src0->ne[0], N = (uint32_t) src1->ne[1];
+    const uint32_t batches = (uint32_t) (src0->ne[2] * src0->ne[3]);
     const uint32_t tile_m = mode == 2 ? 64 : 32;
     if (M % tile_m || N % 64 || K % 64 || N < 64) return false;
+    // K-quants: ggml's dequant shaders for them gave wrong results in testing (lavapipe); opt-in
+    // until checked on the phone (LLAMACHAT_MALI_GEMM_KQUANTS=1, set by maligemm-test)
+    switch (src0->type) {
+        case GGML_TYPE_Q2_K: case GGML_TYPE_Q3_K: case GGML_TYPE_Q4_K: case GGML_TYPE_Q5_K: case GGML_TYPE_Q6_K: {
+            const char * kq = getenv("LLAMACHAT_MALI_GEMM_KQUANTS");
+            if (!kq || strcmp(kq, "1") != 0) return false;
+            break;
+        }
+        default: break;
+    }
     vk_pipeline to_fp16 = nullptr;
     if (src0->type != GGML_TYPE_F16) {
         to_fp16 = ggml_vk_get_to_fp16(ctx, src0->type);
         if (!to_fp16) return false;
     }
+    // per-batch slices (bytes) and the alignment descriptor offsets need
+    const uint64_t a_slice = src0->nb[2], b_slice = src1->nb[2], d_slice = dst->nb[2];
+    const uint64_t align = ctx->device->properties.limits.minStorageBufferOffsetAlignment;
+    if (batches > 1 && (a_slice % align || b_slice % align || d_slice % align)) return false;
     const uint64_t a_sz = (uint64_t) M * K * 2, b_sz = (uint64_t) N * K * 2, d_sz = (uint64_t) M * N * 4;
     const uint64_t maxr = ctx->device->properties.limits.maxStorageBufferRange;
-    if (a_sz > maxr || b_sz > maxr || d_sz > maxr || ggml_nbytes(src0) > maxr || ggml_nbytes(src1) > maxr) return false;
+    if (a_sz > maxr || b_sz > maxr || d_sz > maxr || a_slice > maxr || b_slice > maxr) return false;
 
     static bool logged = false;
     if (!logged) {
@@ -137,10 +153,10 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
     if (ctx->prealloc_size_x < a_sz) { ctx->prealloc_size_x = a_sz; ggml_vk_preallocate_buffers(ctx, subctx); }
     if (ctx->prealloc_size_y < b_sz) { ctx->prealloc_size_y = b_sz; ggml_vk_preallocate_buffers(ctx, subctx); }
     if (to_fp16 && ctx->prealloc_size_split_k < a_sz) { ctx->prealloc_size_split_k = a_sz; ggml_vk_preallocate_buffers(ctx, subctx); }
-    if (to_fp16) ggml_pipeline_request_descriptor_sets(ctx, to_fp16, 1);
-    ggml_pipeline_request_descriptor_sets(ctx, lp.tr_a, 1);
-    ggml_pipeline_request_descriptor_sets(ctx, lp.tr_b, 1);
-    ggml_pipeline_request_descriptor_sets(ctx, gemm, nchunks);
+    if (to_fp16) ggml_pipeline_request_descriptor_sets(ctx, to_fp16, batches);
+    ggml_pipeline_request_descriptor_sets(ctx, lp.tr_a, batches);
+    ggml_pipeline_request_descriptor_sets(ctx, lp.tr_b, batches);
+    ggml_pipeline_request_descriptor_sets(ctx, gemm, nchunks * batches);
 
     vk_buffer d_Qx = nullptr, d_Qy = nullptr;
     size_t qx_off = 0, qy_off = 0;
@@ -153,37 +169,41 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
     vk_buffer d_D = ((ggml_backend_vk_buffer_context *) dst->buffer->context)->dev_buffer;
     const uint64_t d_off = vk_tensor_offset(dst) + dst->view_offs;
     GGML_ASSERT(d_Qx && d_Qy && d_D);
+    const uint64_t a_bytes = batches > 1 ? a_slice : ggml_nbytes(src0);
+    const uint64_t b_bytes = batches > 1 ? b_slice : ggml_nbytes(src1);
 
-    // 1. weights -> K-major f16 in prealloc_x
-    if (ctx->prealloc_x_need_sync) ggml_vk_sync_buffers(ctx, subctx);
-    vk_subbuffer a16 = { d_Qx, qx_off, ggml_nbytes(src0) };
-    if (to_fp16) {
-        ggml_vk_sync_buffers(ctx, subctx); // prealloc_split_k may still be in use by an earlier op
-        const std::vector<uint32_t> pc = { M, K, K, K, (uint32_t) ggml_nelements(src0) };
-        ggml_vk_dispatch_pipeline(ctx, subctx, to_fp16, { vk_subbuffer{ d_Qx, qx_off, ggml_nbytes(src0) }, vk_subbuffer{ ctx->prealloc_split_k, 0, a_sz } },
-                                  pc, { (uint32_t) ggml_nelements(src0), 1, 1 });
+    for (uint32_t bt = 0; bt < batches; bt++) {
+        // 1. weights -> K-major f16 in prealloc_x
+        if (ctx->prealloc_x_need_sync || bt > 0) ggml_vk_sync_buffers(ctx, subctx);
+        vk_subbuffer a16 = { d_Qx, qx_off + bt * a_slice, a_bytes };
+        if (to_fp16) {
+            ggml_vk_sync_buffers(ctx, subctx); // prealloc_split_k may still be in use by an earlier op
+            const std::vector<uint32_t> pc = { M, K, K, K, M * K };
+            ggml_vk_dispatch_pipeline(ctx, subctx, to_fp16, { vk_subbuffer{ d_Qx, qx_off + bt * a_slice, a_bytes }, vk_subbuffer{ ctx->prealloc_split_k, 0, a_sz } },
+                                      pc, { M * K, 1, 1 });
+            ggml_vk_sync_buffers(ctx, subctx);
+            a16 = { ctx->prealloc_split_k, 0, a_sz };
+        }
+        ggml_vk_dispatch_pipeline(ctx, subctx, lp.tr_a, { a16, vk_subbuffer{ ctx->prealloc_x, 0, a_sz } }, lc_mali_tr_pc{ M, K }, { K, M, 1 });
+
+        // 2. activations -> K-major f16 in prealloc_y (kept when the next 2D matmul has the same input)
+        if (batches > 1 || ctx->prealloc_y_last_pipeline_used != lp.tr_b.get() || ctx->prealloc_y_last_tensor_used != src1 || ctx->prealloc_y_last_k_padded) {
+            if (ctx->prealloc_y_need_sync || bt > 0) ggml_vk_sync_buffers(ctx, subctx);
+            ggml_vk_dispatch_pipeline(ctx, subctx, lp.tr_b, { vk_subbuffer{ d_Qy, qy_off + bt * b_slice, b_bytes }, vk_subbuffer{ ctx->prealloc_y, 0, b_sz } },
+                                      lc_mali_tr_pc{ N, K }, { K, N, 1 });
+            ctx->prealloc_y_last_pipeline_used = batches > 1 ? nullptr : lp.tr_b.get();
+            ctx->prealloc_y_last_tensor_used = src1;
+            ctx->prealloc_y_last_k_padded = false;
+        }
         ggml_vk_sync_buffers(ctx, subctx);
-        a16 = { ctx->prealloc_split_k, 0, a_sz };
-    }
-    ggml_vk_dispatch_pipeline(ctx, subctx, lp.tr_a, { a16, vk_subbuffer{ ctx->prealloc_x, 0, a_sz } }, lc_mali_tr_pc{ M, K }, { K, M, 1 });
 
-    // 2. activations -> K-major f16 in prealloc_y (kept when the next matmul has the same input)
-    if (ctx->prealloc_y_last_pipeline_used != lp.tr_b.get() || ctx->prealloc_y_last_tensor_used != src1 || ctx->prealloc_y_last_k_padded) {
-        if (ctx->prealloc_y_need_sync) ggml_vk_sync_buffers(ctx, subctx);
-        ggml_vk_dispatch_pipeline(ctx, subctx, lp.tr_b, { vk_subbuffer{ d_Qy, qy_off, ggml_nbytes(src1) }, vk_subbuffer{ ctx->prealloc_y, 0, b_sz } },
-                                  lc_mali_tr_pc{ N, K }, { K, N, 1 });
-        ctx->prealloc_y_last_pipeline_used = lp.tr_b.get();
-        ctx->prealloc_y_last_tensor_used = src1;
-        ctx->prealloc_y_last_k_padded = false;
-    }
-    ggml_vk_sync_buffers(ctx, subctx);
-
-    // 3. the GEMM, in short dispatches
-    for (uint32_t n0 = 0; n0 < N; n0 += chunk) {
-        const uint32_t nc = std::min(chunk, N - n0);
-        ggml_vk_dispatch_pipeline(ctx, subctx, gemm,
-                                  { vk_subbuffer{ ctx->prealloc_x, 0, a_sz }, vk_subbuffer{ ctx->prealloc_y, 0, b_sz }, vk_subbuffer{ d_D, d_off, d_sz } },
-                                  lc_mali_gemm_pc{ M, N, K, n0 }, { M, nc, 1 });
+        // 3. the GEMM, in short dispatches
+        for (uint32_t n0 = 0; n0 < N; n0 += chunk) {
+            const uint32_t nc = std::min(chunk, N - n0);
+            ggml_vk_dispatch_pipeline(ctx, subctx, gemm,
+                                      { vk_subbuffer{ ctx->prealloc_x, 0, a_sz }, vk_subbuffer{ ctx->prealloc_y, 0, b_sz }, vk_subbuffer{ d_D, d_off + bt * d_slice, d_sz } },
+                                      lc_mali_gemm_pc{ M, N, K, n0 }, { M, nc, 1 });
+        }
     }
     ctx->prealloc_x_need_sync = true;
     ctx->prealloc_y_need_sync = true;
