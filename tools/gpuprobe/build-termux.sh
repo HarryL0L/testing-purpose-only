@@ -1,5 +1,7 @@
 #!/bin/sh
 # Builds vkprobe directly on the phone, in Termux (test-backend-ops needs the full repo: see build.sh).
+# Note: Termux's (recent) glslc keeps a*b+c as multiply + add; old ones fuse it into Fma, which Mali's
+# Arm driver runs at half fp16 speed (see app/src/main/cpp/vulkan/glslc_vk11.sh.in).
 #   pkg install clang shaderc vulkan-headers vulkan-loader-android
 #   sh build-termux.sh && ./vkprobe --flops
 set -e

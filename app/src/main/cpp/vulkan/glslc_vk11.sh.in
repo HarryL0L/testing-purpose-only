@@ -1,36 +1,51 @@
 #!/bin/sh
-# glslc wrapper for the experimental flavor (see ggml_vk11_patch.cmake): compiles llama.cpp's
-# Vulkan 1.2 shaders for Vulkan 1.1 so they load on 1.1-only drivers (e.g. Mali r32).
-#   1. --target-env=vulkan1.1 (SPIR-V 1.3)
-#   2. --target-env=vulkan1.1 --target-spv=spv1.4 without -O (needs VK_KHR_spirv_1_4;
-#      the NDK's spirv-opt refuses to optimize 1.4 modules under Vulkan 1.1)
-#   3. the original arguments (Vulkan 1.2; such shaders won't load on a 1.1 device)
-# Shaders that needed a fallback are listed in @VK11_LOG@.
+# glslc wrapper for the experimental flavor (see ggml_vk11_patch.cmake).
+#
+# 1. Compiles ggml's Vulkan 1.2 shaders for Vulkan 1.1 so they load on 1.1-only drivers (e.g. Mali r32):
+#      a. --target-env=vulkan1.1 (SPIR-V 1.3)
+#      b. --target-env=vulkan1.1 --target-spv=spv1.4, unoptimized (needs VK_KHR_spirv_1_4; the NDK's
+#         spirv-opt refuses to optimize 1.4 modules under Vulkan 1.1)
+#      c. the original arguments (Vulkan 1.2; such shaders won't load on a 1.1 device)
+#    Shaders that needed a fallback are listed in @VK11_LOG@.
+#
+# 2. Optimizes (-O) WITHOUT spirv-opt's "simplify-instructions" pass. In the NDK's SPIRV-Tools that pass
+#    fuses every a*b+c into an Fma instruction, and Arm's Mali driver (r32) runs fp16 Fma at only fp32
+#    speed, while it packs a separate multiply + add into 2-wide fp16 at full speed: measured on a
+#    Mali-G77, fp16 multiply-add 873 GFLOPS vs 391 when fused. Newer SPIRV-Tools no longer fuse.
 GLSLC="@GLSLC_REAL@"
+SPIRV_OPT="$(dirname "$GLSLC")/spirv-opt"
 LOG="@VK11_LOG@"
+# the NDK spirv-opt's -O sequence, minus simplify-instructions
+PASSES="--wrap-opkill --eliminate-dead-branches --merge-return --inline-entry-points-exhaustive
+--eliminate-dead-functions --eliminate-dead-code-aggressive --private-to-local --eliminate-local-single-block
+--eliminate-local-single-store --eliminate-dead-code-aggressive --scalar-replacement=100
+--convert-local-access-chains --eliminate-local-single-block --eliminate-local-single-store
+--eliminate-dead-code-aggressive --ssa-rewrite --eliminate-dead-code-aggressive --ccp
+--eliminate-dead-code-aggressive --loop-unroll --eliminate-dead-branches --redundancy-elimination
+--combine-access-chains --scalar-replacement=100 --convert-local-access-chains
+--eliminate-local-single-block --eliminate-local-single-store --eliminate-dead-code-aggressive
+--ssa-rewrite --eliminate-dead-code-aggressive --vector-dce --eliminate-dead-inserts
+--eliminate-dead-branches --if-conversion --copy-propagate-arrays --reduce-load-size
+--eliminate-dead-code-aggressive --merge-blocks --redundancy-elimination --eliminate-dead-branches
+--merge-blocks"
 
-case " $* " in
-    *" --target-env=vulkan1.2 "*) ;;
-    *) exec "$GLSLC" "$@" ;;
-esac
-
-out=""; prev=""
+out=""; prev=""; want_opt=0; env="vulkan1.0"
 for a in "$@"; do
     [ "$prev" = "-o" ] && out="$a"
+    [ "$a" = "-O" ] && want_opt=1
+    case "$a" in --target-env=*) env="${a#--target-env=}" ;; esac
     prev="$a"
 done
 
-
-try() { # $1 = env args, $2 = keep -O (1/0), rest = original args
-    env_args="$1"; keep_o="$2"; shift 2
-    set -- "$@"
-    n=$#
-    i=0
+# glslc with: $1 = replacement for --target-env=vulkan1.2 (or "" = keep), then the original args minus -O
+compile() {
+    newenv="$1"; shift
+    n=$#; i=0
     while [ $i -lt $n ]; do
         a="$1"; shift
         case "$a" in
-            --target-env=vulkan1.2) set -- "$@" $env_args ;;
-            -O) [ "$keep_o" = 1 ] && set -- "$@" -O ;;
+            -O) ;;
+            --target-env=vulkan1.2) if [ -n "$newenv" ]; then set -- "$@" $newenv; else set -- "$@" "$a"; fi ;;
             *) set -- "$@" "$a" ;;
         esac
         i=$((i + 1))
@@ -38,8 +53,27 @@ try() { # $1 = env args, $2 = keep -O (1/0), rest = original args
     "$GLSLC" "$@" 2>/dev/null
 }
 
-if try "--target-env=vulkan1.1" 1 "$@"; then exit 0; fi
-if try "--target-env=vulkan1.1 --target-spv=spv1.4" 0 "$@"; then
+# optimize $out in place for target env $1 (keeps the unoptimized module if spirv-opt fails)
+optimize() {
+    [ "$want_opt" = 1 ] && [ -n "$out" ] && [ -x "$SPIRV_OPT" ] || return 0
+    if "$SPIRV_OPT" --target-env="$1" $PASSES "$out" -o "$out.opt" 2>/dev/null; then
+        mv "$out.opt" "$out"
+    else
+        rm -f "$out.opt"
+    fi
+    return 0
+}
+
+case " $* " in
+    *" --target-env=vulkan1.2 "*) ;;
+    *)  # not a Vulkan 1.2 shader (e.g. coopmat2 / vulkan1.3, or our own): just the -O change
+        compile "" "$@" || exec "$GLSLC" "$@"
+        optimize "$env"
+        exit 0 ;;
+esac
+
+if compile "--target-env=vulkan1.1" "$@"; then optimize vulkan1.1; exit 0; fi
+if compile "--target-env=vulkan1.1 --target-spv=spv1.4" "$@"; then
     echo "spv1.4 $out" >> "$LOG"; exit 0
 fi
 echo "vulkan1.2 $out" >> "$LOG"

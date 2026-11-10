@@ -28,9 +28,10 @@ foreach(s ${SHADERS})
     add_custom_command(
         OUTPUT ${hdr}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/shaders
-        COMMAND ${LLAMACHAT_GLSLC} -fshader-stage=compute --target-env=vulkan1.1 -O ${CMAKE_CURRENT_LIST_DIR}/shaders/${s}.comp -o ${spv}
+        # via the wrapper: -O without fusing a*b+c into Fma (slow fp16 on Mali), see glslc_vk11.sh.in
+        COMMAND ${Vulkan_GLSLC_EXECUTABLE} -fshader-stage=compute --target-env=vulkan1.1 -O ${CMAKE_CURRENT_LIST_DIR}/shaders/${s}.comp -o ${spv}
         COMMAND ${CMAKE_COMMAND} -DIN=${spv} -DOUT=${hdr} -DNAME=spv_${s} -P ${CMAKE_CURRENT_LIST_DIR}/bin2h.cmake
-        DEPENDS ${CMAKE_CURRENT_LIST_DIR}/shaders/${s}.comp ${CMAKE_CURRENT_LIST_DIR}/bin2h.cmake
+        DEPENDS ${CMAKE_CURRENT_LIST_DIR}/shaders/${s}.comp ${CMAKE_CURRENT_LIST_DIR}/bin2h.cmake ${LLAMACHAT_VK}/glslc_vk11.sh.in
         COMMENT "vkprobe shader ${s}")
     list(APPEND SHADER_HEADERS ${hdr})
 endforeach()
