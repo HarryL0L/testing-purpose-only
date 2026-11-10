@@ -29,6 +29,9 @@ object ImageGenNative {
      */
     external fun load(modelPath: String, llmPath: String?, taesdPath: String?, nThreads: Int, gpu: Boolean): String?
 
+    /** engine log lines added after line number [since]: "<new count>\n<line>\n…" */
+    external fun logs(since: Long): String
+
     /** whether this build has the Vulkan backend (experimental build) */
     external fun hasGpu(): Boolean
     external fun unload()

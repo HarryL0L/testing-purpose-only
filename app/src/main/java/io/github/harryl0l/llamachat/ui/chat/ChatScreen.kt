@@ -487,6 +487,15 @@ private fun MessageBubble(msg: ChatMessage, onOpenImage: (Attachment) -> Unit) {
         CreatedImage(msg, onOpenImage)
         return
     }
+    if (!isUser && msg.imageRequest && msg.log.isNotEmpty()) {
+        // failed image creation: the error below, then the log (open by default: it explains the error)
+        Column(Modifier.fillMaxWidth()) {
+            Text(msg.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 12.dp))
+            ImageLog(msg, startOpen = true)
+        }
+        return
+    }
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
@@ -598,6 +607,43 @@ private fun CreatedImage(msg: ChatMessage, onOpen: (Attachment) -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 4.dp),
             )
+        }
+        if (msg.log.isNotEmpty()) ImageLog(msg, startOpen = false)
+    }
+}
+
+/** The image engine's log for one image: what it's doing, with elapsed times. Live while creating. */
+@Composable
+private fun ImageLog(msg: ChatMessage, startOpen: Boolean) {
+    var open by rememberSaveable(msg.id) { mutableStateOf(startOpen) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    Column(Modifier.fillMaxWidth().animateContentSize()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { open = !open }) {
+                Text(if (open) "Hide log" else "Show log (${msg.log.size} lines)")
+            }
+            if (open) {
+                TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(msg.log.joinToString("\n"))) }) {
+                    Text("Copy")
+                }
+            }
+        }
+        if (open) {
+            val scroll = rememberScrollState()
+            // follow new lines while the image is being created
+            LaunchedEffect(msg.log.size) { if (msg.streaming) scroll.animateScrollTo(scroll.maxValue) }
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp),
+            ) {
+                Text(
+                    msg.log.joinToString("\n"),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.verticalScroll(scroll).padding(12.dp),
+                )
+            }
         }
     }
 }

@@ -96,6 +96,9 @@ class ChatMessage(
     var status by mutableStateOf<String?>(null)   // "Reading video…", tokens/s, …
     var streaming by mutableStateOf(false)
     var error by mutableStateOf(false)
+    /** image creation: what the engine reported, with elapsed times (not saved with the chat) */
+    var log by mutableStateOf<List<String>>(emptyList())
+    fun addLog(lines: List<String>) { if (lines.isNotEmpty()) log = (log + lines).takeLast(400) }
 }
 
 sealed interface DownloadState {
@@ -450,10 +453,28 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val seed = kotlin.random.Random.nextLong(0, Int.MAX_VALUE.toLong())
 
         genJob = viewModelScope.launch {
+            val logStart = System.nanoTime()
+            var logSeq = imageEngine.logsSince(Long.MAX_VALUE).first
+            fun stamp(line: String) = "[%6.1fs] %s".format((System.nanoTime() - logStart) / 1e9, line)
+            fun pollLog() {
+                val (seq, lines) = imageEngine.logsSince(logSeq)
+                logSeq = seq
+                reply.addLog(lines.map(::stamp))
+            }
+            reply.addLog(listOf(stamp(
+                "${preset.title} · ${size}×$size · $steps steps · CFG $cfg · seed $seed · ${s.effectiveThreads} threads" +
+                    if (BuildConfig.GPU_EXPERIMENTAL && s.imageGpu) " · GPU (Vulkan) requested" else " · CPU",
+            )))
+            var lastStep = -1L
             val progressJob = launch {
                 while (true) {
                     kotlinx.coroutines.delay(300)
+                    pollLog()
                     val p = imageEngine.progress() ?: continue
+                    if (p.stage == "sampling" && p.done != lastStep && p.total > 0) {
+                        lastStep = p.done
+                        reply.addLog(listOf(stamp("step ${p.done} of ${p.total} done")))
+                    }
                     when (p.stage) {
                         "sampling" -> if (p.total > 0) {
                             reply.status = "Creating… step ${minOf(p.done + 1, p.total)} of ${p.total}"
@@ -477,10 +498,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 } finally {
                     if (gpu) markImageGpu(false)
                 }
+                pollLog()
                 if (gpu && !img.onGpu) {
                     snackbar = "The GPU couldn't load this model, so it ran on the CPU" +
                         (imageEngine.gpuError?.let { ": $it" } ?: "")
+                    reply.addLog(listOf(stamp("GPU load failed, used the CPU: ${imageEngine.gpuError ?: "unknown error"}")))
                 }
+                reply.addLog(listOf(stamp("done on the ${if (img.onGpu) "GPU" else "CPU"}")))
                 progressJob.cancel()
                 val saved = chatStore.saveMedia(chatId, DecodedMedia.Image(img.rgb, img.width, img.height))
                 reply.savedMedia = listOf(saved)
@@ -491,10 +515,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 )
             } catch (e: CancellationException) {
                 reply.status = "Stopped"
+                reply.addLog(listOf(stamp("stopped")))
             } catch (e: Exception) {
                 reply.error = true
                 reply.status = null
                 reply.text = e.message ?: "Image creation failed"
+                pollLog()
+                reply.addLog(listOf(stamp("failed: ${reply.text}")))
             } finally {
                 progressJob.cancel()
                 reply.progress = null

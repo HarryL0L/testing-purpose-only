@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <string>
 
@@ -25,7 +26,36 @@ static std::string          g_stage;
 static std::atomic<int64_t> g_done{0};
 static std::atomic<int64_t> g_total{0};
 
+// recent log lines for the app's log view (see logs())
+static std::mutex              g_log_mutex;
+static std::deque<std::string> g_log;
+static int64_t                 g_log_seq = 0; // number of lines ever added
+static constexpr size_t        LOG_KEEP  = 400;
+
+static void log_add(const char * prefix, const char * text) {
+    std::lock_guard<std::mutex> lock(g_log_mutex);
+    std::string line;
+    for (const char * c = text;; c++) {
+        if (*c == '\n' || *c == '\0') {
+            while (!line.empty() && line.back() == '\r') line.pop_back();
+            if (!line.empty()) {
+                // drop the " --- file.cpp:123" source suffix: noise in the app
+                const size_t src = line.rfind(" --- ");
+                if (src != std::string::npos) line.erase(src);
+                g_log.push_back(prefix + line);
+                g_log_seq++;
+                if (g_log.size() > LOG_KEEP) g_log.pop_front();
+            }
+            line.clear();
+            if (*c == '\0') break;
+        } else {
+            line += *c;
+        }
+    }
+}
+
 static void log_cb(enum sd_log_level_t level, const char * text, void *) {
+    if (level >= SD_LOG_INFO) log_add(level >= SD_LOG_ERROR ? "E " : level >= SD_LOG_WARN ? "W " : "", text);
     if (level >= SD_LOG_WARN) {
         __android_log_write(level >= SD_LOG_ERROR ? ANDROID_LOG_ERROR : ANDROID_LOG_WARN, TAG, text);
         if (level >= SD_LOG_ERROR) {
@@ -188,6 +218,22 @@ JNIEXPORT jstring JNICALL JNI_FN(convert)(JNIEnv * env, jobject, jstring jin, js
     if (ok) return nullptr;
     std::lock_guard<std::mutex> lock(g_stage_mutex);
     return env->NewStringUTF(g_error.empty() ? "Model conversion failed" : g_error.c_str());
+}
+
+// Log lines added after line number `since`: "<new count>\n<line>\n<line>…"
+JNIEXPORT jstring JNICALL JNI_FN(logs)(JNIEnv * env, jobject, jlong since) {
+    std::string out;
+    {
+        std::lock_guard<std::mutex> lock(g_log_mutex);
+        out = std::to_string(g_log_seq);
+        const int64_t first = g_log_seq - (int64_t) g_log.size(); // seq of g_log[0] is first + 1
+        for (size_t i = 0; i < g_log.size(); i++) {
+            if (first + (int64_t) i + 1 > since) { out += '\n'; out += g_log[i]; }
+        }
+    }
+    // JNI's NewStringUTF wants modified UTF-8; log text is ASCII in practice, replace anything else
+    for (char & ch : out) if ((unsigned char) ch >= 0x80) ch = '?';
+    return env->NewStringUTF(out.c_str());
 }
 
 JNIEXPORT jboolean JNICALL JNI_FN(hasGpu)(JNIEnv *, jobject) {

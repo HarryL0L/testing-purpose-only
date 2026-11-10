@@ -78,6 +78,13 @@ class ImageEngine {
         return ImageProgress(p[0], p[1].toLongOrNull() ?: 0, p[2].toLongOrNull() ?: 0)
     }
 
+    /** Any thread: the engine's log lines after line number [since], and the new line count. */
+    fun logsSince(since: Long): Pair<Long, List<String>> {
+        if (!available) return since to emptyList()
+        val lines = ImageGenNative.logs(since).split('\n')
+        return (lines.first().toLongOrNull() ?: since) to lines.drop(1)
+    }
+
     /** Any thread: stop the running generation as soon as possible. */
     fun cancel() { if (available) ImageGenNative.cancel() }
 
