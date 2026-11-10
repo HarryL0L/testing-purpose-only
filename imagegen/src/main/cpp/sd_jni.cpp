@@ -81,7 +81,8 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, js
     p.taesd_path  = taesd.empty() ? nullptr : taesd.c_str(); // tiny decoder: ~10x faster decoding
     p.n_threads   = n_threads;
 #ifdef IMAGEGEN_VULKAN
-    p.backend     = gpu ? "vulkan0" : "cpu";
+    // the text encoder runs once per image: CPU (some LLM encoders hit unsupported ops on Vulkan)
+    p.backend     = gpu ? "all=vulkan0,te=cpu" : "cpu";
 #else
     (void) gpu;
     p.backend     = "cpu";
