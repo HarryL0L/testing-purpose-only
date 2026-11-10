@@ -121,9 +121,9 @@ _vk_patch([[
                 device_extensions.push_back("VK_KHR_shader_float_controls");
                 device_extensions.push_back("VK_KHR_spirv_1_4");
             }
-            std::cerr << "ggml_vulkan: Vulkan 1.1 compatibility path for " << device->properties.deviceName
-                      << " (fp16 " << (int) lc_f16i8.shaderFloat16 << ", int8 " << (int) lc_f16i8.shaderInt8
-                      << ", 8-bit storage " << (int) lc_8bit.storageBuffer8BitAccess << ")" << std::endl;
+            GGML_LOG_INFO("ggml_vulkan: Vulkan 1.1 compatibility path for %s (driver fp16 %d, int8 %d, 8-bit storage %d)\n",
+                          device->properties.deviceName.data(), (int) lc_f16i8.shaderFloat16, (int) lc_f16i8.shaderInt8,
+                          (int) lc_8bit.storageBuffer8BitAccess);
         }
 ]])
 

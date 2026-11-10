@@ -55,7 +55,9 @@ static void log_add(const char * prefix, const char * text) {
 }
 
 static void log_cb(enum sd_log_level_t level, const char * text, void *) {
-    if (level >= SD_LOG_INFO) log_add(level >= SD_LOG_ERROR ? "E " : level >= SD_LOG_WARN ? "W " : "", text);
+    // info and up, plus ggml_vulkan's device summary (logged at debug level: fp16, warp size, …)
+    if (level >= SD_LOG_INFO || strstr(text, "ggml_vulkan") != nullptr)
+        log_add(level >= SD_LOG_ERROR ? "E " : level >= SD_LOG_WARN ? "W " : "", text);
     if (level >= SD_LOG_WARN) {
         __android_log_write(level >= SD_LOG_ERROR ? ANDROID_LOG_ERROR : ANDROID_LOG_WARN, TAG, text);
         if (level >= SD_LOG_ERROR) {
