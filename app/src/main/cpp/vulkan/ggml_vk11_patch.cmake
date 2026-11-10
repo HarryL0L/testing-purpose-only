@@ -127,6 +127,28 @@ _vk_patch([[
         }
 ]])
 
+# 2b. Low global priority for the compute queues (when the driver has VK_EXT_global_priority):
+#     a phone's GPU also draws the screen, and long compute work at normal priority makes the
+#     whole UI stutter. LLAMACHAT_VK_NORMAL_PRIORITY turns this off.
+_vk_patch([[
+        } else {
+            device_queue_create_infos.push_back({queue_flags, compute_queue_family_index, 1, priorities});
+        }
+]] [[
+        } else {
+            device_queue_create_infos.push_back({queue_flags, compute_queue_family_index, 1, priorities});
+        }
+
+        VkDeviceQueueGlobalPriorityCreateInfoEXT lc_prio {};
+        lc_prio.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT;
+        lc_prio.globalPriority = VK_QUEUE_GLOBAL_PRIORITY_LOW_EXT;
+        if (lc_has_ext("VK_EXT_global_priority") && getenv("LLAMACHAT_VK_NORMAL_PRIORITY") == nullptr) {
+            for (auto & qci : device_queue_create_infos) qci.setPNext(&lc_prio);
+            device_extensions.push_back("VK_EXT_global_priority");
+            GGML_LOG_INFO("ggml_vulkan: compute queues at low priority (keeps the screen smooth)\n");
+        }
+]])
+
 # 3. Don't enable VK_KHR_shader_float16_int8 twice
 _vk_patch([[
         if (device->fp16) {

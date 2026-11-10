@@ -115,6 +115,14 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, js
 #ifdef IMAGEGEN_VULKAN
     // the text encoder runs once per image: CPU (some LLM encoders hit unsupported ops on Vulkan)
     p.backend     = gpu ? "all=vulkan0,te=cpu" : "cpu";
+    // Vulkan compatibility mode (the app sets GGML_VK_DISABLE_F16 etc. at startup) also means a
+    // conservative setup for images: no flash attention, and small GPU submissions so a single
+    // submission never holds the GPU (which also draws the screen) for long.
+    if (gpu && getenv("GGML_VK_DISABLE_F16") != nullptr) {
+        p.flash_attn_mode = "off";
+        setenv("GGML_VK_MAX_NODES_PER_SUBMIT", "8", 0); // read when the Vulkan device is created
+        log_add("", "Vulkan compatibility mode: flash attention off, small GPU submissions");
+    }
 #else
     (void) gpu;
     p.backend     = "cpu";
