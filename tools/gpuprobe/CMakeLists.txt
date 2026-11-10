@@ -20,7 +20,7 @@ include(${LLAMACHAT_VK}/vk11_glslc.cmake) # LLAMACHAT_GLSLC + Vulkan 1.1 wrapper
 set(SPIRV-Headers_DIR ${LLAMACHAT_VK} CACHE PATH "" FORCE)
 
 # ---- vkprobe
-set(SHADERS empty fma32 fma16 copy subgroup f16storage)
+set(SHADERS empty fma32 fma16 mad32 mad16 mad16x8 copy subgroup f16storage)
 set(SHADER_HEADERS "")
 foreach(s ${SHADERS})
     set(spv ${CMAKE_CURRENT_BINARY_DIR}/shaders/${s}.spv)

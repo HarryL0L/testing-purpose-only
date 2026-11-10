@@ -4,6 +4,7 @@
 //
 //   vkprobe            everything (the long-dispatch test last)
 //   vkprobe --no-long  skip the long-dispatch test (it can freeze the screen for ~10 s)
+//   vkprobe --flops    only the fp32 / fp16 throughput tests (a few seconds)
 
 #include <vulkan/vulkan.h>
 
@@ -513,7 +514,7 @@ static double flops_test(Gpu & g, const uint32_t * code, size_t size, const char
     return gflops;
 }
 
-static void compute_tests(VkPhysicalDevice pd, const std::vector<VkExtensionProperties> & exts, bool long_test) {
+static void compute_tests(VkPhysicalDevice pd, const std::vector<VkExtensionProperties> & exts, bool long_test, bool flops_only) {
     section("Compute tests");
     Gpu g;
     VkResult r = make_gpu(pd, exts, g);
@@ -521,7 +522,7 @@ static void compute_tests(VkPhysicalDevice pd, const std::vector<VkExtensionProp
     printf("GPU timestamps: %s\n", g.timestamps ? "yes (times below are GPU time)" : "no (times below include CPU overhead)");
 
     // 1. submission overhead
-    {
+    if (!flops_only) {
         Buf a, b;
         Pipe p;
         if (make_buf(g, 256, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, a) == VK_SUCCESS &&
@@ -542,13 +543,18 @@ static void compute_tests(VkPhysicalDevice pd, const std::vector<VkExtensionProp
 
     // 2. arithmetic throughput
     double sec_per_iter = 0;
-    const double f32 = flops_test(g, SPV(fma32), "fp32 FMA throughput", &sec_per_iter);
+    const double f32 = flops_test(g, SPV(fma32), "fp32 fma()", &sec_per_iter);
+    const double m32 = flops_test(g, SPV(mad32), "fp32 a*b+c");
     if (g.fp16) {
-        const double f16 = flops_test(g, SPV(fma16), "fp16 FMA throughput");
-        if (f32 > 0 && f16 > 0) printf("%-28s %8.2fx\n", "fp16 / fp32 speed", f16 / f32);
+        const double f16 = flops_test(g, SPV(fma16), "fp16 fma() vec4");
+        const double m16 = flops_test(g, SPV(mad16), "fp16 a*b+c vec4");
+        const double p16 = flops_test(g, SPV(mad16x8), "fp16 a*b+c vec2 x8");
+        const double best16 = std::max(f16, std::max(m16, p16)), best32 = std::max(f32, m32);
+        if (best32 > 0 && best16 > 0) printf("%-28s %8.2fx (best fp16 / best fp32)\n", "fp16 / fp32 speed", best16 / best32);
     } else {
-        printf("%-28s skipped (shaderFloat16 not supported)\n", "fp16 FMA throughput");
+        printf("%-28s skipped (shaderFloat16 not supported)\n", "fp16 throughput");
     }
+    if (flops_only) { free_gpu(g); return; }
 
     // 3. memory bandwidth (GPU copy) and CPU access to mapped memory
     {
@@ -688,9 +694,12 @@ static void compute_tests(VkPhysicalDevice pd, const std::vector<VkExtensionProp
 }
 
 int main(int argc, char ** argv) {
-    bool long_test = true;
-    for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--no-long") == 0) long_test = false;
-    printf("vkprobe 1.0\n");
+    bool long_test = true, flops_only = false;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--no-long") == 0) long_test = false;
+        if (strcmp(argv[i], "--flops") == 0) flops_only = true;
+    }
+    printf("vkprobe 1.1\n");
 
     uint32_t inst_ver = VK_API_VERSION_1_0;
     vkEnumerateInstanceVersion(&inst_ver);
@@ -713,8 +722,8 @@ int main(int argc, char ** argv) {
         vkEnumerateDeviceExtensionProperties(pd, nullptr, &ne, nullptr);
         std::vector<VkExtensionProperties> exts(ne);
         vkEnumerateDeviceExtensionProperties(pd, nullptr, &ne, exts.data());
-        report_device(pd, exts);
-        compute_tests(pd, exts, long_test);
+        if (!flops_only) report_device(pd, exts);
+        compute_tests(pd, exts, long_test, flops_only);
     }
     vkDestroyInstance(inst, nullptr);
     printf("\ndone\n");

@@ -1,0 +1,12 @@
+#version 450
+// fp32 with plain multiply-add, for a like-for-like comparison with mad16
+layout(local_size_x = 256) in;
+layout(push_constant) uniform P { uint iters; } p;
+layout(std430, binding = 0) buffer O { vec4 o[]; };
+layout(std430, binding = 1) buffer I { vec4 unused[]; };
+void main() {
+    vec4 x = vec4(float(gl_GlobalInvocationID.x) * 1e-6), y = x + 1.0, z = x + 2.0, w = x + 3.0;
+    const vec4 b = vec4(0.9999), c = vec4(1e-4);
+    for (uint i = 0; i < p.iters; i++) { x = x * b + c; y = y * b + c; z = z * b + c; w = w * b + c; }
+    o[gl_GlobalInvocationID.x] = x + y + z + w;
+}

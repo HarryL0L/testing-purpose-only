@@ -1,0 +1,18 @@
+#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+// fp16, 8 independent f16vec2 chains (explicitly 2-wide, the packed form Mali executes at 2x)
+layout(local_size_x = 256) in;
+layout(push_constant) uniform P { uint iters; } p;
+layout(std430, binding = 0) buffer O { vec4 o[]; };
+layout(std430, binding = 1) buffer I { vec4 unused[]; };
+void main() {
+    f16vec2 a0 = f16vec2(float16_t(float(gl_GlobalInvocationID.x & 1023u) * 1e-4));
+    f16vec2 a1 = a0 + float16_t(0.1), a2 = a0 + float16_t(0.2), a3 = a0 + float16_t(0.3);
+    f16vec2 a4 = a0 + float16_t(0.4), a5 = a0 + float16_t(0.5), a6 = a0 + float16_t(0.6), a7 = a0 + float16_t(0.7);
+    const f16vec2 b = f16vec2(float16_t(0.999)), c = f16vec2(float16_t(1e-3));
+    for (uint i = 0; i < p.iters; i++) {
+        a0 = a0 * b + c; a1 = a1 * b + c; a2 = a2 * b + c; a3 = a3 * b + c;
+        a4 = a4 * b + c; a5 = a5 * b + c; a6 = a6 * b + c; a7 = a7 * b + c;
+    }
+    o[gl_GlobalInvocationID.x] = vec4(vec2(a0 + a1 + a2 + a3), vec2(a4 + a5 + a6 + a7));
+}

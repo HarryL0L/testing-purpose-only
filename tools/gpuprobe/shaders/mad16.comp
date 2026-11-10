@@ -1,0 +1,13 @@
+#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+// fp16 with plain multiply-add (x*b + c) instead of fma(): compilers fuse it as they like
+layout(local_size_x = 256) in;
+layout(push_constant) uniform P { uint iters; } p;
+layout(std430, binding = 0) buffer O { vec4 o[]; };
+layout(std430, binding = 1) buffer I { vec4 unused[]; };
+void main() {
+    f16vec4 x = f16vec4(float16_t(float(gl_GlobalInvocationID.x & 1023u) * 1e-4)), y = x + float16_t(0.25), z = x + float16_t(0.5), w = x + float16_t(0.75);
+    const f16vec4 b = f16vec4(float16_t(0.999)), c = f16vec4(float16_t(1e-3));
+    for (uint i = 0; i < p.iters; i++) { x = x * b + c; y = y * b + c; z = z * b + c; w = w * b + c; }
+    o[gl_GlobalInvocationID.x] = vec4(x + y + z + w);
+}
