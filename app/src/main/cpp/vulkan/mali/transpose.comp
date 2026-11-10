@@ -1,24 +1,54 @@
 #version 450
 #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
-#extension GL_EXT_shader_16bit_storage : require
-// rows x cols matrix (row stride `cols`) -> cols x rows f16 matrix, through a 16 x 16 shared tile.
-// SRC_F32 1: f32 input (activations), 0: f16 input (weights dequantized by ggml's to_fp16).
-// rows and cols must be multiples of 16.
-layout(local_size_x = 16, local_size_y = 16) in;
+#extension GL_EXT_control_flow_attributes : enable
+// rows x cols matrix (row stride `cols`) -> cols x rows f16 matrix.
+// Each invocation moves one 8 x 8 block through registers: eight 16-byte loads (8 halfs, or 2 x 4
+// floats), an in-register transpose, eight 16-byte stores. No shared memory: on Mali it goes through
+// the same load/store path as normal memory, so staging a tile there only adds traffic (a 16 x 16
+// shared-memory version measured ~3.5 GB/s on a Mali-G77, out of ~26).
+// SRC_F32 1: f32 input (activations, f32 weights), 0: f16 input. rows and cols: multiples of 8.
+layout(local_size_x = 8, local_size_y = 8) in;
 layout(push_constant) uniform P { uint rows, cols; } p;
 #if SRC_F32
-layout(std430, binding = 0) readonly buffer S { float s[]; };
+layout(std430, binding = 0) readonly buffer S { vec4 s[]; };
 #else
-layout(std430, binding = 0) readonly buffer S { float16_t s[]; };
+layout(std430, binding = 0) readonly buffer S { uvec4 s[]; };
 #endif
-layout(std430, binding = 1) writeonly buffer D { float16_t d[]; };
-shared float16_t tile[16][17];
+layout(std430, binding = 1) writeonly buffer D { uvec4 d[]; };
+
 void main() {
-    const uint c = gl_WorkGroupID.x * 16 + gl_LocalInvocationID.x;
-    const uint r = gl_WorkGroupID.y * 16 + gl_LocalInvocationID.y;
-    tile[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = float16_t(s[r * p.cols + c]);
-    barrier();
-    const uint oc = gl_WorkGroupID.y * 16 + gl_LocalInvocationID.x; // output column = input row
-    const uint orow = gl_WorkGroupID.x * 16 + gl_LocalInvocationID.y; // output row = input column
-    d[orow * p.rows + oc] = tile[gl_LocalInvocationID.x][gl_LocalInvocationID.y];
+    const uint bc = gl_GlobalInvocationID.x, br = gl_GlobalInvocationID.y; // block column / row (of 8)
+    if (bc * 8 >= p.cols || br * 8 >= p.rows) return;
+    // v[r][c]: row br*8 + r, column bc*8 + c
+    f16vec2 v[8][4];
+    [[unroll]] for (uint r = 0; r < 8; r++) {
+        const uint row = br * 8 + r;
+#if SRC_F32
+        const vec4 x0 = s[(row * p.cols + bc * 8) / 4];
+        const vec4 x1 = s[(row * p.cols + bc * 8) / 4 + 1];
+        v[r][0] = f16vec2(x0.xy); v[r][1] = f16vec2(x0.zw);
+        v[r][2] = f16vec2(x1.xy); v[r][3] = f16vec2(x1.zw);
+#else
+        const uvec4 x = s[(row * p.cols + bc * 8) / 8];
+        v[r][0] = unpackFloat2x16(x.x); v[r][1] = unpackFloat2x16(x.y);
+        v[r][2] = unpackFloat2x16(x.z); v[r][3] = unpackFloat2x16(x.w);
+#endif
+    }
+    // output row = input column c, 8 halfs = input rows br*8 .. br*8+7
+    [[unroll]] for (uint c = 0; c < 8; c++) {
+        const uint h = c / 2;
+        uvec4 o;
+        if ((c & 1) == 0) {
+            o.x = packFloat2x16(f16vec2(v[0][h].x, v[1][h].x));
+            o.y = packFloat2x16(f16vec2(v[2][h].x, v[3][h].x));
+            o.z = packFloat2x16(f16vec2(v[4][h].x, v[5][h].x));
+            o.w = packFloat2x16(f16vec2(v[6][h].x, v[7][h].x));
+        } else {
+            o.x = packFloat2x16(f16vec2(v[0][h].y, v[1][h].y));
+            o.y = packFloat2x16(f16vec2(v[2][h].y, v[3][h].y));
+            o.z = packFloat2x16(f16vec2(v[4][h].y, v[5][h].y));
+            o.w = packFloat2x16(f16vec2(v[6][h].y, v[7][h].y));
+        }
+        d[((bc * 8 + c) * p.rows + br * 8) / 8] = o;
+    }
 }

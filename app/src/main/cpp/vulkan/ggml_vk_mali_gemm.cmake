@@ -91,8 +91,8 @@ _vk_patch([[
         lc_mali_pipes & lp = lc_mali(device);
         ggml_vk_create_pipeline(device, lp.gemm_mix, "lc_mali_gemm_mix", lc_mali_gemm_mix_size, lc_mali_gemm_mix, "main", 3, sizeof(lc_mali_gemm_pc), {32, 64, 1}, {}, 1);
         ggml_vk_create_pipeline(device, lp.gemm_f16, "lc_mali_gemm_f16", lc_mali_gemm_f16_size, lc_mali_gemm_f16, "main", 3, sizeof(lc_mali_gemm_pc), {64, 64, 1}, {}, 1);
-        ggml_vk_create_pipeline(device, lp.tr_a, "lc_mali_transpose_f16", lc_mali_transpose_f16_size, lc_mali_transpose_f16, "main", 2, sizeof(lc_mali_tr_pc), {16, 16, 1}, {}, 1);
-        ggml_vk_create_pipeline(device, lp.tr_b, "lc_mali_transpose_f32", lc_mali_transpose_f32_size, lc_mali_transpose_f32, "main", 2, sizeof(lc_mali_tr_pc), {16, 16, 1}, {}, 1);
+        ggml_vk_create_pipeline(device, lp.tr_a, "lc_mali_transpose_f16", lc_mali_transpose_f16_size, lc_mali_transpose_f16, "main", 2, sizeof(lc_mali_tr_pc), {8, 8, 1}, {}, 1);
+        ggml_vk_create_pipeline(device, lp.tr_b, "lc_mali_transpose_f32", lc_mali_transpose_f32_size, lc_mali_transpose_f32, "main", 2, sizeof(lc_mali_tr_pc), {8, 8, 1}, {}, 1);
     }
 ]])
 
@@ -191,13 +191,13 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
             ggml_vk_sync_buffers(ctx, subctx);
             a16 = { ctx->prealloc_split_k, 0, a_sz };
         }
-        if (!skip_a) ggml_vk_dispatch_pipeline(ctx, subctx, tr_a, { a16, vk_subbuffer{ ctx->prealloc_x, 0, a_sz } }, lc_mali_tr_pc{ M, K }, { K, M, 1 });
+        if (!skip_a) ggml_vk_dispatch_pipeline(ctx, subctx, tr_a, { a16, vk_subbuffer{ ctx->prealloc_x, 0, a_sz } }, lc_mali_tr_pc{ M, K }, { K / 8, M / 8, 1 });
 
         // 2. activations -> K-major f16 in prealloc_y (kept when the next 2D matmul has the same input)
         if (!skip_b && (batches > 1 || ctx->prealloc_y_last_pipeline_used != lp.tr_b.get() || ctx->prealloc_y_last_tensor_used != src1 || ctx->prealloc_y_last_k_padded)) {
             if (ctx->prealloc_y_need_sync || bt > 0) ggml_vk_sync_buffers(ctx, subctx);
             ggml_vk_dispatch_pipeline(ctx, subctx, lp.tr_b, { vk_subbuffer{ d_Qy, qy_off + bt * b_slice, b_bytes }, vk_subbuffer{ ctx->prealloc_y, 0, b_sz } },
-                                      lc_mali_tr_pc{ N, K }, { K, N, 1 });
+                                      lc_mali_tr_pc{ N, K }, { K / 8, N / 8, 1 });
             ctx->prealloc_y_last_pipeline_used = batches > 1 ? nullptr : lp.tr_b.get();
             ctx->prealloc_y_last_tensor_used = src1;
             ctx->prealloc_y_last_k_padded = false;
