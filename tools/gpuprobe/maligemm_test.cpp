@@ -51,7 +51,7 @@ static std::vector<float> run(ggml_backend_t backend, ggml_type type, const Shap
 
 int main(int argc, char ** argv) {
     const bool quick = argc > 1 && strcmp(argv[1], "--quick") == 0;
-    setenv("LLAMACHAT_MALI_GEMM_KQUANTS", "1", 0); // check the K-quant path too (off by default in the app)
+    setenv("LLAMACHAT_MALI_GEMM_KQUANTS", "1", 0); // check the K-quant path too (default: ARM GPUs only)
     ggml_backend_t gpu = ggml_backend_init_by_name("Vulkan0", nullptr);
     if (!gpu) { fprintf(stderr, "no Vulkan0 backend\n"); return 1; }
     ggml_backend_t cpu = ggml_backend_cpu_init();

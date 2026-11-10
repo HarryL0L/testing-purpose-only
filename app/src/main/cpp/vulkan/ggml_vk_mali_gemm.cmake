@@ -112,12 +112,14 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
     const uint32_t batches = (uint32_t) (src0->ne[2] * src0->ne[3]);
     const uint32_t tile_m = mode == 2 ? 64 : 32;
     if (M % tile_m || N % 64 || K % 64 || N < 64) return false;
-    // K-quants: ggml's dequant shaders for them gave wrong results in testing (lavapipe); opt-in
-    // until checked on the phone (LLAMACHAT_MALI_GEMM_KQUANTS=1, set by maligemm-test)
+    // K-quants go through ggml's dequant shaders, which are correct on Mali (checked on a Mali-G77:
+    // q4_K / q5_K / q6_K match the CPU) but came out wrong on lavapipe; so they are on for ARM GPUs
+    // and opt-in elsewhere. LLAMACHAT_MALI_GEMM_KQUANTS=1 / 0 forces them on / off.
     switch (src0->type) {
         case GGML_TYPE_Q2_K: case GGML_TYPE_Q3_K: case GGML_TYPE_Q4_K: case GGML_TYPE_Q5_K: case GGML_TYPE_Q6_K: {
             const char * kq = getenv("LLAMACHAT_MALI_GEMM_KQUANTS");
-            if (!kq || strcmp(kq, "1") != 0) return false;
+            const bool on = kq ? strcmp(kq, "1") == 0 : ctx->device->vendor_id == 0x13B5;
+            if (!on) return false;
             break;
         }
         default: break;
