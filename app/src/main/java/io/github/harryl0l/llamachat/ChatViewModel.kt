@@ -497,6 +497,46 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Copies a downloaded image model into a folder, for the other build of the app to import. */
+    fun exportImageModel(preset: ImageModelPreset, treeUri: Uri) {
+        if (importProgress != null) return
+        viewModelScope.launch {
+            importProgress = 0f
+            try {
+                repo.exportImageModel(preset, treeUri) { importProgress = it }
+                snackbar = "${preset.title} exported. In the other app: Models → Image creation → Import from folder."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                snackbar = e.message ?: "Export failed"
+            } finally {
+                importProgress = null
+            }
+        }
+    }
+
+    /** Imports image models the other build of the app exported into a folder. */
+    fun importImageModels(treeUri: Uri) {
+        if (importProgress != null) return
+        viewModelScope.launch {
+            importProgress = 0f
+            try {
+                val titles = repo.importImageModels(treeUri) { importProgress = it }
+                imageFilesVersion++
+                snackbar = if (titles.isEmpty()) "Those image models are already here" else "Imported " + titles.joinToString()
+                if (titles.isNotEmpty() && store.current().imageModel == null) {
+                    IMAGE_PRESETS.firstOrNull { it.title == titles.first() }?.let { selectImageModel(it) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                snackbar = e.message ?: "Import failed"
+            } finally {
+                importProgress = null
+            }
+        }
+    }
+
     /** bumped when image model files change, so the UI re-checks what's downloaded */
     var imageFilesVersion by mutableStateOf(0)
         private set

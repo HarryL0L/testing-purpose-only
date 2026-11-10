@@ -40,6 +40,8 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FileOpen
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -89,6 +91,7 @@ import io.github.harryl0l.llamachat.data.AppSettings
 import io.github.harryl0l.llamachat.data.CpuInfo
 import io.github.harryl0l.llamachat.data.effectiveThreads
 import io.github.harryl0l.llamachat.data.IMAGE_PRESETS
+import io.github.harryl0l.llamachat.data.ImageModelPreset
 import io.github.harryl0l.llamachat.data.LinkedFolder
 import io.github.harryl0l.llamachat.data.LocalModel
 import io.github.harryl0l.llamachat.data.MODEL_PRESETS
@@ -317,6 +320,15 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
     val imageImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(vm::importImageModel)
     }
+    var exporting by remember { mutableStateOf<ImageModelPreset?>(null) }
+    val exportFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val p = exporting
+        if (uri != null && p != null) vm.exportImageModel(p, uri)
+        exporting = null
+    }
+    val importFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let(vm::importImageModels)
+    }
     Card(shape = MaterialTheme.shapes.extraLarge, colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainer)) {
         Column(Modifier.padding(vertical = 12.dp)) {
             if (!vm.imageCreationSupported) {
@@ -374,8 +386,17 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                     },
                     trailingContent = {
                         if (isDownloaded) {
-                            IconButton(onClick = { vm.deleteImageModel(preset) }, shapes = IconButtonDefaults.shapes()) {
-                                Icon(Icons.Rounded.Delete, "Delete ${preset.title}")
+                            Row {
+                                IconButton(
+                                    onClick = { exporting = preset; exportFolder.launch(null) },
+                                    enabled = vm.importProgress == null,
+                                    shapes = IconButtonDefaults.shapes(),
+                                ) {
+                                    Icon(Icons.Rounded.Share, "Export ${preset.title} for the other app")
+                                }
+                                IconButton(onClick = { vm.deleteImageModel(preset) }, shapes = IconButtonDefaults.shapes()) {
+                                    Icon(Icons.Rounded.Delete, "Delete ${preset.title}")
+                                }
                             }
                         } else if (dl !is DownloadState.Running) {
                             IconButton(onClick = { vm.downloadImageModel(preset) }, shapes = IconButtonDefaults.shapes()) {
@@ -473,6 +494,26 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                     Spacer(Modifier.size(ButtonDefaults.IconSpacing))
                     Text("Import a model file")
                 }
+                OutlinedButton(
+                    onClick = { importFolder.launch(null) },
+                    enabled = vm.importProgress == null,
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Icon(Icons.Rounded.FolderOpen, null, Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                    Text("Import from folder")
+                }
+                vm.importProgress?.let { p ->
+                    LinearWavyProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
+                    Text("Copying… ${(p * 100).roundToInt()}%", style = MaterialTheme.typography.labelSmall)
+                }
+                Text(
+                    "Have the other build of LlamaChat (standard / GPU experimental)? Use the share button on a " +
+                        "downloaded model to export it to a folder, then \"Import from folder\" here: no second " +
+                        "download or conversion. You can delete the exported copy afterwards.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 var negative by remember(settings.imageNegative) { mutableStateOf(settings.imageNegative) }
                 OutlinedTextField(
                     value = negative,

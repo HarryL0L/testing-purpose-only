@@ -488,6 +488,130 @@ class ModelRepository(private val context: Context) {
 
     fun deleteImageModel(preset: ImageModelPreset) { imageDir(preset).deleteRecursively() }
 
+    // ---------------------------------------------- sharing image models between the two apps
+    // The standard and experimental builds are separate apps with separate private storage, and
+    // Android doesn't let file managers into it. Export copies a downloaded preset's ready files
+    // (already converted) plus a small manifest into a folder the user picks; Import in the other
+    // app copies them back in. Nothing is trusted blindly: file names come from the preset, plain
+    // downloads must match the preset's checksum, converted files must match the manifest's
+    // checksum (computed by the exporting app) and be valid GGUF.
+
+    private fun manifestName(preset: ImageModelPreset) = "${preset.id}.llamachat-image.json"
+
+    /** Copies [preset]'s files into the folder [treeUri]. [onProgress]: 0..1 */
+    suspend fun exportImageModel(preset: ImageModelPreset, treeUri: Uri, onProgress: (Float) -> Unit) = withContext(Dispatchers.IO) {
+        check(isDownloaded(preset)) { "${preset.title} isn't downloaded" }
+        val resolver = context.contentResolver
+        val parent = DocumentsContract.buildDocumentUriUsingTree(treeUri, DocumentsContract.getTreeDocumentId(treeUri))
+        val parts = imageParts(preset)
+        val total = parts.sumOf { it.target.length() } * 2 // copy + checksum
+        var done = 0L
+        val entries = org.json.JSONArray()
+        for (p in parts) {
+            val doc = DocumentsContract.createDocument(resolver, parent, "application/octet-stream", p.target.name)
+                ?: error("Could not create ${p.target.name} in that folder")
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            resolver.openOutputStream(doc, "w")!!.use { out ->
+                p.target.inputStream().use { input ->
+                    val buf = ByteArray(1 shl 20)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        digest.update(buf, 0, n)
+                        done += 2L * n
+                        onProgress(done.toFloat() / total)
+                    }
+                }
+            }
+            val sha = digest.digest().joinToString("") { "%02x".format(it) }
+            entries.put(org.json.JSONObject().put("name", p.target.name).put("size", p.target.length()).put("sha256", sha))
+        }
+        val manifest = org.json.JSONObject().put("preset", preset.id).put("files", entries).toString(2)
+        val doc = DocumentsContract.createDocument(resolver, parent, "application/json", manifestName(preset))
+            ?: error("Could not create the manifest in that folder")
+        resolver.openOutputStream(doc, "w")!!.use { it.write(manifest.toByteArray()) }
+    }
+
+    /**
+     * Imports every preset exported into the folder [treeUri] (see [exportImageModel]) that isn't
+     * downloaded here yet. @return the titles imported
+     */
+    suspend fun importImageModels(treeUri: Uri, onProgress: (Float) -> Unit): List<String> = withContext(Dispatchers.IO) {
+        val resolver = context.contentResolver
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, DocumentsContract.getTreeDocumentId(treeUri))
+        val docs = HashMap<String, Uri>() // display name -> document (first one wins)
+        resolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { c ->
+            while (c.moveToNext()) {
+                val name = c.getString(1) ?: continue
+                docs.putIfAbsent(name, DocumentsContract.buildDocumentUriUsingTree(treeUri, c.getString(0)))
+            }
+        }
+        val presets = IMAGE_PRESETS.filter { docs.containsKey(manifestName(it)) }
+        if (presets.isEmpty()) error("No exported image models in that folder (look for files ending in .llamachat-image.json)")
+        val imported = ArrayList<String>()
+        for (preset in presets) {
+            if (isDownloaded(preset)) continue
+            val manifest = resolver.openInputStream(docs.getValue(manifestName(preset)))!!.use {
+                org.json.JSONObject(it.readBytes().decodeToString())
+            }
+            val listed = HashMap<String, org.json.JSONObject>()
+            val arr = manifest.getJSONArray("files")
+            for (i in 0 until arr.length()) arr.getJSONObject(i).let { listed[it.getString("name")] = it }
+            val parts = imageParts(preset).filter { !isReady(it) }
+            val total = parts.sumOf { listed[it.target.name]?.optLong("size") ?: 0L }.coerceAtLeast(1)
+            var done = 0L
+            for (p in parts) {
+                val entry = listed[p.target.name] ?: error("${preset.title}: ${p.target.name} is missing from the export")
+                val src = docs[p.target.name] ?: error("${preset.title}: ${p.target.name} is missing from the folder")
+                val size = entry.getLong("size")
+                p.target.parentFile?.mkdirs()
+                val part = File(p.target.path + ".part")
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                try {
+                    resolver.openInputStream(src)!!.use { input ->
+                        java.io.FileOutputStream(part).use { out ->
+                            val buf = ByteArray(1 shl 20)
+                            while (true) {
+                                currentCoroutineContext().ensureActive()
+                                val n = input.read(buf)
+                                if (n < 0) break
+                                out.write(buf, 0, n)
+                                digest.update(buf, 0, n)
+                                done += n
+                                onProgress((done.toFloat() / total).coerceAtMost(1f))
+                            }
+                            out.flush()
+                            out.fd.sync()
+                        }
+                    }
+                    val sha = digest.digest().joinToString("") { "%02x".format(it) }
+                    check(part.length() == size) { "${p.target.name}: incomplete copy" }
+                    val marker = if (p.convertType >= 0) {
+                        // converted by the other app: check it's the file it exported, and valid GGUF
+                        check(sha == entry.getString("sha256")) { "${p.target.name} doesn't match the export (corrupted copy)" }
+                        check(part.inputStream().use { val b = ByteArray(4); it.read(b) == 4 && String(b, Charsets.US_ASCII) == "GGUF" }) {
+                            "${p.target.name} isn't a GGUF file"
+                        }
+                        convertedMarker(p.sha256, p.convertType)
+                    } else {
+                        check(sha == p.sha256) { "${p.target.name} doesn't match the official file (checksum mismatch)" }
+                        p.sha256
+                    }
+                    p.target.delete()
+                    check(part.renameTo(p.target)) { "Could not save ${p.target.name}" }
+                    markerOf(p.target).writeText(marker)
+                } finally {
+                    part.delete()
+                }
+            }
+            imported += preset.title
+        }
+        imported
+    }
+
+
     /** Image models the user imported themselves (any stable-diffusion.cpp-supported file). */
     val customImageDir: File get() = File(modelsDir, "image/custom").apply { mkdirs() }
 
