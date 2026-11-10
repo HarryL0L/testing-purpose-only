@@ -9,8 +9,10 @@ cmake -S . -B build-android -G Ninja \
     -DCMAKE_BUILD_TYPE=Release
 cmake --build build-android -j"$(nproc)"
 rm -rf out && mkdir -p out/gpuprobe
-cp build-android/vkprobe build-android/bin/test-backend-ops out/gpuprobe/ 2>/dev/null || cp build-android/vkprobe build-android/test-backend-ops out/gpuprobe/
-"$NDK"/toolchains/llvm/prebuilt/*/bin/llvm-strip out/gpuprobe/vkprobe out/gpuprobe/test-backend-ops
+for b in vkprobe test-backend-ops maligemm-test; do
+    cp "build-android/bin/$b" out/gpuprobe/ 2>/dev/null || cp "build-android/$b" out/gpuprobe/
+done
+"$NDK"/toolchains/llvm/prebuilt/*/bin/llvm-strip out/gpuprobe/vkprobe out/gpuprobe/test-backend-ops out/gpuprobe/maligemm-test
 cp run.sh README.md out/gpuprobe/
 tar -C out -czf out/gpuprobe.tar.gz gpuprobe
 echo "built out/gpuprobe.tar.gz"

@@ -254,6 +254,11 @@ _vk_patch([[
 _vk_patch("VkPhysicalDeviceVulkan11Features vk11_features;" "VkPhysicalDeviceVulkan11Features vk11_features {};")
 _vk_patch("VkPhysicalDeviceVulkan12Features vk12_features;" "VkPhysicalDeviceVulkan12Features vk12_features {};")
 
+# extra patches for this copy (e.g. ggml_vk_mali_gemm.cmake), applied with _vk_patch too
+foreach(_extra ${VK11_EXTRA_PATCHES})
+    include(${_extra}) # included files are configure dependencies already
+endforeach()
+
 file(WRITE ${_vk_dst}.tmp "${_vk}")
 file(COPY_FILE ${_vk_dst}.tmp ${_vk_dst} ONLY_IF_DIFFERENT)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_vk_src} ${CMAKE_CURRENT_LIST_FILE})

@@ -37,6 +37,6 @@ freeze the screen for a few seconds; that is expected.
 * `vkprobe.cpp` — the probe (plain Vulkan C API, no other dependencies)
 * `shaders/*.comp` — its compute shaders (GLSL), compiled to SPIR-V at build time
 * `run.sh` — runs everything, writes `report.txt`
-* `CMakeLists.txt`, `bin2h.cmake`, `build.sh` — Android build incl. test-backend-ops (uses
+* `CMakeLists.txt`, `build.sh` — Android build incl. test-backend-ops (uses
   `third_party/stable-diffusion.cpp/ggml` and the app's Vulkan 1.1 patch in `app/src/main/cpp/vulkan`)
 * `build-termux.sh` — on-phone build of vkprobe

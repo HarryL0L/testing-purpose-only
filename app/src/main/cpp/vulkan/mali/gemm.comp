@@ -1,0 +1,95 @@
+#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_EXT_control_flow_attributes : enable
+// f16 matrix multiply for Mali (from the Mali-G77 study, gemm2.comp mode 0):
+// C[n][m] = sum_k A[m][k] * B[n][k], i.e. ggml's dst = src0 x src1 with dst row n = token n.
+// Each invocation keeps a TM x TN block of C in registers and walks K with one wide load of A and
+// one of B per step (outer product, no shared memory, no barriers).
+// A is stored K-major (K x M halfs), B K-major (K x N halfs), C as N x M floats (row stride M).
+// ACC 0: f16 sums, 2: f16 sums folded into f32 every KC steps.
+// Written as a*b+c, never fma(): Arm's Mali driver runs f16 Fma at only the f32 rate.
+// LlamaChat additions: nbase (first column of this dispatch, so a big multiply can be split into
+// short dispatches that don't hold the GPU, and the screen, for long) and N as the full row count.
+layout(local_size_x = WGX, local_size_y = WGY) in;
+layout(push_constant) uniform P { uint M, N, K, nbase; } p;
+
+#if TM == 8
+#define AV uvec4
+#else
+#define AV uvec2
+#endif
+#if TN == 8
+#define BV uvec4
+#else
+#define BV uvec2
+#endif
+
+layout(std430, binding = 0) readonly buffer A { AV a[]; };
+layout(std430, binding = 1) readonly buffer B { BV b[]; };
+layout(std430, binding = 2) writeonly buffer C { float c[]; };
+
+#define ACC_T f16vec2
+
+void main() {
+    const uint ai = gl_GlobalInvocationID.x, bi = gl_GlobalInvocationID.y + p.nbase / TN;
+    const uint astride = p.M / TM, bstride = p.N / TN;
+
+    ACC_T acc[TM][TN / 2];
+    [[unroll]] for (int i = 0; i < TM; i++)
+        [[unroll]] for (int j = 0; j < TN / 2; j++)
+            acc[i][j] = ACC_T(0);
+#if ACC == 2
+    vec2 sum[TM][TN / 2];
+    [[unroll]] for (int i = 0; i < TM; i++)
+        [[unroll]] for (int j = 0; j < TN / 2; j++)
+            sum[i][j] = vec2(0);
+#endif
+
+    uint aoff[UNROLL], boff[UNROLL];
+    [[unroll]] for (uint u = 0; u < UNROLL; u++) {
+        aoff[u] = u * astride;
+        boff[u] = u * bstride;
+    }
+    uint ia = ai, ib = bi;
+    for (uint k0 = 0; k0 < p.K; k0 += KC) {
+        for (uint kk = 0; kk < KC; kk += UNROLL) {
+            [[unroll]] for (uint u = 0; u < UNROLL; u++) {
+                const AV av = a[ia + aoff[u]];
+                const BV bv = b[ib + boff[u]];
+                float16_t ah[TM];
+                [[unroll]] for (int i = 0; i < TM / 2; i++) {
+                    const f16vec2 t = unpackFloat2x16(av[i]);
+                    ah[2 * i] = t.x;
+                    ah[2 * i + 1] = t.y;
+                }
+                f16vec2 bp[TN / 2];
+                [[unroll]] for (int j = 0; j < TN / 2; j++)
+                    bp[j] = unpackFloat2x16(bv[j]);
+                [[unroll]] for (int i = 0; i < TM; i++)
+                    [[unroll]] for (int j = 0; j < TN / 2; j++)
+                        acc[i][j] = acc[i][j] + ACC_T(ah[i]) * bp[j];
+            }
+            ia += UNROLL * astride;
+            ib += UNROLL * bstride;
+        }
+#if ACC == 2
+        [[unroll]] for (int i = 0; i < TM; i++)
+            [[unroll]] for (int j = 0; j < TN / 2; j++) {
+                sum[i][j] += vec2(acc[i][j]);
+                acc[i][j] = f16vec2(0);
+            }
+#endif
+    }
+
+    const uint m0 = ai * TM, n0 = bi * TN;
+    [[unroll]] for (int j = 0; j < TN / 2; j++)
+        [[unroll]] for (int i = 0; i < TM; i++) {
+#if ACC == 2
+            const vec2 v = sum[i][j];
+#else
+            const vec2 v = vec2(acc[i][j]);
+#endif
+            c[(n0 + 2 * j) * p.M + m0 + i] = v.x;
+            c[(n0 + 2 * j + 1) * p.M + m0 + i] = v.y;
+        }
+}

@@ -30,8 +30,8 @@ foreach(s ${SHADERS})
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/shaders
         # via the wrapper: -O without fusing a*b+c into Fma (slow fp16 on Mali), see glslc_vk11.sh.in
         COMMAND ${Vulkan_GLSLC_EXECUTABLE} -fshader-stage=compute --target-env=vulkan1.1 -O ${CMAKE_CURRENT_LIST_DIR}/shaders/${s}.comp -o ${spv}
-        COMMAND ${CMAKE_COMMAND} -DIN=${spv} -DOUT=${hdr} -DNAME=spv_${s} -P ${CMAKE_CURRENT_LIST_DIR}/bin2h.cmake
-        DEPENDS ${CMAKE_CURRENT_LIST_DIR}/shaders/${s}.comp ${CMAKE_CURRENT_LIST_DIR}/bin2h.cmake ${LLAMACHAT_VK}/glslc_vk11.sh.in
+        COMMAND ${CMAKE_COMMAND} -DIN=${spv} -DOUT=${hdr} -DNAME=spv_${s} -P ${LLAMACHAT_VK}/bin2h.cmake
+        DEPENDS ${CMAKE_CURRENT_LIST_DIR}/shaders/${s}.comp ${LLAMACHAT_VK}/bin2h.cmake ${LLAMACHAT_VK}/glslc_vk11.sh.in
         COMMENT "vkprobe shader ${s}")
     list(APPEND SHADER_HEADERS ${hdr})
 endforeach()
@@ -62,6 +62,7 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
 endif()
 add_subdirectory(${SD_GGML} ggml)
 set(VK11_GGML_SRC ${SD_GGML})
+set(VK11_EXTRA_PATCHES ${LLAMACHAT_VK}/ggml_vk_mali_gemm.cmake) # Mali f16 GEMM fast path
 include(${LLAMACHAT_VK}/ggml_vk11_patch.cmake)
 target_include_directories(ggml-vulkan PRIVATE ${THIRD_PARTY}/SPIRV-Headers/include)
 
@@ -69,3 +70,7 @@ add_executable(test-backend-ops ${SD_GGML}/tests/test-backend-ops.cpp)
 target_link_libraries(test-backend-ops PRIVATE ggml)
 find_package(Threads REQUIRED)
 target_link_libraries(test-backend-ops PRIVATE Threads::Threads)
+
+# ---- maligemm-test: image-sized MUL_MAT on Vulkan vs CPU (Mali GEMM fast path check)
+add_executable(maligemm-test maligemm_test.cpp)
+target_link_libraries(maligemm-test PRIVATE ggml Threads::Threads)

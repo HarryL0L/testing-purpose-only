@@ -44,6 +44,7 @@ add_subdirectory(${SD_SRC} build-sd)
 
 if(IMAGEGEN_VULKAN)
     set(VK11_GGML_SRC ${SD_SRC}/ggml)
+    set(VK11_EXTRA_PATCHES ${LLAMACHAT_VK}/ggml_vk_mali_gemm.cmake) # Mali f16 GEMM fast path
     include(${LLAMACHAT_VK}/ggml_vk11_patch.cmake)
     target_include_directories(ggml-vulkan PRIVATE ${THIRD_PARTY}/SPIRV-Headers/include)
 endif()

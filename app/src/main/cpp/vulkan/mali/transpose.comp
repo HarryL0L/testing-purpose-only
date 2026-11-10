@@ -1,0 +1,24 @@
+#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_EXT_shader_16bit_storage : require
+// rows x cols matrix (row stride `cols`) -> cols x rows f16 matrix, through a 16 x 16 shared tile.
+// SRC_F32 1: f32 input (activations), 0: f16 input (weights dequantized by ggml's to_fp16).
+// rows and cols must be multiples of 16.
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(push_constant) uniform P { uint rows, cols; } p;
+#if SRC_F32
+layout(std430, binding = 0) readonly buffer S { float s[]; };
+#else
+layout(std430, binding = 0) readonly buffer S { float16_t s[]; };
+#endif
+layout(std430, binding = 1) writeonly buffer D { float16_t d[]; };
+shared float16_t tile[16][17];
+void main() {
+    const uint c = gl_WorkGroupID.x * 16 + gl_LocalInvocationID.x;
+    const uint r = gl_WorkGroupID.y * 16 + gl_LocalInvocationID.y;
+    tile[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = float16_t(s[r * p.cols + c]);
+    barrier();
+    const uint oc = gl_WorkGroupID.y * 16 + gl_LocalInvocationID.x; // output column = input row
+    const uint orow = gl_WorkGroupID.x * 16 + gl_LocalInvocationID.y; // output row = input column
+    d[orow * p.rows + oc] = tile[gl_LocalInvocationID.x][gl_LocalInvocationID.y];
+}
