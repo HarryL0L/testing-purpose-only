@@ -127,6 +127,25 @@ _vk_patch([[
         }
 ]])
 
+# 2c. Matmul tile sizes for vendors ggml has no settings for (e.g. ARM Mali gets all of large / medium /
+#     small; Apple, Qualcomm and Samsung skip large). LLAMACHAT_VK_MM_TILES=<letters from "lms">
+#     restricts the choice (e.g. "m", "ms") so they can be measured with test-backend-ops (and then
+#     become the default for ARM here).
+_vk_patch([[
+            device->mul_mat_l_int[i]    = device->mul_mat_l[i];
+]] [[
+            if (const char * lc_tiles = getenv("LLAMACHAT_VK_MM_TILES")) {
+                const bool l = strchr(lc_tiles, 'l') != nullptr, m = strchr(lc_tiles, 'm') != nullptr, s = strchr(lc_tiles, 's') != nullptr;
+                if (l || m || s) {
+                    device->mul_mat_l[i] = device->mul_mat_l[i] && l; device->mul_mat_id_l[i] = device->mul_mat_id_l[i] && l;
+                    device->mul_mat_m[i] = device->mul_mat_m[i] && m; device->mul_mat_id_m[i] = device->mul_mat_id_m[i] && m;
+                    device->mul_mat_s[i] = device->mul_mat_s[i] && s; device->mul_mat_id_s[i] = device->mul_mat_id_s[i] && s;
+                    if (i == 0) GGML_LOG_INFO("ggml_vulkan: matmul tiles limited to '%s'\n", lc_tiles);
+                }
+            }
+            device->mul_mat_l_int[i]    = device->mul_mat_l[i];
+]])
+
 # 2b. Low global priority for the compute queues (when the driver has VK_EXT_global_priority):
 #     a phone's GPU also draws the screen, and long compute work at normal priority makes the
 #     whole UI stutter. LLAMACHAT_VK_NORMAL_PRIORITY turns this off.
