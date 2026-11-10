@@ -12,6 +12,10 @@
 #    fuses every a*b+c into an Fma instruction, and Arm's Mali driver (r32) runs fp16 Fma at only fp32
 #    speed, while it packs a separate multiply + add into 2-wide fp16 at full speed: measured on a
 #    Mali-G77, fp16 multiply-add 873 GFLOPS vs 391 when fused. Newer SPIRV-Tools no longer fuse.
+#
+# 3. For ggml's shaders (the Vulkan 1.2 ones), defines fma(a,b,c) as a*b+c: ggml's dot-product helpers
+#    call fma() explicitly, which in the fp16-accumulation (f16acc) matmul / flash-attention variants
+#    is the same slow fp16 Fma. The driver's compiler fuses the multiply-add itself, packed.
 GLSLC="@GLSLC_REAL@"
 SPIRV_OPT="$(dirname "$GLSLC")/spirv-opt"
 LOG="@VK11_LOG@"
@@ -45,7 +49,7 @@ compile() {
         a="$1"; shift
         case "$a" in
             -O) ;;
-            --target-env=vulkan1.2) if [ -n "$newenv" ]; then set -- "$@" $newenv; else set -- "$@" "$a"; fi ;;
+            --target-env=vulkan1.2) if [ -n "$newenv" ]; then set -- "$@" $newenv "-Dfma(a,b,c)=((a)*(b)+(c))"; else set -- "$@" "$a"; fi ;;
             *) set -- "$@" "$a" ;;
         esac
         i=$((i + 1))
