@@ -95,8 +95,10 @@ extern "C" {
 // jmodel: a full checkpoint, or (with jllm) only the diffusion model of a model whose text encoder
 // is a separate LLM (e.g. Anima + Qwen3-0.6B); its VAE is then replaced by the tiny decoder (jtaesd).
 // gpu: run on the Vulkan GPU (experimental build only; ignored otherwise).
+// flash_attn: on the GPU, false = attention as matmul + softmax (faster on Mali, but needs memory for
+// the whole attention matrix), true = the engine's automatic choice.
 JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jstring jllm, jstring jtaesd, jint n_threads,
-                                       jboolean gpu) {
+                                       jboolean gpu, jboolean flash_attn) {
     if (g_ctx) { free_sd_ctx(g_ctx); g_ctx = nullptr; }
     sd_set_log_callback(log_cb, nullptr);
     g_error.clear();
@@ -122,6 +124,10 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, js
         p.flash_attn_mode = "off";
         setenv("GGML_VK_MAX_NODES_PER_SUBMIT", "8", 0); // read when the Vulkan device is created
         log_add("", "Vulkan compatibility mode: flash attention off, small GPU submissions");
+    } else if (gpu && !flash_attn) {
+        // Mali-G77: flash attention 8-29 GFLOPS vs matmul 60-106 GFLOPS (test-backend-ops)
+        p.flash_attn_mode = "off";
+        log_add("", "GPU: attention as matmul + softmax (faster than flash attention on this GPU class)");
     }
 #else
     (void) gpu;

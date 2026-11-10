@@ -767,7 +767,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     benchStatus = "${model.title}: testing $t threads (256×256, $steps step${if (steps == 1) "" else "s"})…"
                     val gpu = BuildConfig.GPU_EXPERIMENTAL && settings.value.imageGpu
                     if (gpu) markImageGpu(true)
-                    imageEngine.preload(model.model, model.llm, model.taesd, t, gpu) // loading isn't part of the timing
+                    imageEngine.preload(model.model, model.llm, model.taesd, t, gpu, 256) // loading isn't part of the timing
                     val t0 = System.nanoTime()
                     imageEngine.generate(
                         model.model, model.llm, model.taesd, t, "a lighthouse on a cliff at sunset", "", 256, 256,

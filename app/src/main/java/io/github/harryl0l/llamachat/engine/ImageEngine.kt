@@ -36,24 +36,30 @@ class ImageEngine {
         private set
 
     /** Loads the model (if not loaded with these settings) without generating. */
-    suspend fun preload(model: File, llm: File?, taesd: File?, threads: Int, gpu: Boolean = false) =
-        withContext(dispatcher) { ensureLoaded(model, llm, taesd, threads, gpu) }
+    suspend fun preload(model: File, llm: File?, taesd: File?, threads: Int, gpu: Boolean = false, size: Int = 512) =
+        withContext(dispatcher) { ensureLoaded(model, llm, taesd, threads, gpu, size) }
 
-    /** Loads the model; on the GPU if asked and possible, else (or if that fails) on the CPU. */
-    private fun ensureLoaded(model: File, llm: File?, taesd: File?, threads: Int, gpu: Boolean) {
+    /**
+     * Loads the model; on the GPU if asked and possible, else (or if that fails) on the CPU.
+     * On the GPU, images up to 768 px use attention as matmul + softmax (faster on Mali than flash
+     * attention); larger ones use flash attention, which doesn't need the whole attention matrix
+     * in memory (> 1 GB at 1024 px). Switching between the two reloads the model.
+     */
+    private fun ensureLoaded(model: File, llm: File?, taesd: File?, threads: Int, gpu: Boolean, size: Int) {
         if (!available) throw EngineException("Image creation isn't supported on this device's CPU")
         val wantGpu = gpu && gpuAvailable
-        val key = model.absolutePath + "|" + llm?.absolutePath + "|" + taesd?.absolutePath + "|" + threads + "|" + wantGpu
+        val flash = !wantGpu || size > 768
+        val key = model.absolutePath + "|" + llm?.absolutePath + "|" + taesd?.absolutePath + "|" + threads + "|" + wantGpu + "|" + flash
         if (loadedKey != key) {
             loadedKey = null
             gpuError = null
             onGpu = false
             if (wantGpu) {
-                val err = ImageGenNative.load(model.absolutePath, llm?.absolutePath, taesd?.absolutePath, threads, true)
+                val err = ImageGenNative.load(model.absolutePath, llm?.absolutePath, taesd?.absolutePath, threads, true, flash)
                 if (err == null) { onGpu = true; loadedKey = key; return }
                 gpuError = err
             }
-            ImageGenNative.load(model.absolutePath, llm?.absolutePath, taesd?.absolutePath, threads, false)
+            ImageGenNative.load(model.absolutePath, llm?.absolutePath, taesd?.absolutePath, threads, false, true)
                 ?.let { throw EngineException(it) }
             loadedKey = key
         }
@@ -64,7 +70,7 @@ class ImageEngine {
         prompt: String, negative: String, width: Int, height: Int, steps: Int, cfg: Float, seed: Long,
         sampler: Int, scheduler: Int = -1, gpu: Boolean = false,
     ): ImageResult = withContext(dispatcher) {
-        ensureLoaded(model, llm, taesd, threads, gpu)
+        ensureLoaded(model, llm, taesd, threads, gpu, maxOf(width, height))
         val rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler, scheduler)
             ?: throw EngineException(ImageGenNative.lastError().ifEmpty { "Image generation failed" })
         ImageResult(rgb, width, height, onGpu)

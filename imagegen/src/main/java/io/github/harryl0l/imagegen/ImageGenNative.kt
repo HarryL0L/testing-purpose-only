@@ -27,7 +27,7 @@ object ImageGenNative {
      * @param llmPath LLM text encoder for models that use one, else null
      * @return null on success, else an error
      */
-    external fun load(modelPath: String, llmPath: String?, taesdPath: String?, nThreads: Int, gpu: Boolean): String?
+    external fun load(modelPath: String, llmPath: String?, taesdPath: String?, nThreads: Int, gpu: Boolean, flashAttn: Boolean): String?
 
     /** engine log lines added after line number [since]: "<new count>\n<line>\n…" */
     external fun logs(since: Long): String

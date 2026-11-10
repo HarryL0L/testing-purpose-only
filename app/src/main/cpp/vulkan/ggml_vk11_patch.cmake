@@ -129,12 +129,17 @@ _vk_patch([[
 
 # 2c. Matmul tile sizes for vendors ggml has no settings for (e.g. ARM Mali gets all of large / medium /
 #     small; Apple, Qualcomm and Samsung skip large). LLAMACHAT_VK_MM_TILES=<letters from "lms">
-#     restricts the choice (e.g. "m", "ms") so they can be measured with test-backend-ops (and then
-#     become the default for ARM here).
+#     restricts the choice (e.g. "m", "ms") so they can be measured with test-backend-ops. ARM devices
+#     default to "ms" (measured best on a Mali-G77).
 _vk_patch([[
             device->mul_mat_l_int[i]    = device->mul_mat_l[i];
 ]] [[
-            if (const char * lc_tiles = getenv("LLAMACHAT_VK_MM_TILES")) {
+            // ARM Mali: no large tiles (its 128 accumulators per thread spill Mali's registers).
+            // Measured on a Mali-G77 (m=4096 n=512 k=14336): f16 53.7 -> 105.9 GFLOPS, q4_0 44.3 -> 68.2,
+            // q8_0 38.8 -> 68.8, q5_K 43.3 -> 58.6 with medium + small only.
+            const char * lc_tiles = getenv("LLAMACHAT_VK_MM_TILES");
+            if (!lc_tiles && device->vendor_id == 0x13B5) lc_tiles = "ms";
+            if (lc_tiles) {
                 const bool l = strchr(lc_tiles, 'l') != nullptr, m = strchr(lc_tiles, 'm') != nullptr, s = strchr(lc_tiles, 's') != nullptr;
                 if (l || m || s) {
                     device->mul_mat_l[i] = device->mul_mat_l[i] && l; device->mul_mat_id_l[i] = device->mul_mat_id_l[i] && l;
