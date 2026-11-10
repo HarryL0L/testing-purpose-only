@@ -41,6 +41,7 @@ if(IMAGEGEN_VULKAN)
 endif()
 
 add_subdirectory(${SD_SRC} build-sd)
+include(${CMAKE_CURRENT_LIST_DIR}/patches/sd_attention.cmake) # attention in head groups
 
 if(IMAGEGEN_VULKAN)
     set(VK11_GGML_SRC ${SD_SRC}/ggml)

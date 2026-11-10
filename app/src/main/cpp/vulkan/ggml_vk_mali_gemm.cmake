@@ -124,8 +124,9 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
         }
         default: break;
     }
+    // f16 and f32 go straight into the transpose; other types are dequantized by ggml's to_fp16 first
     vk_pipeline to_fp16 = nullptr;
-    if (src0->type != GGML_TYPE_F16) {
+    if (src0->type != GGML_TYPE_F16 && src0->type != GGML_TYPE_F32) {
         to_fp16 = ggml_vk_get_to_fp16(ctx, src0->type);
         if (!to_fp16) return false;
     }
@@ -156,8 +157,12 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
     if (ctx->prealloc_size_y < b_sz) { ctx->prealloc_size_y = b_sz; ggml_vk_preallocate_buffers(ctx, subctx); }
     if (to_fp16 && ctx->prealloc_size_split_k < a_sz) { ctx->prealloc_size_split_k = a_sz; ggml_vk_preallocate_buffers(ctx, subctx); }
     if (to_fp16) ggml_pipeline_request_descriptor_sets(ctx, to_fp16, batches);
-    ggml_pipeline_request_descriptor_sets(ctx, lp.tr_a, batches);
+    vk_pipeline & tr_a = src0->type == GGML_TYPE_F32 ? lp.tr_b : lp.tr_a; // f32 -> f16 transpose for f32 weights
+    ggml_pipeline_request_descriptor_sets(ctx, tr_a, batches);
     ggml_pipeline_request_descriptor_sets(ctx, lp.tr_b, batches);
+    // profiling only (results become wrong): LLAMACHAT_MALI_GEMM_SKIP with 'a' (weight prep), 'b' (input prep)
+    const char * skip = getenv("LLAMACHAT_MALI_GEMM_SKIP");
+    const bool skip_a = skip && strchr(skip, 'a'), skip_b = skip && strchr(skip, 'b');
     ggml_pipeline_request_descriptor_sets(ctx, gemm, nchunks * batches);
 
     vk_buffer d_Qx = nullptr, d_Qy = nullptr;
@@ -178,7 +183,7 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
         // 1. weights -> K-major f16 in prealloc_x
         if (ctx->prealloc_x_need_sync || bt > 0) ggml_vk_sync_buffers(ctx, subctx);
         vk_subbuffer a16 = { d_Qx, qx_off + bt * a_slice, a_bytes };
-        if (to_fp16) {
+        if (to_fp16 && !skip_a) {
             ggml_vk_sync_buffers(ctx, subctx); // prealloc_split_k may still be in use by an earlier op
             const std::vector<uint32_t> pc = { M, K, K, K, M * K };
             ggml_vk_dispatch_pipeline(ctx, subctx, to_fp16, { vk_subbuffer{ d_Qx, qx_off + bt * a_slice, a_bytes }, vk_subbuffer{ ctx->prealloc_split_k, 0, a_sz } },
@@ -186,10 +191,10 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
             ggml_vk_sync_buffers(ctx, subctx);
             a16 = { ctx->prealloc_split_k, 0, a_sz };
         }
-        ggml_vk_dispatch_pipeline(ctx, subctx, lp.tr_a, { a16, vk_subbuffer{ ctx->prealloc_x, 0, a_sz } }, lc_mali_tr_pc{ M, K }, { K, M, 1 });
+        if (!skip_a) ggml_vk_dispatch_pipeline(ctx, subctx, tr_a, { a16, vk_subbuffer{ ctx->prealloc_x, 0, a_sz } }, lc_mali_tr_pc{ M, K }, { K, M, 1 });
 
         // 2. activations -> K-major f16 in prealloc_y (kept when the next 2D matmul has the same input)
-        if (batches > 1 || ctx->prealloc_y_last_pipeline_used != lp.tr_b.get() || ctx->prealloc_y_last_tensor_used != src1 || ctx->prealloc_y_last_k_padded) {
+        if (!skip_b && (batches > 1 || ctx->prealloc_y_last_pipeline_used != lp.tr_b.get() || ctx->prealloc_y_last_tensor_used != src1 || ctx->prealloc_y_last_k_padded)) {
             if (ctx->prealloc_y_need_sync || bt > 0) ggml_vk_sync_buffers(ctx, subctx);
             ggml_vk_dispatch_pipeline(ctx, subctx, lp.tr_b, { vk_subbuffer{ d_Qy, qy_off + bt * b_slice, b_bytes }, vk_subbuffer{ ctx->prealloc_y, 0, b_sz } },
                                       lc_mali_tr_pc{ N, K }, { K, N, 1 });

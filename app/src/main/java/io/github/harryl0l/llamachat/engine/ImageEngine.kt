@@ -39,16 +39,19 @@ class ImageEngine {
     suspend fun preload(model: File, llm: File?, taesd: File?, threads: Int, gpu: Boolean = false, size: Int = 512) =
         withContext(dispatcher) { ensureLoaded(model, llm, taesd, threads, gpu, size) }
 
+    /** set when a large GPU image failed with matmul attention: use flash attention for large ones from then on */
+    private var flashForLarge = false
+
     /**
      * Loads the model; on the GPU if asked and possible, else (or if that fails) on the CPU.
-     * On the GPU, images up to 768 px use attention as matmul + softmax (faster on Mali than flash
-     * attention); larger ones use flash attention, which doesn't need the whole attention matrix
-     * in memory (> 1 GB at 1024 px). Switching between the two reloads the model.
+     * On the GPU attention runs as matmul + softmax in head groups (much faster on Mali than flash
+     * attention; the patched stable-diffusion.cpp keeps each group's attention matrix under 192 MB),
+     * unless a large image failed that way before. Switching between the two reloads the model.
      */
     private fun ensureLoaded(model: File, llm: File?, taesd: File?, threads: Int, gpu: Boolean, size: Int) {
         if (!available) throw EngineException("Image creation isn't supported on this device's CPU")
         val wantGpu = gpu && gpuAvailable
-        val flash = !wantGpu || size > 768
+        val flash = !wantGpu || (flashForLarge && size > 768)
         val key = model.absolutePath + "|" + llm?.absolutePath + "|" + taesd?.absolutePath + "|" + threads + "|" + wantGpu + "|" + flash
         if (loadedKey != key) {
             loadedKey = null
@@ -70,9 +73,17 @@ class ImageEngine {
         prompt: String, negative: String, width: Int, height: Int, steps: Int, cfg: Float, seed: Long,
         sampler: Int, scheduler: Int = -1, gpu: Boolean = false,
     ): ImageResult = withContext(dispatcher) {
-        ensureLoaded(model, llm, taesd, threads, gpu, maxOf(width, height))
-        val rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler, scheduler)
-            ?: throw EngineException(ImageGenNative.lastError().ifEmpty { "Image generation failed" })
+        val size = maxOf(width, height)
+        cancelled = false
+        ensureLoaded(model, llm, taesd, threads, gpu, size)
+        var rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler, scheduler)
+        if (rgb == null && onGpu && size > 768 && !flashForLarge && !cancelled) {
+            // matmul attention didn't work out for this size (e.g. memory): retry with flash attention
+            flashForLarge = true
+            ensureLoaded(model, llm, taesd, threads, gpu, size)
+            rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler, scheduler)
+        }
+        if (rgb == null) throw EngineException(ImageGenNative.lastError().ifEmpty { "Image generation failed" })
         ImageResult(rgb, width, height, onGpu)
     }
 
@@ -92,7 +103,9 @@ class ImageEngine {
     }
 
     /** Any thread: stop the running generation as soon as possible. */
-    fun cancel() { if (available) ImageGenNative.cancel() }
+    fun cancel() { cancelled = true; if (available) ImageGenNative.cancel() }
+
+    @Volatile private var cancelled = false
 
     val isLoaded: Boolean get() = loadedKey != null
 

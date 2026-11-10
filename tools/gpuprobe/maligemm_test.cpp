@@ -2,6 +2,8 @@
 // Checks LlamaChat's Mali f16 GEMM fast path (ggml_vk_mali_gemm.cmake) for correctness and speed.
 //   maligemm-test           correctness (all shapes, all types) + GPU speed
 //   maligemm-test --quick   two shapes only
+//   maligemm-test --profile where the fast path's time goes: full / without weight prep / without input
+//                           prep / kernel only (timing only; the skipped variants give wrong results)
 // Environment: LLAMACHAT_MALI_GEMM=0 (ggml's own matmul), f16 (pure f16 sums), 1 (force on any GPU).
 // The fast path logs "Mali GEMM fast path on" once when it is used.
 
@@ -51,11 +53,52 @@ static std::vector<float> run(ggml_backend_t backend, ggml_type type, const Shap
 
 int main(int argc, char ** argv) {
     const bool quick = argc > 1 && strcmp(argv[1], "--quick") == 0;
+    const bool profile = argc > 1 && strcmp(argv[1], "--profile") == 0;
     setenv("LLAMACHAT_MALI_GEMM_KQUANTS", "1", 0); // check the K-quant path too (default: ARM GPUs only)
     ggml_backend_t gpu = ggml_backend_init_by_name("Vulkan0", nullptr);
     if (!gpu) { fprintf(stderr, "no Vulkan0 backend\n"); return 1; }
     ggml_backend_t cpu = ggml_backend_cpu_init();
     ggml_backend_cpu_set_n_threads(cpu, 4);
+
+    if (profile) {
+        const Shape ps[] = { {2048, 2048, 1024}, {8192, 2048, 512}, {2048, 8192, 512}, {4096, 128, 4096, 2} };
+        const ggml_type pt[] = { GGML_TYPE_F16, GGML_TYPE_Q5_K, GGML_TYPE_F32 };
+        const char * skips[] = { "", "a", "b", "ab" };
+        std::mt19937 prng(7);
+        std::normal_distribution<float> pnd(0.0f, 1.0f);
+        printf("%-6s %20s %10s %10s %10s %10s   (ms; full / no weight prep / no input prep / kernel only)\n",
+               "type", "M x K x N", "full", "-a", "-b", "-ab");
+        for (const Shape & s : ps) {
+            std::vector<float> wf((size_t) s.M * s.K * s.B), xf((size_t) s.K * s.N * s.B);
+            for (auto & v : wf) v = pnd(prng) * 0.05f;
+            for (auto & v : xf) v = pnd(prng);
+            for (ggml_type t : pt) {
+                if (s.B > 1 && t == GGML_TYPE_Q5_K) continue;
+                std::vector<uint8_t> wd(ggml_row_size(t, s.K) * s.M * s.B);
+                if (t == GGML_TYPE_F32) memcpy(wd.data(), wf.data(), wd.size());
+                else ggml_quantize_chunk(t, wf.data(), wd.data(), 0, s.M * s.B, s.K, nullptr);
+                char dims[40];
+                snprintf(dims, sizeof dims, s.B > 1 ? "%dx%dx%d x%d" : "%dx%dx%d", s.M, s.K, s.N, s.B);
+                printf("%-6s %20s", ggml_type_name(t), dims);
+                double full = 0, kern = 0;
+                for (const char * sk : skips) {
+                    setenv("LLAMACHAT_MALI_GEMM_SKIP", sk, 1);
+                    double tg = 0;
+                    run(gpu, t, s, wd, xf, 5, &tg);
+                    if (!*sk) full = tg;
+                    if (!strcmp(sk, "ab")) kern = tg;
+                    printf(" %10.2f", tg * 1e3);
+                    fflush(stdout);
+                }
+                const double fl = 2.0 * s.M * s.N * s.K * s.B;
+                printf("   GFLOPS: full %.0f, kernel only %.0f\n", fl / full * 1e-9, fl / kern * 1e-9);
+            }
+        }
+        unsetenv("LLAMACHAT_MALI_GEMM_SKIP");
+        ggml_backend_free(gpu);
+        ggml_backend_free(cpu);
+        return 0;
+    }
 
     // sizes from image models: Anima (2048 hidden, 8192 MLP), SD 1.5 (320/640/1280), small checks
     std::vector<Shape> shapes = quick ? std::vector<Shape>{ {256, 512, 128}, {2048, 2048, 1024} }
