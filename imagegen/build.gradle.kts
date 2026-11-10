@@ -25,6 +25,16 @@ android {
         }
     }
 
+    // matches :app's flavors: "experimental" adds the Vulkan backend
+    flavorDimensions += "gpu"
+    productFlavors {
+        create("standard") { dimension = "gpu"; isDefault = true }
+        create("experimental") {
+            dimension = "gpu"
+            externalNativeBuild { cmake { arguments += listOf("-DIMAGEGEN_VULKAN=ON") } }
+        }
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")

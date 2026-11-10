@@ -15,12 +15,13 @@
 #   - leaves bufferDeviceAddress and vulkanMemoryModel off,
 #   - fills the subgroup properties from VkPhysicalDeviceSubgroupProperties (core 1.1),
 #   - points the timeline-semaphore entry points at their KHR versions.
-# The shaders are compiled for Vulkan 1.1 by a glslc wrapper (see glslc_vk11.sh.in).
+# The shaders are compiled for Vulkan 1.1 by a glslc wrapper (vk11_glslc.cmake, glslc_vk11.sh.in).
 #
 # Every patch site is checked: if llama.cpp changes and a snippet is not found, configuration
 # fails instead of silently building an unpatched backend.
 
-set(_vk_src ${LLAMA_SRC}/ggml/src/ggml-vulkan/ggml-vulkan.cpp)
+# VK11_GGML_SRC: the ggml source tree whose ggml-vulkan target is patched
+set(_vk_src ${VK11_GGML_SRC}/src/ggml-vulkan/ggml-vulkan.cpp)
 set(_vk_dst ${CMAKE_CURRENT_BINARY_DIR}/vk11_patch/ggml-vulkan.cpp)
 file(READ ${_vk_src} _vk)
 
@@ -53,7 +54,8 @@ _vk_patch([[
         vk12_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 
         // LlamaChat: Vulkan 1.1 devices use the extension structures promoted to 1.2 instead
-        const bool lc_vk11 = device->properties.apiVersion < VK_API_VERSION_1_2;
+        // LLAMACHAT_VK_FORCE_11: take this path on any device (to test it on a desktop driver)
+        const bool lc_vk11 = device->properties.apiVersion < VK_API_VERSION_1_2 || getenv("LLAMACHAT_VK_FORCE_11") != nullptr;
         auto lc_has_ext = [&](const char * name) {
             for (const auto & p : ext_props) {
                 if (strcmp(name, p.extensionName) == 0) return true;
@@ -158,7 +160,7 @@ _vk_patch([[
 ]] [[
         device->physical_device.getProperties2(&props2);
         device->properties = props2.properties;
-        if (props2.properties.apiVersion < VK_API_VERSION_1_2) {
+        if (props2.properties.apiVersion < VK_API_VERSION_1_2 || getenv("LLAMACHAT_VK_FORCE_11") != nullptr) {
             vk11_props.subgroupSize                = subgroup_props.subgroupSize;
             vk11_props.subgroupSupportedStages     = subgroup_props.supportedStages;
             vk11_props.subgroupSupportedOperations = subgroup_props.supportedOperations;
@@ -214,5 +216,5 @@ get_target_property(_vk_sources ggml-vulkan SOURCES)
 list(FILTER _vk_sources EXCLUDE REGEX "(^|/)ggml-vulkan\\.cpp$")
 list(APPEND _vk_sources ${_vk_dst})
 set_property(TARGET ggml-vulkan PROPERTY SOURCES ${_vk_sources})
-target_include_directories(ggml-vulkan PRIVATE ${LLAMA_SRC}/ggml/src/ggml-vulkan)
+target_include_directories(ggml-vulkan PRIVATE ${VK11_GGML_SRC}/src/ggml-vulkan)
 message(STATUS "LlamaChat: using Vulkan 1.1-patched ggml-vulkan.cpp")

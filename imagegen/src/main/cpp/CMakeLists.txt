@@ -28,9 +28,30 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(GGML_CPU_ARM_ARCH "armv8.2-a+dotprod+fp16" CACHE STRING "" FORCE)
 endif()
 
+# Experimental flavor: stable-diffusion.cpp's Vulkan backend (system Vulkan driver), with the same
+# Vulkan 1.1 patch as the app's llama.cpp build (e.g. for Mali r32 drivers).
+option(IMAGEGEN_VULKAN "Build stable-diffusion.cpp's Vulkan backend" OFF)
+if(IMAGEGEN_VULKAN)
+    set(LLAMACHAT_VK ${CMAKE_CURRENT_LIST_DIR}/../../../../app/src/main/cpp/vulkan)
+    set(THIRD_PARTY ${CMAKE_CURRENT_LIST_DIR}/../../../../third_party)
+    set(Vulkan_INCLUDE_DIR ${THIRD_PARTY}/Vulkan-Headers/include CACHE PATH "" FORCE)
+    include(${LLAMACHAT_VK}/vk11_glslc.cmake)
+    set(SPIRV-Headers_DIR ${LLAMACHAT_VK} CACHE PATH "" FORCE)
+    set(SD_VULKAN ON CACHE BOOL "" FORCE)
+endif()
+
 add_subdirectory(${SD_SRC} build-sd)
 
+if(IMAGEGEN_VULKAN)
+    set(VK11_GGML_SRC ${SD_SRC}/ggml)
+    include(${LLAMACHAT_VK}/ggml_vk11_patch.cmake)
+    target_include_directories(ggml-vulkan PRIVATE ${THIRD_PARTY}/SPIRV-Headers/include)
+endif()
+
 add_library(imagegen SHARED sd_jni.cpp)
+if(IMAGEGEN_VULKAN)
+    target_compile_definitions(imagegen PRIVATE IMAGEGEN_VULKAN=1)
+endif()
 target_link_libraries(imagegen PRIVATE stable-diffusion)
 if(ANDROID)
     target_link_libraries(imagegen PRIVATE android log)

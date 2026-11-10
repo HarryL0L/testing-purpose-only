@@ -10,7 +10,7 @@ import java.util.concurrent.Executors
 /** Progress of a running image generation. */
 data class ImageProgress(val stage: String, val done: Long, val total: Long)
 
-class ImageResult(val rgb: ByteArray, val width: Int, val height: Int)
+class ImageResult(val rgb: ByteArray, val width: Int, val height: Int, val onGpu: Boolean)
 
 /**
  * Text-to-image with stable-diffusion.cpp (the :imagegen module). The model stays loaded between
@@ -24,16 +24,37 @@ class ImageEngine {
 
     val available: Boolean get() = ImageGenNative.available()
 
-    /** Loads the model (if not loaded with these settings) without generating. */
-    suspend fun preload(model: File, llm: File?, taesd: File?, threads: Int) =
-        withContext(dispatcher) { ensureLoaded(model, llm, taesd, threads) }
+    /** whether this build can create images on the GPU (experimental build) */
+    val gpuAvailable: Boolean get() = available && ImageGenNative.hasGpu()
 
-    private fun ensureLoaded(model: File, llm: File?, taesd: File?, threads: Int) {
+    /** whether the loaded model runs on the GPU */
+    var onGpu = false
+        private set
+
+    /** why the last GPU load failed (then the CPU was used), else null */
+    var gpuError: String? = null
+        private set
+
+    /** Loads the model (if not loaded with these settings) without generating. */
+    suspend fun preload(model: File, llm: File?, taesd: File?, threads: Int, gpu: Boolean = false) =
+        withContext(dispatcher) { ensureLoaded(model, llm, taesd, threads, gpu) }
+
+    /** Loads the model; on the GPU if asked and possible, else (or if that fails) on the CPU. */
+    private fun ensureLoaded(model: File, llm: File?, taesd: File?, threads: Int, gpu: Boolean) {
         if (!available) throw EngineException("Image creation isn't supported on this device's CPU")
-        val key = model.absolutePath + "|" + llm?.absolutePath + "|" + taesd?.absolutePath + "|" + threads
+        val wantGpu = gpu && gpuAvailable
+        val key = model.absolutePath + "|" + llm?.absolutePath + "|" + taesd?.absolutePath + "|" + threads + "|" + wantGpu
         if (loadedKey != key) {
             loadedKey = null
-            ImageGenNative.load(model.absolutePath, llm?.absolutePath, taesd?.absolutePath, threads)?.let { throw EngineException(it) }
+            gpuError = null
+            onGpu = false
+            if (wantGpu) {
+                val err = ImageGenNative.load(model.absolutePath, llm?.absolutePath, taesd?.absolutePath, threads, true)
+                if (err == null) { onGpu = true; loadedKey = key; return }
+                gpuError = err
+            }
+            ImageGenNative.load(model.absolutePath, llm?.absolutePath, taesd?.absolutePath, threads, false)
+                ?.let { throw EngineException(it) }
             loadedKey = key
         }
     }
@@ -41,12 +62,12 @@ class ImageEngine {
     suspend fun generate(
         model: File, llm: File?, taesd: File?, threads: Int,
         prompt: String, negative: String, width: Int, height: Int, steps: Int, cfg: Float, seed: Long,
-        sampler: Int, scheduler: Int = -1,
+        sampler: Int, scheduler: Int = -1, gpu: Boolean = false,
     ): ImageResult = withContext(dispatcher) {
-        ensureLoaded(model, llm, taesd, threads)
+        ensureLoaded(model, llm, taesd, threads, gpu)
         val rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler, scheduler)
             ?: throw EngineException(ImageGenNative.lastError().ifEmpty { "Image generation failed" })
-        ImageResult(rgb, width, height)
+        ImageResult(rgb, width, height, onGpu)
     }
 
     /** Any thread. null when idle. */

@@ -74,6 +74,9 @@ class ImageModelChoice(
     fun sizeFor(chosen: Int): Int = if (chosen in sizes) chosen else defaultSize
 }
 
+/** crash-guard marker text for image creation on the GPU */
+private const val IMAGE_GPU_MARK = "Vulkan (image creation)"
+
 class ChatMessage(
     val id: Long,
     val role: Role,
@@ -209,6 +212,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Marks image creation on the GPU (cleared when it ends) for the crash guard. */
+    private fun markImageGpu(on: Boolean) {
+        runCatching {
+            if (on) gpuMarker.writeText(IMAGE_GPU_MARK)
+            else if (gpuMarker.exists() && gpuMarker.readText() == IMAGE_GPU_MARK) {
+                // a chat model may still be on the GPU: restore its mark
+                if (BuildConfig.GPU_EXPERIMENTAL && engine.state.value is EngineState.Ready) markGpuInUse(settings.value.gpuMode)
+                else gpuMarker.delete()
+            }
+        }
+    }
+
     private suspend fun checkGpuCrash() {
         if (!BuildConfig.GPU_EXPERIMENTAL || !gpuMarker.exists()) return
         val mode = runCatching { gpuMarker.readText() }.getOrDefault("the GPU")
@@ -224,7 +239,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             android.app.ApplicationExitInfo.REASON_ANR to "not responding",
         )
         val reason = reasons[last.reason] ?: return // closed normally: nothing to do
-        store.update { it.copy(gpuMode = io.github.harryl0l.llamachat.engine.GPU_CPU) }
+        if (mode == IMAGE_GPU_MARK) store.update { it.copy(imageGpu = false) }
+        else store.update { it.copy(gpuMode = io.github.harryl0l.llamachat.engine.GPU_CPU) }
         gpuCrashReport = withContext(Dispatchers.IO) {
             buildString {
                 append("Last exit: $reason while running on $mode")
@@ -334,6 +350,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** composer toggle: the next message creates an image instead of chatting */
     var imageMode by mutableStateOf(false)
     val imageCreationSupported: Boolean get() = imageEngine.available
+    val imageGpuSupported: Boolean get() = BuildConfig.GPU_EXPERIMENTAL && imageEngine.gpuAvailable
 
     fun selectImageModel(preset: ImageModelPreset) = selectImageModel(preset.id)
 
@@ -450,16 +467,27 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
             val t0 = System.nanoTime()
             try {
-                val img = imageEngine.generate(
-                    preset.model, preset.llm, preset.taesd, s.effectiveThreads, prompt, s.imageNegative, size, size,
-                    steps, cfg, seed, sampler, preset.scheduler,
-                )
+                val gpu = BuildConfig.GPU_EXPERIMENTAL && s.imageGpu
+                if (gpu) markImageGpu(true)
+                val img = try {
+                    imageEngine.generate(
+                        preset.model, preset.llm, preset.taesd, s.effectiveThreads, prompt, s.imageNegative, size, size,
+                        steps, cfg, seed, sampler, preset.scheduler, gpu,
+                    )
+                } finally {
+                    if (gpu) markImageGpu(false)
+                }
+                if (gpu && !img.onGpu) {
+                    snackbar = "The GPU couldn't load this model, so it ran on the CPU" +
+                        (imageEngine.gpuError?.let { ": $it" } ?: "")
+                }
                 progressJob.cancel()
                 val saved = chatStore.saveMedia(chatId, DecodedMedia.Image(img.rgb, img.width, img.height))
                 reply.savedMedia = listOf(saved)
                 reply.attachments = listOf(saved.toAttachment(chatStore.dir(chatId)))
-                reply.status = "%s · %d×%d · %d step%s · seed %d · %.1f s".format(
+                reply.status = "%s · %d×%d · %d step%s · seed %d · %.1f s%s".format(
                     preset.title, img.width, img.height, steps, if (steps == 1) "" else "s", seed, (System.nanoTime() - t0) / 1e9,
+                    if (img.onGpu) " · GPU" else "",
                 )
             } catch (e: CancellationException) {
                 reply.status = "Stopped"
@@ -710,21 +738,24 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val steps = minOf(2, model.defaultSteps)
                 for (t in benchThreadOptions()) {
                     benchStatus = "${model.title}: testing $t threads (256×256, $steps step${if (steps == 1) "" else "s"})…"
-                    imageEngine.preload(model.model, model.llm, model.taesd, t) // loading isn't part of the timing
+                    val gpu = BuildConfig.GPU_EXPERIMENTAL && settings.value.imageGpu
+                    if (gpu) markImageGpu(true)
+                    imageEngine.preload(model.model, model.llm, model.taesd, t, gpu) // loading isn't part of the timing
                     val t0 = System.nanoTime()
                     imageEngine.generate(
                         model.model, model.llm, model.taesd, t, "a lighthouse on a cliff at sunset", "", 256, 256,
-                        steps, model.defaultCfg, 1L, model.defaultSampler, model.scheduler,
+                        steps, model.defaultCfg, 1L, model.defaultSampler, model.scheduler, gpu,
                     )
                     benchRow(t) { it.copy(imageSec = ((System.nanoTime() - t0) / 1e9).toFloat()) }
                 }
                 val best = benchResults.filter { it.imageSec != null }.minByOrNull { it.imageSec!! }
-                benchStatus = best?.let { "Fastest images with ${it.threads} threads" }
+                benchStatus = best?.let { "Fastest images with ${it.threads} threads" + if (imageEngine.onGpu) " (GPU)" else "" }
             } catch (e: CancellationException) {
                 benchStatus = "Stopped"
             } catch (e: Exception) {
                 benchStatus = e.message ?: "Benchmark failed"
             } finally {
+                markImageGpu(false)
                 benchRunning = false
             }
         }

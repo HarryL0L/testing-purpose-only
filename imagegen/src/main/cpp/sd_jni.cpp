@@ -62,7 +62,9 @@ extern "C" {
 // Returns null on success, an error message otherwise.
 // jmodel: a full checkpoint, or (with jllm) only the diffusion model of a model whose text encoder
 // is a separate LLM (e.g. Anima + Qwen3-0.6B); its VAE is then replaced by the tiny decoder (jtaesd).
-JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jstring jllm, jstring jtaesd, jint n_threads) {
+// gpu: run on the Vulkan GPU (experimental build only; ignored otherwise).
+JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jstring jllm, jstring jtaesd, jint n_threads,
+                                       jboolean gpu) {
     if (g_ctx) { free_sd_ctx(g_ctx); g_ctx = nullptr; }
     sd_set_log_callback(log_cb, nullptr);
     g_error.clear();
@@ -78,6 +80,13 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, js
     }
     p.taesd_path  = taesd.empty() ? nullptr : taesd.c_str(); // tiny decoder: ~10x faster decoding
     p.n_threads   = n_threads;
+#ifdef IMAGEGEN_VULKAN
+    p.backend     = gpu ? "vulkan0" : "cpu";
+#else
+    (void) gpu;
+    p.backend     = "cpu";
+#endif
+    p.auto_fit    = false; // weights stay with the backend that runs them (phone GPU memory is shared anyway)
     p.enable_mmap = true;
     g_ctx = new_sd_ctx(&p);
     if (!g_ctx) {
@@ -89,7 +98,7 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, js
         return env->NewStringUTF("This model can't generate images");
     }
     sd_set_generation_progress_callback(g_ctx, progress_cb, nullptr);
-    LOGI("image model loaded: %s", model.c_str());
+    LOGI("image model loaded: %s (%s)", model.c_str(), p.backend);
     return nullptr;
 }
 
@@ -178,6 +187,14 @@ JNIEXPORT jstring JNICALL JNI_FN(convert)(JNIEnv * env, jobject, jstring jin, js
     if (ok) return nullptr;
     std::lock_guard<std::mutex> lock(g_stage_mutex);
     return env->NewStringUTF(g_error.empty() ? "Model conversion failed" : g_error.c_str());
+}
+
+JNIEXPORT jboolean JNICALL JNI_FN(hasGpu)(JNIEnv *, jobject) {
+#ifdef IMAGEGEN_VULKAN
+    return JNI_TRUE;
+#else
+    return JNI_FALSE;
+#endif
 }
 
 JNIEXPORT jstring JNICALL JNI_FN(lastError)(JNIEnv * env, jobject) {

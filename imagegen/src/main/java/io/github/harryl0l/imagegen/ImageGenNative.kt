@@ -27,7 +27,10 @@ object ImageGenNative {
      * @param llmPath LLM text encoder for models that use one, else null
      * @return null on success, else an error
      */
-    external fun load(modelPath: String, llmPath: String?, taesdPath: String?, nThreads: Int): String?
+    external fun load(modelPath: String, llmPath: String?, taesdPath: String?, nThreads: Int, gpu: Boolean): String?
+
+    /** whether this build has the Vulkan backend (experimental build) */
+    external fun hasGpu(): Boolean
     external fun unload()
 
     /** RGB pixels (width * height * 3) or null on failure / cancel (see [lastError]) */

@@ -430,6 +430,24 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                     modifier = Modifier.clickable { vm.selectImageModel(c.id) },
                 )
             }
+            if (vm.imageGpuSupported) {
+                ListItem(
+                    headlineContent = { Text("Create images on the GPU (Vulkan)") },
+                    supportingContent = {
+                        Text(
+                            "Experimental. Uses the system Vulkan driver; falls back to the CPU if the model doesn't load " +
+                                "there, and back to CPU for good if the app crashes. Vulkan compatibility mode applies too.",
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = settings.imageGpu,
+                            onCheckedChange = { on -> vm.updateSettings(reloadNeeded = false) { it.copy(imageGpu = on) } },
+                        )
+                    },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                )
+            }
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Size", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
                 val sizes = current?.sizes ?: listOf(256, 384, 512)
