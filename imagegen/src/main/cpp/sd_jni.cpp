@@ -115,8 +115,10 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, js
     p.taesd_path  = taesd.empty() ? nullptr : taesd.c_str(); // tiny decoder: ~10x faster decoding
     p.n_threads   = n_threads;
 #ifdef IMAGEGEN_VULKAN
-    // the text encoder runs once per image: CPU (some LLM encoders hit unsupported ops on Vulkan)
-    p.backend     = gpu ? "all=vulkan0,te=cpu" : "cpu";
+    // the text encoder runs once per image: CPU (some LLM encoders hit unsupported ops on Vulkan).
+    // The decoder (VAE / TAE) too: it's small and quick on the CPU, while on a Mali GPU without working
+    // direct convolution its im2col buffers grow past 1 GB at 1024 px (the decode then stalls on memory).
+    p.backend     = gpu ? "all=vulkan0,te=cpu,vae=cpu" : "cpu";
     // Vulkan compatibility mode (the app sets GGML_VK_DISABLE_F16 etc. at startup) also means a
     // conservative setup for images: no flash attention, and small GPU submissions so a single
     // submission never holds the GPU (which also draws the screen) for long.
