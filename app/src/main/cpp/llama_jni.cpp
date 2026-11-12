@@ -219,6 +219,28 @@ static std::mutex              g_log_mutex;
 static std::deque<std::string> g_log;
 static int64_t                 g_log_seq = 0; // number of lines ever added
 static std::string             g_log_pending;  // a line still being written (continuation logs)
+static int                     g_log_ops_hidden = 0; // collapsed "unsupported op" lines of the vision encoder check
+
+// Keeps the chat log readable: the vision encoder's backend check lists every operation the GPU
+// backend can't run (hundreds of lines); they are counted and replaced by one summary line.
+static bool log_keep(const std::string & line) {
+    const bool clip_check = line.find("warmup:") != std::string::npos || line.find("alloc_compute_meta:") != std::string::npos;
+    if (!clip_check) return true;
+    if (line.find(": type = ") != std::string::npos && line.find("ne = [") != std::string::npos) { g_log_ops_hidden++; return false; }
+    if (line.find("*****") != std::string::npos || line.find("list of unsupported ops") != std::string::npos ||
+        line.find("performance will be suboptimal") != std::string::npos || line.find("op params:") != std::string::npos ||
+        line.find("ref: https://github.com") != std::string::npos) return false;
+    if (line.find("please report this on github") != std::string::npos) {
+        if (g_log_ops_hidden > 0) {
+            g_log.push_back("W vision encoder: " + std::to_string(g_log_ops_hidden) +
+                            " operations not supported by the GPU backend; they run on the CPU");
+            g_log_seq++;
+        }
+        g_log_ops_hidden = 0;
+        return false;
+    }
+    return true;
+}
 
 static void log_text(ggml_log_level level, const char * text) {
     if (level == GGML_LOG_LEVEL_DEBUG) return;
@@ -235,11 +257,11 @@ static void log_text(ggml_log_level level, const char * text) {
     }
     for (const char * c = text; *c; c++) {
         if (*c == '\n') {
-            if (!g_log_pending.empty() && g_log_pending != "E " && g_log_pending != "W ") {
+            if (!g_log_pending.empty() && g_log_pending != "E " && g_log_pending != "W " && log_keep(g_log_pending)) {
                 g_log.push_back(g_log_pending);
                 g_log_seq++;
-                if (g_log.size() > 400) g_log.pop_front();
             }
+            while (g_log.size() > 400) g_log.pop_front();
             g_log_pending.clear();
         } else if (*c != '\r' && g_log_pending.size() < 400) {
             g_log_pending += *c;
@@ -521,8 +543,9 @@ JNIEXPORT jstring JNICALL JNI_FN(loadProjector)(JNIEnv * env, jobject, jstring j
     if (g_mtmd) { mtmd_free(g_mtmd); g_mtmd = nullptr; }
     const std::string path = jstr(env, jpath);
     mtmd_context_params mp = mtmd_context_params_default();
-    mp.use_gpu       = g_use_gpu;
-    if (g_gpu_mode == 2) mp.device = g_mali_dev; // not another GPU (e.g. Vulkan) the encoder might pick
+    // Mali (OpenCL) mode: the vision encoder on the CPU. The OpenCL backend only runs matrix
+    // multiplies, so every other encoder op would be copied back and forth (slower than the CPU alone).
+    mp.use_gpu       = g_use_gpu && g_gpu_mode != 2;
     if (g_gpu_mode == 1) mp.device = g_vk_dev;   // and not the Mali backend in Vulkan mode
     mp.n_threads     = n_threads;
     mp.print_timings = true;
