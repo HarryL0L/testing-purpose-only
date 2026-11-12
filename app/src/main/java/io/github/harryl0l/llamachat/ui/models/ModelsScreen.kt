@@ -475,8 +475,15 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                         1f..current.maxSteps.toFloat(), current.maxSteps - 2, { "${it.roundToInt()}" },
                     ) { v -> vm.updateSettings(reloadNeeded = false) { it.copy(imageSteps = v.roundToInt()) } }
                 }
+                val cfgNow = current?.let { if (settings.imageCfg > 0f) settings.imageCfg else it.defaultCfg } ?: 1f
+                if (current != null) {
+                    // every model: guidance (CFG); it decides whether the negative prompt is used at all
+                    SettingSlider("Guidance (CFG)", cfgNow, 1f..10f, 17, { "%.1f".format(it) }) { v ->
+                        vm.updateSettings(reloadNeeded = false) { it.copy(imageCfg = (v * 2).roundToInt() / 2f) }
+                    }
+                }
                 if (current != null && (current.custom || current.defaultSampler == io.github.harryl0l.llamachat.data.SAMPLER_LCM)) {
-                    // imported and LCM models: sampler + CFG matter (LCM models need the LCM sampler)
+                    // imported and LCM models: the sampler matters too (LCM models need the LCM sampler)
                     Text("Sampler", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
                     val sampler = if (settings.imageSampler >= 0) settings.imageSampler else current.defaultSampler
                     val samplers = io.github.harryl0l.llamachat.data.SAMPLERS
@@ -488,10 +495,6 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                                 shape = SegmentedButtonDefaults.itemShape(i, samplers.size),
                             ) { Text(label, maxLines = 1) }
                         }
-                    }
-                    val cfg = if (settings.imageCfg > 0f) settings.imageCfg else current.defaultCfg
-                    SettingSlider("Guidance (CFG)", cfg, 1f..10f, 17, { "%.1f".format(it) }) { v ->
-                        vm.updateSettings(reloadNeeded = false) { it.copy(imageCfg = (v * 2).roundToInt() / 2f) }
                     }
                     Text(
                         "LCM / Turbo models: LCM sampler (for LCM), 4–8 steps, CFG 1.0. CFG above 1 uses the " +
@@ -546,6 +549,14 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                         shapes = ButtonDefaults.shapes(),
                     ) { Text("Save") }
                 }
+                Text(
+                    if (cfgNow <= 1f) "Not used at Guidance 1.0 (the default for turbo / LCM models). Set Guidance to " +
+                        "1.5–2 to use it; each image then takes about twice as long."
+                    else "Used, because Guidance is above 1.0 (each image takes about twice as long). Tag-style words work " +
+                        "best, e.g. text, letters, signature, watermark, logo, speech bubble.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
