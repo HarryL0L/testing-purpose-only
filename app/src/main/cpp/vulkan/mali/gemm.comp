@@ -9,9 +9,10 @@
 // ACC 0: f16 sums, 2: f16 sums folded into f32 every KC steps.
 // Written as a*b+c, never fma(): Arm's Mali driver runs f16 Fma at only the f32 rate.
 // LlamaChat additions: nbase (first column of this dispatch, so a big multiply can be split into
-// short dispatches that don't hold the GPU, and the screen, for long) and N as the full row count.
+// short dispatches that don't hold the GPU, and the screen, for long), N as the full (padded) column
+// count and nvalid: columns past it are padding and not stored.
 layout(local_size_x = WGX, local_size_y = WGY) in;
-layout(push_constant) uniform P { uint M, N, K, nbase; } p;
+layout(push_constant) uniform P { uint M, N, K, nbase, nvalid; } p; // N: padded columns, nvalid: real ones
 
 #if TM == 8
 #define AV uvec4
@@ -89,7 +90,7 @@ void main() {
 #else
             const vec2 v = vec2(acc[i][j]);
 #endif
-            c[(n0 + 2 * j) * p.M + m0 + i] = v.x;
-            c[(n0 + 2 * j + 1) * p.M + m0 + i] = v.y;
+            if (n0 + 2 * j < p.nvalid) c[(n0 + 2 * j) * p.M + m0 + i] = v.x;
+            if (n0 + 2 * j + 1 < p.nvalid) c[(n0 + 2 * j + 1) * p.M + m0 + i] = v.y;
         }
 }

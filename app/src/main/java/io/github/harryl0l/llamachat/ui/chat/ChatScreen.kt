@@ -568,6 +568,8 @@ private fun MessageBubble(msg: ChatMessage, onOpenImage: (Attachment) -> Unit) {
                 modifier = Modifier.padding(start = 12.dp, top = 4.dp),
             )
         }
+        // what the engine did for this reply (video sampling, vision encoder, prompt, speed); live while it runs
+        if (!isUser && msg.log.isNotEmpty()) ImageLog(msg, startOpen = false)
     }
 }
 
@@ -613,7 +615,7 @@ private fun CreatedImage(msg: ChatMessage, onOpen: (Attachment) -> Unit) {
     }
 }
 
-/** The image engine's log for one image: what it's doing, with elapsed times. Live while creating. */
+/** The engine's log for one reply or image: what it's doing, with elapsed times. Live while running. */
 @Composable
 private fun ImageLog(msg: ChatMessage, startOpen: Boolean) {
     var open by rememberSaveable(msg.id) { mutableStateOf(startOpen) }

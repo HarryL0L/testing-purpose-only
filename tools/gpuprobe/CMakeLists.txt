@@ -12,7 +12,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(REPO ${CMAKE_CURRENT_LIST_DIR}/../..)
 set(THIRD_PARTY ${REPO}/third_party)
 set(LLAMACHAT_VK ${REPO}/app/src/main/cpp/vulkan)
-set(SD_GGML ${THIRD_PARTY}/stable-diffusion.cpp/ggml)
+# GPUPROBE_GGML=llama: build the tests against llama.cpp's ggml (the chat engine's copy) instead
+set(GPUPROBE_GGML "sd" CACHE STRING "ggml copy to test: sd (image engine) or llama (chat)")
+if(GPUPROBE_GGML STREQUAL "llama")
+    set(SD_GGML ${THIRD_PARTY}/llama.cpp/ggml)
+else()
+    set(SD_GGML ${THIRD_PARTY}/stable-diffusion.cpp/ggml)
+endif()
 
 # Vulkan: our headers (the NDK's are too old for ggml), the system loader
 set(Vulkan_INCLUDE_DIR ${THIRD_PARTY}/Vulkan-Headers/include CACHE PATH "" FORCE)
@@ -66,7 +72,11 @@ set(VK11_EXTRA_PATCHES ${LLAMACHAT_VK}/ggml_vk_mali_gemm.cmake) # Mali f16 GEMM 
 include(${LLAMACHAT_VK}/ggml_vk11_patch.cmake)
 target_include_directories(ggml-vulkan PRIVATE ${THIRD_PARTY}/SPIRV-Headers/include)
 
-add_executable(test-backend-ops ${SD_GGML}/tests/test-backend-ops.cpp)
+if(GPUPROBE_GGML STREQUAL "llama")
+    add_executable(test-backend-ops ${THIRD_PARTY}/llama.cpp/tests/test-backend-ops.cpp)
+else()
+    add_executable(test-backend-ops ${SD_GGML}/tests/test-backend-ops.cpp)
+endif()
 target_link_libraries(test-backend-ops PRIVATE ggml)
 find_package(Threads REQUIRED)
 target_link_libraries(test-backend-ops PRIVATE Threads::Threads)

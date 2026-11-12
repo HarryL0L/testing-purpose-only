@@ -1105,25 +1105,52 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
         genJob = viewModelScope.launch {
             val app = getApplication<Application>()
+            // live log under the reply: our stages with elapsed times, plus the engine's own messages
+            val logStart = System.nanoTime()
+            var logSeq = engine.logsSince(Long.MAX_VALUE).first
+            fun stamp(line: String) = "[%6.1fs] %s".format((System.nanoTime() - logStart) / 1e9, line)
+            fun log(line: String) = reply.addLog(listOf(stamp(line)))
+            fun pollLog() {
+                val (seq, lines) = engine.logsSince(logSeq)
+                logSeq = seq
+                reply.addLog(lines.map(::stamp))
+            }
+            run {
+                val s = settings.value
+                log("${ready.info.name} · context ${s.contextSize} · ${s.effectiveThreads} threads" +
+                    if (BuildConfig.GPU_EXPERIMENTAL) " · " + when (s.gpuMode) {
+                        io.github.harryl0l.llamachat.engine.GPU_VULKAN -> "Vulkan"
+                        io.github.harryl0l.llamachat.engine.GPU_CPU -> "CPU"
+                        else -> "Mali (OpenCL)"
+                    } else "")
+            }
             try {
                 val media = attachments.map { a ->
+                    val t0 = System.nanoTime()
                     when (a.kind) {
                         AttachmentKind.Image -> {
                             reply.status = "Looking at the image…"
+                            log("decoding the image…")
                             MediaDecoder.decodeImage(
                                 app, a.uri,
                                 MediaDecoder.IMAGE_QUALITY_PIXELS[settings.value.imageQuality.coerceIn(0, 2)],
-                            )
+                            ).also { m ->
+                                if (m is DecodedMedia.Image) log("image ready: ${m.width}×${m.height} in %.1f s".format((System.nanoTime() - t0) / 1e9))
+                            }
                         }
                         AttachmentKind.Video -> {
                             reply.status = "Sampling video frames…"
+                            log("sampling video frames (hardware decoder)…")
                             val s = settings.value
                             MediaDecoder.decodeVideo(
                                 app, a.uri, s.maxVideoFrames,
                                 MediaDecoder.VIDEO_QUALITY_PIXELS[s.videoQuality.coerceIn(0, 2)],
                                 engine::videoConfig,
                             )
-                                .also { v -> reply.status = "Watching ${v.timestamps.size} frames…" }
+                                .also { v ->
+                                    reply.status = "Watching ${v.timestamps.size} frames…"
+                                    if (v is DecodedMedia.Video) log("video ready: ${v.timestamps.size} frames, ${v.width}×${v.height}, in %.1f s".format((System.nanoTime() - t0) / 1e9))
+                                }
                         }
                     }
                 }
@@ -1143,11 +1170,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     media.isNotEmpty() -> "Processing image"
                     else -> "Reading"
                 }
+                log(if (media.isEmpty()) "reading the prompt…" else "reading the prompt and ${media.size} attachment(s) (vision encoder)…")
+                var lastPct = -1
                 val progressJob = launch {
                     while (true) {
                         kotlinx.coroutines.delay(400)
+                        pollLog()
                         val p = engine.promptProgress()
-                        if (p >= 0f) reply.status = "$what… ${(p * 100).toInt()}%"
+                        if (p >= 0f) {
+                            reply.status = "$what… ${(p * 100).toInt()}%"
+                            val pct = (p * 100).toInt() / 25 * 25
+                            if (pct > lastPct) { lastPct = pct; log("$what: $pct%") }
+                        }
                     }
                 }
                 var tokens = 0
@@ -1160,11 +1194,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         start = System.nanoTime()
                         promptSec = (start - promptStart) / 1e9
                         progressJob.cancel()
+                        pollLog()
+                        log("first token after %.1f s (prompt%s)".format(promptSec, if (media.isEmpty()) "" else " + media"))
                     }
                     tokens++
                     reply.text += piece
                     if (tokens % 8 == 0) reply.status = tps(tokens, start)
+                    if (tokens % 64 == 0) log("$tokens tokens · ${tps(tokens, start)}")
                 }
+                pollLog()
+                if (tokens > 0) log("done: $tokens tokens in %.1f s · %s".format((System.nanoTime() - start) / 1e9, tps(tokens, start)))
                 // speed, prompt processing time and (experimental build) GPU work: handy to compare CPU vs GPU
                 val gpu = engine.gpuStats()
                 reply.status = listOfNotNull(
@@ -1174,14 +1213,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 ).joinToString(" · ").ifEmpty { null }
             } catch (e: CancellationException) {
                 reply.status = "Stopped"
+                log("stopped")
             } catch (e: Exception) {
                 reply.error = true
                 reply.status = null
                 if (reply.text.isEmpty()) reply.text = e.message ?: "Something went wrong"
+                pollLog()
+                log("failed: ${e.message}")
             } finally {
                 reply.streaming = false
                 generating = false
                 contextUsage = engine.contextUsage()
+                log("context: ${contextUsage.first} of ${contextUsage.second} tokens used")
                 withContext(NonCancellable) { runCatching { persistChat() } }
             }
         }

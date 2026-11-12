@@ -81,6 +81,8 @@ endif()
 add_subdirectory(${LLAMA_SRC} build-llama)
 if(LLAMACHAT_VULKAN)
     set(VK11_GGML_SRC ${LLAMA_SRC}/ggml)
+    # Mali f16 GEMM fast path for prompt processing / vision encoders (many tokens at once)
+    set(VK11_EXTRA_PATCHES ${CMAKE_CURRENT_LIST_DIR}/vulkan/ggml_vk_mali_gemm.cmake)
     include(${CMAKE_CURRENT_LIST_DIR}/vulkan/ggml_vk11_patch.cmake)
 endif()
 

@@ -167,6 +167,13 @@ class LlamaEngine(context: Context) {
     /** 0..1 while the prompt (text + media) is being processed, -1 otherwise. Any thread. */
     fun promptProgress(): Float = if (initialized) LlamaNative.promptProgress() else -1f
 
+    /** Any thread: the engine's log lines after line number [since], and the new line count. */
+    fun logsSince(since: Long): Pair<Long, List<String>> {
+        if (!initialized) return since to emptyList()
+        val lines = LlamaNative.logs(since).split('\n')
+        return (lines.first().toLongOrNull() ?: since) to lines.drop(1)
+    }
+
     suspend fun setThinking(enabled: Boolean) = withContext(dispatcher) {
         if (initialized) LlamaNative.setThinking(enabled)
     }

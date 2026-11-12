@@ -76,8 +76,8 @@ static int lc_mali_mode(const vk_device & device) {
     if (!(e && *e) && device->vendor_id != 0x13B5) return 0;
     return (e && strcmp(e, "f16") == 0) ? 2 : 1;
 }
-struct lc_mali_gemm_pc { uint32_t M, N, K, nbase; };
-struct lc_mali_tr_pc { uint32_t rows, cols; };
+struct lc_mali_gemm_pc { uint32_t M, N, K, nbase, nvalid; };
+struct lc_mali_tr_pc { uint32_t rows, cols, rows_valid, cols_valid; };
 
 void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
 ]])
@@ -96,10 +96,9 @@ _vk_patch([[
     }
 ]])
 
-# 3. the fast path, tried first by ggml_vk_mul_mat_q_f16
-_vk_patch([[
-static void ggml_vk_mul_mat_q_f16(ggml_backend_vk_context* ctx, vk_context& subctx, const ggml_tensor* src0, const ggml_tensor* src1, ggml_tensor* dst, bool disable_split_k, const std::function<void(vk_subbuffer)>& prepare_y = {}) {
-]] [[
+# 3. the fast path, tried first by ggml_vk_mul_mat_q_f16 (signature differs between the
+#    stable-diffusion.cpp and llama.cpp copies of ggml)
+set(_mg_fn [[
 static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst) {
     const int mode = lc_mali_mode(ctx->device);
     if (mode == 0) return false;
@@ -111,7 +110,9 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
     const uint32_t M = (uint32_t) src0->ne[1], K = (uint32_t) src0->ne[0], N = (uint32_t) src1->ne[1];
     const uint32_t batches = (uint32_t) (src0->ne[2] * src0->ne[3]);
     const uint32_t tile_m = mode == 2 ? 64 : 32;
-    if (M % tile_m || N % 64 || K % 64 || N < 64) return false;
+    // N (columns: tokens / image patches) and K are padded up to multiples of 64 with zeros; M is not
+    if (M % tile_m || K % 8 || N < 64) return false;
+    const uint32_t Np = (N + 63) / 64 * 64, Kp = (K + 63) / 64 * 64;
     // K-quants go through ggml's dequant shaders, which are correct on Mali (checked on a Mali-G77:
     // q4_K / q5_K / q6_K match the CPU) but came out wrong on lavapipe; so they are on for ARM GPUs
     // and opt-in elsewhere. LLAMACHAT_MALI_GEMM_KQUANTS=1 / 0 forces them on / off.
@@ -134,7 +135,8 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
     const uint64_t a_slice = src0->nb[2], b_slice = src1->nb[2], d_slice = dst->nb[2];
     const uint64_t align = ctx->device->properties.limits.minStorageBufferOffsetAlignment;
     if (batches > 1 && (a_slice % align || b_slice % align || d_slice % align)) return false;
-    const uint64_t a_sz = (uint64_t) M * K * 2, b_sz = (uint64_t) N * K * 2, d_sz = (uint64_t) M * N * 4;
+    const uint64_t a_sz = (uint64_t) M * Kp * 2, b_sz = (uint64_t) Np * Kp * 2, d_sz = (uint64_t) M * N * 4;
+    const uint64_t a16_sz = (uint64_t) M * K * 2; // dequantized weights, unpadded
     const uint64_t maxr = ctx->device->properties.limits.maxStorageBufferRange;
     if (a_sz > maxr || b_sz > maxr || d_sz > maxr || a_slice > maxr || b_slice > maxr) return false;
 
@@ -148,14 +150,14 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
     vk_pipeline & gemm = mode == 2 ? lp.gemm_f16 : lp.gemm_mix;
 
     // ~20 GFLOP per dispatch
-    const uint64_t flops_per_col = 2ull * M * K;
+    const uint64_t flops_per_col = 2ull * M * Kp;
     uint32_t chunk = (uint32_t) std::max<uint64_t>(64, (20000000000ull / flops_per_col) / 64 * 64);
-    chunk = std::min(chunk, N);
-    const uint32_t nchunks = (N + chunk - 1) / chunk;
+    chunk = std::min(chunk, Np);
+    const uint32_t nchunks = (Np + chunk - 1) / chunk;
 
     if (ctx->prealloc_size_x < a_sz) { ctx->prealloc_size_x = a_sz; ggml_vk_preallocate_buffers(ctx, subctx); }
     if (ctx->prealloc_size_y < b_sz) { ctx->prealloc_size_y = b_sz; ggml_vk_preallocate_buffers(ctx, subctx); }
-    if (to_fp16 && ctx->prealloc_size_split_k < a_sz) { ctx->prealloc_size_split_k = a_sz; ggml_vk_preallocate_buffers(ctx, subctx); }
+    if (to_fp16 && ctx->prealloc_size_split_k < a16_sz) { ctx->prealloc_size_split_k = a16_sz; ggml_vk_preallocate_buffers(ctx, subctx); }
     if (to_fp16) ggml_pipeline_request_descriptor_sets(ctx, to_fp16, batches);
     vk_pipeline & tr_a = src0->type == GGML_TYPE_F32 ? lp.tr_b : lp.tr_a; // f32 -> f16 transpose for f32 weights
     ggml_pipeline_request_descriptor_sets(ctx, tr_a, batches);
@@ -186,18 +188,18 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
         if (to_fp16 && !skip_a) {
             ggml_vk_sync_buffers(ctx, subctx); // prealloc_split_k may still be in use by an earlier op
             const std::vector<uint32_t> pc = { M, K, K, K, M * K };
-            ggml_vk_dispatch_pipeline(ctx, subctx, to_fp16, { vk_subbuffer{ d_Qx, qx_off + bt * a_slice, a_bytes }, vk_subbuffer{ ctx->prealloc_split_k, 0, a_sz } },
+            ggml_vk_dispatch_pipeline(ctx, subctx, to_fp16, { vk_subbuffer{ d_Qx, qx_off + bt * a_slice, a_bytes }, vk_subbuffer{ ctx->prealloc_split_k, 0, a16_sz } },
                                       pc, { M * K, 1, 1 });
             ggml_vk_sync_buffers(ctx, subctx);
-            a16 = { ctx->prealloc_split_k, 0, a_sz };
+            a16 = { ctx->prealloc_split_k, 0, a16_sz };
         }
-        if (!skip_a) ggml_vk_dispatch_pipeline(ctx, subctx, tr_a, { a16, vk_subbuffer{ ctx->prealloc_x, 0, a_sz } }, lc_mali_tr_pc{ M, K }, { K / 8, M / 8, 1 });
+        if (!skip_a) ggml_vk_dispatch_pipeline(ctx, subctx, tr_a, { a16, vk_subbuffer{ ctx->prealloc_x, 0, a_sz } }, lc_mali_tr_pc{ M, Kp, M, K }, { Kp / 8, M / 8, 1 });
 
         // 2. activations -> K-major f16 in prealloc_y (kept when the next 2D matmul has the same input)
         if (!skip_b && (batches > 1 || ctx->prealloc_y_last_pipeline_used != lp.tr_b.get() || ctx->prealloc_y_last_tensor_used != src1 || ctx->prealloc_y_last_k_padded)) {
             if (ctx->prealloc_y_need_sync || bt > 0) ggml_vk_sync_buffers(ctx, subctx);
             ggml_vk_dispatch_pipeline(ctx, subctx, lp.tr_b, { vk_subbuffer{ d_Qy, qy_off + bt * b_slice, b_bytes }, vk_subbuffer{ ctx->prealloc_y, 0, b_sz } },
-                                      lc_mali_tr_pc{ N, K }, { K / 8, N / 8, 1 });
+                                      lc_mali_tr_pc{ Np, Kp, N, K }, { Kp / 8, Np / 8, 1 });
             ctx->prealloc_y_last_pipeline_used = batches > 1 ? nullptr : lp.tr_b.get();
             ctx->prealloc_y_last_tensor_used = src1;
             ctx->prealloc_y_last_k_padded = false;
@@ -205,18 +207,27 @@ static bool lc_mali_gemm_try(ggml_backend_vk_context * ctx, vk_context & subctx,
         ggml_vk_sync_buffers(ctx, subctx);
 
         // 3. the GEMM, in short dispatches
-        for (uint32_t n0 = 0; n0 < N; n0 += chunk) {
-            const uint32_t nc = std::min(chunk, N - n0);
+        for (uint32_t n0 = 0; n0 < Np; n0 += chunk) {
+            const uint32_t nc = std::min(chunk, Np - n0);
             ggml_vk_dispatch_pipeline(ctx, subctx, gemm,
                                       { vk_subbuffer{ ctx->prealloc_x, 0, a_sz }, vk_subbuffer{ ctx->prealloc_y, 0, b_sz }, vk_subbuffer{ d_D, d_off + bt * d_slice, d_sz } },
-                                      lc_mali_gemm_pc{ M, N, K, n0 }, { M, nc, 1 });
+                                      lc_mali_gemm_pc{ M, Np, Kp, n0, N }, { M, nc, 1 });
         }
     }
     ctx->prealloc_x_need_sync = true;
     ctx->prealloc_y_need_sync = true;
     return true;
 }
-
-static void ggml_vk_mul_mat_q_f16(ggml_backend_vk_context* ctx, vk_context& subctx, const ggml_tensor* src0, const ggml_tensor* src1, ggml_tensor* dst, bool disable_split_k, const std::function<void(vk_subbuffer)>& prepare_y = {}) {
-    if (!prepare_y && lc_mali_gemm_try(ctx, subctx, src0, src1, dst)) return;
 ]])
+set(_mg_sig_sd [[
+static void ggml_vk_mul_mat_q_f16(ggml_backend_vk_context* ctx, vk_context& subctx, const ggml_tensor* src0, const ggml_tensor* src1, ggml_tensor* dst, bool disable_split_k, const std::function<void(vk_subbuffer)>& prepare_y = {}) {
+]])
+set(_mg_sig_llama [[
+static void ggml_vk_mul_mat_q_f16(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst, bool disable_split_k) {
+]])
+string(FIND "${_vk}" "${_mg_sig_sd}" _mg_pos)
+if(NOT _mg_pos EQUAL -1)
+    _vk_patch("${_mg_sig_sd}" "${_mg_fn}\n${_mg_sig_sd}    if (!prepare_y && lc_mali_gemm_try(ctx, subctx, src0, src1, dst)) return;\n")
+else()
+    _vk_patch("${_mg_sig_llama}" "${_mg_fn}\n${_mg_sig_llama}    if (lc_mali_gemm_try(ctx, subctx, src0, src1, dst)) return;\n")
+endif()

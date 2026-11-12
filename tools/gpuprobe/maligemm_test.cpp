@@ -105,7 +105,9 @@ int main(int argc, char ** argv) {
                                       : std::vector<Shape>{ {256, 512, 128}, {320, 320, 4096}, {2048, 2048, 1024},
                                                             {8192, 2048, 512}, {2048, 8192, 512}, {96, 1024, 64},
                                                             // attention, 4 heads: Q K^T (M = keys, K = head dim) and P V (M = head dim, K = keys)
-                                                            {576, 128, 576, 4}, {128, 576, 576, 4} };
+                                                            {576, 128, 576, 4}, {128, 576, 576, 4},
+                                                            // sizes that need padding: chat prompts (odd token counts), a vision MLP (K 4304)
+                                                            {2048, 2048, 137}, {1152, 4304, 200}, {128, 520, 100, 4} };
     const ggml_type types[] = { GGML_TYPE_F16, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, GGML_TYPE_Q4_K, GGML_TYPE_Q5_K, GGML_TYPE_Q6_K, GGML_TYPE_F32 };
     const char * mode = getenv("LLAMACHAT_MALI_GEMM");
     printf("LLAMACHAT_MALI_GEMM=%s\n", mode ? mode : "(unset: on for ARM GPUs)");

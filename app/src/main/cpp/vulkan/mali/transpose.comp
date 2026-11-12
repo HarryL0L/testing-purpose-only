@@ -6,9 +6,12 @@
 // floats), an in-register transpose, eight 16-byte stores. No shared memory: on Mali it goes through
 // the same load/store path as normal memory, so staging a tile there only adds traffic (a 16 x 16
 // shared-memory version measured ~3.5 GB/s on a Mali-G77, out of ~26).
-// SRC_F32 1: f32 input (activations, f32 weights), 0: f16 input. rows and cols: multiples of 8.
+// SRC_F32 1: f32 input (activations, f32 weights), 0: f16 input.
+// The output can be padded: rows_out x cols_out (multiples of 8) from a rows_valid x cols_valid source
+// (cols_valid a multiple of 8); the padding is written as zeros, so a padded K adds nothing to the
+// GEMM and padded N columns are simply not stored by it.
 layout(local_size_x = 8, local_size_y = 8) in;
-layout(push_constant) uniform P { uint rows, cols; } p;
+layout(push_constant) uniform P { uint rows, cols, rows_valid, cols_valid; } p; // rows / cols: padded
 #if SRC_F32
 layout(std430, binding = 0) readonly buffer S { vec4 s[]; };
 #else
@@ -19,17 +22,22 @@ layout(std430, binding = 1) writeonly buffer D { uvec4 d[]; };
 void main() {
     const uint bc = gl_GlobalInvocationID.x, br = gl_GlobalInvocationID.y; // block column / row (of 8)
     if (bc * 8 >= p.cols || br * 8 >= p.rows) return;
+    const bool col_ok = bc * 8 < p.cols_valid;
     // v[r][c]: row br*8 + r, column bc*8 + c
     f16vec2 v[8][4];
     [[unroll]] for (uint r = 0; r < 8; r++) {
         const uint row = br * 8 + r;
+        if (!col_ok || row >= p.rows_valid) {
+            v[r][0] = v[r][1] = v[r][2] = v[r][3] = f16vec2(0);
+            continue;
+        }
 #if SRC_F32
-        const vec4 x0 = s[(row * p.cols + bc * 8) / 4];
-        const vec4 x1 = s[(row * p.cols + bc * 8) / 4 + 1];
+        const vec4 x0 = s[(row * p.cols_valid + bc * 8) / 4];
+        const vec4 x1 = s[(row * p.cols_valid + bc * 8) / 4 + 1];
         v[r][0] = f16vec2(x0.xy); v[r][1] = f16vec2(x0.zw);
         v[r][2] = f16vec2(x1.xy); v[r][3] = f16vec2(x1.zw);
 #else
-        const uvec4 x = s[(row * p.cols + bc * 8) / 8];
+        const uvec4 x = s[(row * p.cols_valid + bc * 8) / 8];
         v[r][0] = unpackFloat2x16(x.x); v[r][1] = unpackFloat2x16(x.y);
         v[r][2] = unpackFloat2x16(x.z); v[r][3] = unpackFloat2x16(x.w);
 #endif

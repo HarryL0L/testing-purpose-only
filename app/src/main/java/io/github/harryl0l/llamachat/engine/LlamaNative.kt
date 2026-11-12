@@ -75,4 +75,7 @@ internal object LlamaNative {
 
     /** [used, total] tokens */
     external fun contextUsage(): IntArray
+
+    /** engine log lines added after line number [since]: "<new count>\n<line>\n…" */
+    external fun logs(since: Long): String
 }

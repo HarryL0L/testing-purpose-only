@@ -12,7 +12,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -212,7 +214,41 @@ static std::string g_utf8_buf;        // bytes of an incomplete UTF-8 sequence
 static std::string g_assistant_text;  // text generated in the current turn
 static int         g_video_counter = 0;
 
+// recent log lines for the app's chat log view (see logs())
+static std::mutex              g_log_mutex;
+static std::deque<std::string> g_log;
+static int64_t                 g_log_seq = 0; // number of lines ever added
+static std::string             g_log_pending;  // a line still being written (continuation logs)
+
+static void log_text(ggml_log_level level, const char * text) {
+    if (level == GGML_LOG_LEVEL_DEBUG) return;
+    std::lock_guard<std::mutex> lock(g_log_mutex);
+    if (level != GGML_LOG_LEVEL_CONT && !g_log_pending.empty()) {
+        // a new message while the previous one had no newline yet: finish that one first
+        g_log.push_back(g_log_pending);
+        g_log_seq++;
+        g_log_pending.clear();
+    }
+    if (g_log_pending.empty()) {
+        if (level == GGML_LOG_LEVEL_ERROR) g_log_pending = "E ";
+        else if (level == GGML_LOG_LEVEL_WARN) g_log_pending = "W ";
+    }
+    for (const char * c = text; *c; c++) {
+        if (*c == '\n') {
+            if (!g_log_pending.empty() && g_log_pending != "E " && g_log_pending != "W ") {
+                g_log.push_back(g_log_pending);
+                g_log_seq++;
+                if (g_log.size() > 400) g_log.pop_front();
+            }
+            g_log_pending.clear();
+        } else if (*c != '\r' && g_log_pending.size() < 400) {
+            g_log_pending += *c;
+        }
+    }
+}
+
 static void android_log_cb(ggml_log_level level, const char * text, void *) {
+    log_text(level, text);
     int prio = ANDROID_LOG_DEBUG;
     switch (level) {
         case GGML_LOG_LEVEL_ERROR: prio = ANDROID_LOG_ERROR; break;
@@ -1025,6 +1061,20 @@ JNIEXPORT void JNICALL JNI_FN(setThreads)(JNIEnv *, jobject, jint n_threads) {
 }
 
 // [used, total]
+// Log lines added after line number `since`: "<new count>\n<line>\n<line>…"
+JNIEXPORT jstring JNICALL JNI_FN(logs)(JNIEnv * env, jobject, jlong since) {
+    std::string out;
+    {
+        std::lock_guard<std::mutex> lock(g_log_mutex);
+        out = std::to_string(g_log_seq);
+        const int64_t first = g_log_seq - (int64_t) g_log.size();
+        for (size_t i = 0; i < g_log.size(); i++) {
+            if (first + (int64_t) i + 1 > since) { out += '\n'; out += g_log[i]; }
+        }
+    }
+    return to_jstring(env, out);
+}
+
 JNIEXPORT jintArray JNICALL JNI_FN(contextUsage)(JNIEnv * env, jobject) {
     jint out[2] = {(jint) g_n_past, g_ctx ? (jint) llama_n_ctx(g_ctx) : 0};
     jintArray arr = env->NewIntArray(2);
