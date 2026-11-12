@@ -281,7 +281,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     /** [model] / [mmproj] are absolute paths or content:// URIs (linked folders, used in place). */
     fun load(model: String, mmproj: String?) {
-        viewModelScope.launch {
+        viewModelScope.launch { loadNow(model, mmproj) }
+    }
+
+    private suspend fun loadNow(model: String, mmproj: String?) {
+        run {
             stop()
             genJob?.join()
             val s = store.current()
@@ -530,6 +534,92 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(NonCancellable) { runCatching { persistChat() } }
             }
         }
+    }
+
+    // ---------------------------------------------------------------- prompt helper
+
+    /** the chat model is rewriting the image prompt */
+    var promptHelperBusy by mutableStateOf(false)
+        private set
+
+    /**
+     * Rewrites the idea in the input box into a prompt for the current image model, with the chat
+     * model (the loaded one, or the last one used: loaded just for this, then unloaded again so the
+     * image model has the memory). The result replaces the input for the user to check. The chat's
+     * conversation in the engine is restored afterwards.
+     */
+    fun improveImagePrompt() {
+        val idea = input.trim()
+        if (idea.isEmpty()) { snackbar = "Type your image idea first"; return }
+        if (promptHelperBusy || generating) return
+        viewModelScope.launch {
+            val s = store.current()
+            val wasLoaded = engine.state.value is EngineState.Ready
+            val model = s.modelPath
+            if (!wasLoaded && model == null) { snackbar = "Load a chat model once first (Models)"; return@launch }
+            promptHelperBusy = true
+            try {
+                if (!wasLoaded) {
+                    imageEngine.unload() // make room: a big chat model and the image model don't fit together
+                    loadNow(model!!, null) // no vision projector needed
+                    if (engine.state.value !is EngineState.Ready) return@launch
+                }
+                val image = currentImageModel(s)
+                val anime = image?.id?.startsWith("anima") == true
+                engine.resetChat()
+                engine.setThinking(false)
+                engine.updateSampling(s.sampling.copy(temperature = 0.6f, maxTokens = 160), promptHelperSystem(anime))
+                val out = StringBuilder()
+                engine.generate("Idea: $idea", emptyList()).collect { out.append(it) }
+                val text = out.toString()
+                    .replace(Regex("(?s)<think>.*?</think>"), "").replace("<think>", "").replace("</think>", "")
+                    .lines().map { it.trim() }.filter { it.isNotEmpty() }
+                    .joinToString(" ").removePrefix("Prompt:").trim().trim('`').trim()
+                if (text.isEmpty()) snackbar = "The chat model gave no prompt; try again"
+                else { input = text; snackbar = "Prompt rewritten: check it, then create" }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                snackbar = e.message ?: "Couldn't rewrite the prompt"
+            } finally {
+                withContext(NonCancellable) {
+                    if (engine.state.value is EngineState.Ready) {
+                        engine.updateSampling(s.sampling, s.systemPrompt)
+                        engine.setThinking(s.thinking)
+                        if (wasLoaded) {
+                            engine.resetChat()
+                            if (messages.isNotEmpty()) restoreIntoEngine()
+                        } else {
+                            engine.unload()
+                            markGpuInUse(io.github.harryl0l.llamachat.engine.GPU_CPU)
+                            contextUsage = 0 to 0
+                            refreshLastModel()
+                        }
+                    }
+                    promptHelperBusy = false
+                }
+            }
+        }
+    }
+
+    private fun promptHelperSystem(anime: Boolean): String = buildString {
+        append("You write prompts for an on-device image generator. Rewrite the user's idea as ONE prompt line. ")
+        append("Output only the prompt: no explanations, no quotes around it, no labels. ")
+        append("Describe only what the idea contains, plus fitting visual details (pose, clothing, setting, light, mood); ")
+        append("never add people, animals or objects the idea doesn't mention. ")
+        if (anime) {
+            append("The model is an anime model trained on tags: write comma-separated English tags and short phrases, ")
+            append("most important first, ending with: masterpiece, best quality. Do not write the words tags, booru or anime style. ")
+            append("Format example only (do not reuse its content): idea \"a cat sleeping on a windowsill\" -> ")
+            append("cat, sleeping, curled up, windowsill, sunlight, sheer curtains, cozy room, soft light, masterpiece, best quality. ")
+        } else {
+            append("Write a concise English description (subject, details, setting, lighting, style) ending with: ")
+            append("highly detailed, sharp focus. ")
+        }
+        append("Image models draw text as garbled shapes, so avoid things that usually carry writing (shop signs, ")
+        append("posters, labels, books, screens, packaging) unless the idea asks for them; prefer plain surfaces. ")
+        append("If the idea asks for specific text, keep it to at most three words, in double quotes, in capitals, large on ")
+        append("one object, e.g. wooden sign with the text \"OPEN\". At most 50 words.")
     }
 
     /** Imports an image-model file downloaded outside the app. */

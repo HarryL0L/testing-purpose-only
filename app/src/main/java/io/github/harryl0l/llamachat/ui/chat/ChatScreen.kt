@@ -87,6 +87,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -729,6 +730,16 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                     )
                     Spacer(Modifier.size(8.dp))
                 }
+                if (vm.imageMode) AssistChip(
+                    onClick = { vm.improveImagePrompt() },
+                    enabled = !vm.promptHelperBusy && !vm.generating && vm.input.isNotBlank(),
+                    label = { Text(if (vm.promptHelperBusy) "Writing…" else "Improve prompt") },
+                    leadingIcon = {
+                        if (vm.promptHelperBusy) LoadingIndicator(Modifier.size(FilterChipDefaults.IconSize))
+                        else Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(FilterChipDefaults.IconSize))
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                )
                 if (!vm.imageMode) FilterChip(
                     selected = thinking,
                     onClick = { vm.setThinking(!thinking) },
@@ -744,6 +755,7 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                 Spacer(Modifier.size(8.dp))
                 Text(
                     when {
+                        vm.imageMode && vm.promptHelperBusy -> "The chat model is rewriting your idea…"
                         vm.imageMode -> "Your message becomes an image (runs on this phone)"
                         thinking -> "Reasons before answering (if the model supports it)"
                         else -> "Answers directly"
