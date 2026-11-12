@@ -1146,6 +1146,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                                 app, a.uri, s.maxVideoFrames,
                                 MediaDecoder.VIDEO_QUALITY_PIXELS[s.videoQuality.coerceIn(0, 2)],
                                 engine::videoConfig,
+                                log = { line -> viewModelScope.launch(Dispatchers.Main) { log(line) } },
                             )
                                 .also { v ->
                                     reply.status = "Watching ${v.timestamps.size} frames…"

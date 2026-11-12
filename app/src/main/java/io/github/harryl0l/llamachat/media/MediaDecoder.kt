@@ -77,6 +77,8 @@ object MediaDecoder {
         maxFrames: Int,
         maxPixels: Int,
         videoConfig: suspend (width: Int, height: Int, nFrames: Int, fps: Float) -> VideoConfig,
+        /** progress lines for the chat log (any thread) */
+        log: (String) -> Unit = {},
     ): DecodedMedia.Video = withContext(Dispatchers.IO) {
         // --- source properties
         val mmr = MediaMetadataRetriever()
@@ -99,8 +101,18 @@ object MediaDecoder {
         if (rotation == 90 || rotation == 270) srcW = srcH.also { srcH = srcW }
         val srcFps = if (srcFrames > 0 && durationS > 0f) srcFrames / durationS else 30f
         require(srcW > 0 && srcH > 0 && durationS > 0f) { "Unsupported or corrupted video" }
+        log("video: %d×%d%s, %.1f s, %.1f fps, %s source frames".format(
+            srcW, srcH, if (rotation != 0) " (rotated $rotation°)" else "", durationS, srcFps,
+            if (srcFrames > 0) srcFrames.toString() else "?"))
 
+        log("asking the model for its video layout…")
+        val tc = System.nanoTime()
         val cfg = videoConfig(srcW, srcH, srcFrames, srcFps)
+        log("model layout: %s (%.1f s)".format(
+            listOfNotNull(
+                if (cfg.nFrames > 0) "${cfg.nFrames} frames" else if (cfg.fps > 0f) "${cfg.fps} fps" else null,
+                if (cfg.width > 0) "${cfg.width}×${cfg.height}" else null,
+            ).joinToString(", ").ifEmpty { "app defaults" }, (System.nanoTime() - tc) / 1e9))
 
         // --- which timestamps to sample
         var times: List<Float> = if (cfg.nFrames > 0) {
@@ -140,24 +152,30 @@ object MediaDecoder {
 
         val ts = times.toFloatArray()
         val out = ByteArray(outW * outH * 3 * ts.size)
+        log("sampling ${ts.size} frames at ${outW}×$outH: " + ts.joinToString(" ") { "%.1fs".format(it) })
         try {
-            VideoFrameGrabber(context, uri).use { it.grab(ts, outW, outH, rotation, out) }
+            VideoFrameGrabber(context, uri).use {
+                log("hardware decoder: ${it.codecName} (${it.format.getString(android.media.MediaFormat.KEY_MIME)})")
+                it.grab(ts, outW, outH, rotation, out, log)
+            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "MediaCodec decode failed, falling back to MediaMetadataRetriever", e)
-            grabWithRetriever(context, uri, ts, outW, outH, out)
+            log("hardware decoding failed (${e.message}); using the slower MediaMetadataRetriever")
+            grabWithRetriever(context, uri, ts, outW, outH, out, log)
         }
         DecodedMedia.Video(out, outW, outH, ts, cfg.template)
     }
 
-    private fun grabWithRetriever(context: Context, uri: Uri, ts: FloatArray, outW: Int, outH: Int, out: ByteArray) {
+    private fun grabWithRetriever(context: Context, uri: Uri, ts: FloatArray, outW: Int, outH: Int, out: ByteArray, log: (String) -> Unit) {
         val mmr = MediaMetadataRetriever()
         try {
             mmr.setDataSource(context, uri)
             val frameBytes = outW * outH * 3
             var last: Bitmap? = null
             ts.forEachIndexed { i, t ->
+                val t0 = System.nanoTime()
                 val frame = mmr.getScaledFrameAtTime((t * 1_000_000L).toLong(), MediaMetadataRetriever.OPTION_CLOSEST, outW, outH)
                     ?: last
                     ?: error("Could not decode video frame at %.2fs".format(t))
@@ -165,6 +183,7 @@ object MediaDecoder {
                 else Bitmap.createScaledBitmap(frame, outW, outH, true)
                 exact.toRgb(out, i * frameBytes)
                 last = exact
+                log("frame ${i + 1} of ${ts.size} at %.1fs in %.2f s".format(t, (System.nanoTime() - t0) / 1e9))
             }
         } finally {
             mmr.release()

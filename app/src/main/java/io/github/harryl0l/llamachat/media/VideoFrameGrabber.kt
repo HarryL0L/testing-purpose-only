@@ -44,8 +44,14 @@ internal class VideoFrameGrabber(context: Context, uri: Uri) : AutoCloseable {
      * Decodes the frames closest to [timesS] (ascending, seconds) and writes each one as
      * RGB [outW]x[outH] into [dst] at index * outW * outH * 3. [rotation] is 0/90/180/270.
      */
-    suspend fun grab(timesS: FloatArray, outW: Int, outH: Int, rotation: Int, dst: ByteArray) {
+    val codecName: String get() = runCatching { codec.name }.getOrDefault("?")
+
+    suspend fun grab(timesS: FloatArray, outW: Int, outH: Int, rotation: Int, dst: ByteArray, log: (String) -> Unit = {}) {
         val frameBytes = outW * outH * 3
+        // for the log: decoded frames, seeks and time since the previous wanted frame
+        var decoded = 0
+        var seeks = 0
+        var since = System.nanoTime()
         val info = MediaCodec.BufferInfo()
         var next = 0                 // index of the next wanted frame
         var inputDone = false
@@ -56,6 +62,7 @@ internal class VideoFrameGrabber(context: Context, uri: Uri) : AutoCloseable {
             extractor.seekTo(us, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
             codec.flush()
             inputDone = false
+            seeks++
         }
         seekTo((timesS[0] * 1e6).toLong())
 
@@ -81,6 +88,7 @@ internal class VideoFrameGrabber(context: Context, uri: Uri) : AutoCloseable {
             val outIdx = codec.dequeueOutputBuffer(info, 10_000)
             if (outIdx < 0) {
                 if (++stalls > 2000) error("Video decoder stalled")
+                if (stalls % 300 == 0) log("decoder waiting for output… (${stalls / 100} s)")
                 continue
             }
             stalls = 0
@@ -88,6 +96,7 @@ internal class VideoFrameGrabber(context: Context, uri: Uri) : AutoCloseable {
             val pts = info.presentationTimeUs
 
             if (info.size > 0) {
+                decoded++
                 val wantUs = (timesS[next] * 1e6).toLong()
                 if (pts >= wantUs) {
                     // this frame covers every wanted time up to its pts
@@ -95,6 +104,9 @@ internal class VideoFrameGrabber(context: Context, uri: Uri) : AutoCloseable {
                     image.use {
                         yuvToRgb(it, outW, outH, rotation, dst, next * frameBytes)
                     }
+                    log("frame ${next + 1} of ${timesS.size} at %.1fs: %d decoded, %d seek(s), %.2f s".format(
+                        timesS[next], decoded, seeks, (System.nanoTime() - since) / 1e9))
+                    decoded = 0; seeks = 0; since = System.nanoTime()
                     next++
                     while (next < timesS.size && (timesS[next] * 1e6).toLong() <= pts) {
                         System.arraycopy(dst, (next - 1) * frameBytes, dst, next * frameBytes, frameBytes)
