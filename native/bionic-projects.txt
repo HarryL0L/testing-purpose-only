@@ -26,6 +26,7 @@ prebuilts/go/linux-x86
 prebuilts/jdk/jdk21
 prebuilts/misc
 prebuilts/rust
+prebuilts/rust-toolchain/linux-x86
 prebuilts/siso
 system/core
 system/libbase
