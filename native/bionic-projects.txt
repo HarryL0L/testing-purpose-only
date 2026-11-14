@@ -13,6 +13,7 @@ external/libcxx
 external/libcxxabi
 external/llvm-libc
 external/pogreb
+external/rust/android-crates-io
 external/scudo
 external/starlark-go
 external/zlib
@@ -27,4 +28,10 @@ prebuilts/misc
 prebuilts/rust
 prebuilts/siso
 system/core
+system/libbase
+system/libprocinfo
+system/libziparchive
+system/logging
+system/tools/aidl
+system/unwinding
 toolchain/pgo-profiles
