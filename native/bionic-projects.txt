@@ -31,6 +31,7 @@ prebuilts/bazel/common
 prebuilts/build-tools
 prebuilts/clang-tools
 prebuilts/clang/host/linux-x86
+prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8
 prebuilts/go/linux-x86
 prebuilts/jdk/jdk21
 prebuilts/misc
