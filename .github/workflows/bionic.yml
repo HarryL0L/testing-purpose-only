@@ -48,6 +48,8 @@ jobs:
       - name: Build libc and linker
         run: |
           cd ~/aosp
+          # board_config.mk only checks that these VNDK snapshots exist; libc doesn't use them
+          for v in 31 32 33 34; do mkdir -p prebuilts/vndk/v$v/arm64; : > prebuilts/vndk/v$v/arm64/Android.bp; done
           source build/envsetup.sh
           lunch aosp_arm64-trunk_staging-userdebug
           export ALLOW_MISSING_DEPENDENCIES=true
