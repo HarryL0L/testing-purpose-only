@@ -25,6 +25,6 @@ prebuilts/go/linux-x86
 prebuilts/jdk/jdk21
 prebuilts/misc
 prebuilts/rust
-prebuilts/siso/linux-x86
+prebuilts/siso
 system/core
 toolchain/pgo-profiles
