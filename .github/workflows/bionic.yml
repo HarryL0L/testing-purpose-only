@@ -51,7 +51,7 @@ jobs:
           # board_config.mk only checks that these VNDK snapshots exist; libc doesn't use them
           for v in 31 32 33 34; do mkdir -p prebuilts/vndk/v$v/arm64; : > prebuilts/vndk/v$v/arm64/Android.bp; done
           source build/envsetup.sh
-          lunch aosp_arm64-trunk_staging-userdebug
+          lunch module_arm64-trunk_staging-userdebug
           export ALLOW_MISSING_DEPENDENCIES=true
           # no Java boot image (needs ART's dex2oat, not part of this checkout)
           export WITH_DEXPREOPT=false
@@ -62,9 +62,11 @@ jobs:
         if: success()
         run: |
           mkdir -p out
-          find ~/aosp/out/target/product -path '*/bionic/*' \( -name 'libc.so' -o -name 'linker64' \) | head
-          for f in $(find ~/aosp/out/target/product -path '*/bionic/*' \( -name 'libc.so' -o -name 'linker64' \)); do
-            cp "$f" out/; done
+          I=~/aosp/out/soong/.intermediates/bionic
+          find $I/libc/libc $I/linker -type f \( -name libc.so -o -name linker64 \) -path '*android_arm64*' | sort | tee found.txt
+          cp "$(grep '/libc.so$' found.txt | grep -v apex | grep -v '/unstripped/' | head -1)" out/libc.so
+          cp "$(grep '/linker64$' found.txt | grep -v apex | grep -v '/unstripped/' | head -1)" out/linker64
+          cp found.txt out/
           ls -la out; file out/*
 
       - uses: actions/upload-artifact@v4
@@ -77,6 +79,7 @@ jobs:
         if: failure()
         run: |
           cp ~/build.log . 2>/dev/null || true
+          grep -n -A3 -E '^error:|internal error|panic' ~/build.log | head -40 || true
           cp ~/aosp/out/error.log . 2>/dev/null || true
           cp ~/aosp/out/soong.log . 2>/dev/null || true
 
