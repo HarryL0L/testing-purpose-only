@@ -11,6 +11,7 @@ external/expat
 external/go-cmp
 external/golang-protobuf
 external/gwp_asan
+external/icu
 external/jemalloc_new
 external/libcxx
 external/libcxxabi
