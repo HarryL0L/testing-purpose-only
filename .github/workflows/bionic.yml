@@ -50,6 +50,8 @@ jobs:
           cd ~/aosp
           # board_config.mk only checks that these VNDK snapshots exist; libc doesn't use them
           for v in 31 32 33 34; do mkdir -p prebuilts/vndk/v$v/arm64; : > prebuilts/vndk/v$v/arm64/Android.bp; done
+          # the runtime APEX packaging isn't needed for libc, and its apex_available checks fail here
+          rm -f bionic/apex/Android.bp
           source build/envsetup.sh
           lunch module_arm64-trunk_staging-userdebug
           export ALLOW_MISSING_DEPENDENCIES=true
