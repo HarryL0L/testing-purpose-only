@@ -1,0 +1,86 @@
+name: bionic (Android 17 libc + linker, arm64)
+
+# Feasibility check for running Android 17 natively the Termux way: build
+# Android 17's own C library and dynamic linker from AOSP source, unchanged,
+# from a minimal checkout (only the projects they need), within a GitHub runner.
+
+on:
+  push:
+    paths:
+      - ".github/workflows/bionic.yml"
+      - "native/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      AOSP_REV: android-17.0.0_r1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache \
+            /usr/local/share/boost /usr/local/.ghcup /usr/share/swift
+          sudo docker image prune -af >/dev/null || true
+          df -h /
+
+      - name: repo
+        run: |
+          mkdir -p ~/bin
+          curl -sSfL https://storage.googleapis.com/git-repo-downloads/repo -o ~/bin/repo
+          chmod +x ~/bin/repo
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          git config --global user.name ci
+          git config --global user.email ci@localhost
+          git config --global color.ui false
+
+      - name: Minimal AOSP checkout
+        run: |
+          mkdir -p ~/aosp && cd ~/aosp
+          repo init -q -u https://android.googlesource.com/platform/manifest -b "$AOSP_REV" \
+            --depth=1 --no-clone-bundle
+          repo sync -q -c -j8 --no-tags --no-clone-bundle --fail-fast $(cat "$GITHUB_WORKSPACE/native/bionic-projects.txt")
+          du -sh ~/aosp; df -h /
+
+      - name: Build libc and linker
+        run: |
+          cd ~/aosp
+          source build/envsetup.sh
+          lunch aosp_arm64-trunk_staging-userdebug
+          export ALLOW_MISSING_DEPENDENCIES=true
+          m libc linker 2>&1 | tee ~/build.log | tail -100
+          test ${PIPESTATUS[0]} -eq 0
+
+      - name: Collect
+        if: success()
+        run: |
+          mkdir -p out
+          find ~/aosp/out/target/product -path '*/bionic/*' \( -name 'libc.so' -o -name 'linker64' \) | head
+          for f in $(find ~/aosp/out/target/product -path '*/bionic/*' \( -name 'libc.so' -o -name 'linker64' \)); do
+            cp "$f" out/; done
+          ls -la out; file out/*
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: bionic-android17-arm64
+          path: out/
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          cp ~/build.log . 2>/dev/null || true
+          cp ~/aosp/out/error.log . 2>/dev/null || true
+          cp ~/aosp/out/soong.log . 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: logs
+          path: |
+            build.log
+            error.log
+            soong.log
