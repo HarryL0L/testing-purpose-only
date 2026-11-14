@@ -32,6 +32,7 @@ system/libbase
 system/libprocinfo
 system/libziparchive
 system/logging
+system/sepolicy
 system/tools/aidl
 system/unwinding
 toolchain/pgo-profiles
