@@ -53,6 +53,8 @@ jobs:
           source build/envsetup.sh
           lunch aosp_arm64-trunk_staging-userdebug
           export ALLOW_MISSING_DEPENDENCIES=true
+          # no Java boot image (needs ART's dex2oat, not part of this checkout)
+          export WITH_DEXPREOPT=false
           m libc linker 2>&1 | tee ~/build.log | tail -100
           test ${PIPESTATUS[0]} -eq 0
 
