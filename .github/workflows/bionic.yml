@@ -55,7 +55,8 @@ jobs:
           export ALLOW_MISSING_DEPENDENCIES=true
           # no Java boot image (needs ART's dex2oat, not part of this checkout)
           export WITH_DEXPREOPT=false
-          m libc linker 2>&1 | tee ~/build.log | tail -100
+          # the linker needs two Rust helpers whose source project isn't found yet; libc first
+          m libc 2>&1 | tee ~/build.log | tail -100
           test ${PIPESTATUS[0]} -eq 0
 
       - name: Collect
@@ -65,7 +66,7 @@ jobs:
           I=~/aosp/out/soong/.intermediates/bionic
           find $I/libc/libc $I/linker -type f \( -name libc.so -o -name linker64 \) -path '*android_arm64*' | sort | tee found.txt
           cp "$(grep '/libc.so$' found.txt | grep -v apex | grep -v '/unstripped/' | head -1)" out/libc.so
-          cp "$(grep '/linker64$' found.txt | grep -v apex | grep -v '/unstripped/' | head -1)" out/linker64
+          L="$(grep '/linker64$' found.txt | grep -v apex | grep -v '/unstripped/' | head -1)"; [ -n "$L" ] && cp "$L" out/linker64 || true
           cp found.txt out/
           ls -la out; file out/*
 
