@@ -1430,7 +1430,9 @@ void handle_message(Conn* c, uint32_t type, const uint8_t* p, size_t len) {
       Proc* proc = new Proc;
       proc->id = g_next_id++;
       proc->pid = c->pid ? c->pid : hello.pid;
-      proc->uid = c->uid;
+      // The uid the process believes it has (libc's virtual ids), as the
+      // driver reports the caller's euid.
+      proc->uid = hello.euid;
       proc->device = hello.device;
       proc->secctx = read_secctx(proc->pid);
       proc->main = c;

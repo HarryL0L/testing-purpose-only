@@ -499,6 +499,7 @@ int nb_open(const char* device, int flags) {
   nb_hello_proc hello = {};
   strcpy(hello.device, device);
   hello.pid = getpid();
+  hello.euid = geteuid();  // native_root.cpp's virtual uid
   nb_reply_hello rep = {};
   if (!send_msg(sock, NB_HELLO_PROC, &hello, sizeof(hello), nullptr, 0, nullptr, 0) ||
       !recv_reply(sock, &rep, sizeof(rep), nullptr, nullptr, nullptr, nullptr) || rep.error != 0) {

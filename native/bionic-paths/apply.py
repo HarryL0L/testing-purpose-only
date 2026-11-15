@@ -60,6 +60,39 @@ RENAMES = [
     ("__close", "close", None),
     ("mmap|mmap64", "mmap", "lp64"),
     ("__mmap2", "mmap2", "lp32"),
+    # virtual uids/gids (native_root.cpp)
+    ("getuid", "getuid32", "lp32"),
+    ("getuid", "getuid", "lp64"),
+    ("getgid", "getgid32", "lp32"),
+    ("getgid", "getgid", "lp64"),
+    ("geteuid", "geteuid32", "lp32"),
+    ("geteuid", "geteuid", "lp64"),
+    ("getegid", "getegid32", "lp32"),
+    ("getegid", "getegid", "lp64"),
+    ("getresuid", "getresuid32", "lp32"),
+    ("getresuid", "getresuid", "lp64"),
+    ("getresgid", "getresgid32", "lp32"),
+    ("getresgid", "getresgid", "lp64"),
+    ("getgroups", "getgroups32", "lp32"),
+    ("getgroups", "getgroups", "lp64"),
+    ("setgid", "setgid32", "lp32"),
+    ("setgid", "setgid", "lp64"),
+    ("setuid", "setuid32", "lp32"),
+    ("setuid", "setuid", "lp64"),
+    ("setreuid", "setreuid32", "lp32"),
+    ("setreuid", "setreuid", "lp64"),
+    ("setresuid", "setresuid32", "lp32"),
+    ("setresuid", "setresuid", "lp64"),
+    ("setresgid", "setresgid32", "lp32"),
+    ("setresgid", "setresgid", "lp64"),
+    ("setgroups", "setgroups32", "lp32"),
+    ("setgroups", "setgroups", "lp64"),
+    ("setregid", "setregid32", "lp32"),
+    ("setregid", "setregid", "lp64"),
+    ("fchown", "fchown32", "lp32"),
+    ("fchown", "fchown", "lp64"),
+    ("fstat64|fstat", "fstat64", "lp32"),
+    ("fstat64|fstat", "fstat", "lp64"),
 ]
 
 # The internal name each renamed stub gets (matches native_root.cpp).
@@ -69,6 +102,8 @@ def new_symbol(old, call):
         return "__nrp_" + base
     if old.startswith("fstatat64"):
         return "__nrp_fstatat64"
+    if old.startswith("fstat64"):
+        return "__nrp_fstat64"
     return "__nrp_" + base
 
 

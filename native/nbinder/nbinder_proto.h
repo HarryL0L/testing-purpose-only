@@ -34,7 +34,7 @@ struct nb_hdr {
 struct nb_hello_proc {
   char device[32];  // "binder", "vndbinder"
   int32_t pid;
-  uint32_t pad;
+  uint32_t euid;  // the (virtual) effective uid: what binder reports to callees
 };
 
 struct nb_hello_thread {

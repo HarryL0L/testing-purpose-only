@@ -21,6 +21,13 @@
  * ioctl, mmap and close on them go there, never to the phone's binder.
  * /sys/fs/selinux is the root's: a stand-in that tells libselinux SELinux is
  * permissive (an app can't consult the phone's policy for its own services).
+ *
+ * User and group ids are virtual, as with proot -0: programs see root (or
+ * the ids in ANDROID_NATIVE_IDS) instead of the app's uid, set*id() change
+ * the virtual ids, files owned by the app look owned by the virtual ids and
+ * chown() of them succeeds. Android's own services check these ids (an app
+ * uid may not register services, for one); the kernel still checks the real
+ * ones.
  */
 
 #include <alloca.h>
@@ -79,6 +86,22 @@ int __nrp_execve(const char*, char* const*, char* const*);
 int __nrp_bind(int, const struct sockaddr*, socklen_t);
 int __nrp_connect(int, const struct sockaddr*, socklen_t);
 int __nrp_ioctl(int, int, void*);
+uid_t __nrp_getuid();
+uid_t __nrp_geteuid();
+gid_t __nrp_getgid();
+gid_t __nrp_getegid();
+int __nrp_getresuid(uid_t*, uid_t*, uid_t*);
+int __nrp_getresgid(gid_t*, gid_t*, gid_t*);
+int __nrp_getgroups(int, gid_t*);
+int __nrp_setuid(uid_t);
+int __nrp_setgid(gid_t);
+int __nrp_setreuid(uid_t, uid_t);
+int __nrp_setregid(gid_t, gid_t);
+int __nrp_setresuid(uid_t, uid_t, uid_t);
+int __nrp_setresgid(gid_t, gid_t, gid_t);
+int __nrp_setgroups(int, const gid_t*);
+int __nrp_fchown(int, uid_t, gid_t);
+int __nrp_fstat64(int, struct stat*);
 int __nrp_close(int);
 #if defined(__LP64__)
 void* __nrp_mmap(void*, size_t, int, int, int, off_t);
@@ -192,6 +215,168 @@ static size_t nr_unmap(char* buf, size_t len) {
 
 // Declares `var`: `path` mapped under the root. The buffer is sized to the
 // path (bionic limits stack frames to 2 KiB, so no PATH_MAX arrays).
+// ------------------------------------------------- virtual uids and gids
+
+struct nr_ids_t {
+  uid_t r, e, s;
+  gid_t gr, ge, gs;
+};
+static nr_ids_t g_ids;
+static uid_t g_real_uid;
+static gid_t g_real_gid;
+static int g_ids_state;  // 0: not set up, 1: virtual, 2: real (no root)
+static constexpr char kIdsVar[] = "ANDROID_NATIVE_IDS";
+
+static bool nr_ids() {
+  if (g_ids_state == 0) {
+    size_t rl;
+    if (nr_root(&rl) == nullptr) {
+      if (environ == nullptr) return false;  // too early to tell
+      g_ids_state = 2;
+      return false;
+    }
+    g_real_uid = __nrp_getuid();
+    g_real_gid = __nrp_getgid();
+    nr_ids_t ids = {};
+    // "r,e,s,gr,ge,gs" from the parent; otherwise root.
+    if (const char* v = getenv(kIdsVar)) {
+      unsigned long f[6];
+      int n = 0;
+      const char* q = v;
+      while (n < 6 && *q != '\0') {
+        char* end;
+        f[n++] = strtoul(q, &end, 10);
+        if (*end != ',') break;
+        q = end + 1;
+      }
+      if (n == 6) {
+        ids = {static_cast<uid_t>(f[0]), static_cast<uid_t>(f[1]), static_cast<uid_t>(f[2]),
+               static_cast<gid_t>(f[3]), static_cast<gid_t>(f[4]), static_cast<gid_t>(f[5])};
+      }
+    }
+    g_ids = ids;
+    g_ids_state = 1;
+  }
+  return g_ids_state == 1;
+}
+
+// Files the app owns look owned by the virtual ids.
+static void nr_fake_owner(uid_t* uid, gid_t* gid) {
+  if (!nr_ids()) return;
+  if (*uid == g_real_uid) *uid = g_ids.e;
+  if (*gid == g_real_gid) *gid = g_ids.ge;
+}
+
+extern "C" uid_t getuid() {
+  return nr_ids() ? g_ids.r : __nrp_getuid();
+}
+extern "C" uid_t geteuid() {
+  return nr_ids() ? g_ids.e : __nrp_geteuid();
+}
+extern "C" gid_t getgid() {
+  return nr_ids() ? g_ids.gr : __nrp_getgid();
+}
+extern "C" gid_t getegid() {
+  return nr_ids() ? g_ids.ge : __nrp_getegid();
+}
+extern "C" int getresuid(uid_t* r, uid_t* e, uid_t* s) {
+  if (!nr_ids()) return __nrp_getresuid(r, e, s);
+  *r = g_ids.r;
+  *e = g_ids.e;
+  *s = g_ids.s;
+  return 0;
+}
+extern "C" int getresgid(gid_t* r, gid_t* e, gid_t* s) {
+  if (!nr_ids()) return __nrp_getresgid(r, e, s);
+  *r = g_ids.gr;
+  *e = g_ids.ge;
+  *s = g_ids.gs;
+  return 0;
+}
+extern "C" int getgroups(int size, gid_t* list) {
+  if (!nr_ids()) return __nrp_getgroups(size, list);
+  (void)size;
+  (void)list;
+  return 0;  // no supplementary groups
+}
+extern "C" int setgroups(size_t size, const gid_t* list) {
+  if (!nr_ids()) return __nrp_setgroups(static_cast<int>(size), list);
+  if (g_ids.e != 0) {
+    errno = EPERM;
+    return -1;
+  }
+  return 0;
+}
+
+// The kernel's rules for the set*id() calls, applied to the virtual ids.
+template <typename T>
+static int nr_setres(T* r, T* e, T* s, T nr, T ne, T ns, bool privileged) {
+  const T keep = static_cast<T>(-1);
+  if (!privileged) {
+    const T wanted[3] = {nr, ne, ns};
+    for (T v : wanted) {
+      if (v != keep && v != *r && v != *e && v != *s) {
+        errno = EPERM;
+        return -1;
+      }
+    }
+  }
+  if (nr != keep) *r = nr;
+  if (ne != keep) *e = ne;
+  if (ns != keep) *s = ns;
+  return 0;
+}
+
+extern "C" int setresuid(uid_t r, uid_t e, uid_t s) {
+  if (!nr_ids()) return __nrp_setresuid(r, e, s);
+  return nr_setres(&g_ids.r, &g_ids.e, &g_ids.s, r, e, s, g_ids.e == 0);
+}
+extern "C" int setresgid(gid_t r, gid_t e, gid_t s) {
+  if (!nr_ids()) return __nrp_setresgid(r, e, s);
+  return nr_setres(&g_ids.gr, &g_ids.ge, &g_ids.gs, r, e, s, g_ids.e == 0);
+}
+extern "C" int setreuid(uid_t r, uid_t e) {
+  if (!nr_ids()) return __nrp_setreuid(r, e);
+  // The saved id follows the effective one when the real one is set or the
+  // effective one changes to something other than the real one.
+  uid_t s = static_cast<uid_t>(-1);
+  uid_t new_e = e != static_cast<uid_t>(-1) ? e : g_ids.e;
+  if (r != static_cast<uid_t>(-1) || (e != static_cast<uid_t>(-1) && e != g_ids.r)) s = new_e;
+  return nr_setres(&g_ids.r, &g_ids.e, &g_ids.s, r, e, s, g_ids.e == 0);
+}
+extern "C" int setregid(gid_t r, gid_t e) {
+  if (!nr_ids()) return __nrp_setregid(r, e);
+  gid_t s = static_cast<gid_t>(-1);
+  gid_t new_e = e != static_cast<gid_t>(-1) ? e : g_ids.ge;
+  if (r != static_cast<gid_t>(-1) || (e != static_cast<gid_t>(-1) && e != g_ids.gr)) s = new_e;
+  return nr_setres(&g_ids.gr, &g_ids.ge, &g_ids.gs, r, e, s, g_ids.e == 0);
+}
+extern "C" int setuid(uid_t u) {
+  if (!nr_ids()) return __nrp_setuid(u);
+  if (g_ids.e == 0) return setresuid(u, u, u);
+  return setresuid(static_cast<uid_t>(-1), u, static_cast<uid_t>(-1));
+}
+extern "C" int setgid(gid_t g) {
+  if (!nr_ids()) return __nrp_setgid(g);
+  if (g_ids.e == 0) return setresgid(g, g, g);
+  return setresgid(static_cast<gid_t>(-1), g, static_cast<gid_t>(-1));
+}
+
+extern "C" int fchown(int fd, uid_t owner, gid_t group) {
+  int r = __nrp_fchown(fd, owner, group);
+  if (r == -1 && errno == EPERM && nr_ids()) return 0;  // as root would
+  return r;
+}
+
+extern "C" int fstat(int fd, struct stat* st) {
+  int r = __nrp_fstat64(fd, st);
+  if (r == 0) nr_fake_owner(&st->st_uid, &st->st_gid);
+  return r;
+}
+extern "C" int fstat64(int fd, struct stat64* st) {
+  return fstat(fd, reinterpret_cast<struct stat*>(st));
+}
+
 #define NR_MAP(var, path)                                                 \
   size_t var##_size = nr_map_size(path);                                  \
   char* var##_buf = var##_size ? static_cast<char*>(alloca(var##_size)) : nullptr; \
@@ -236,12 +421,16 @@ extern "C" int __fchmodat(int fd, const char* path, mode_t mode) {
 
 extern "C" int fchownat(int fd, const char* path, uid_t owner, gid_t group, int flags) {
   NR_MAP(p, path);
-  return __nrp_fchownat(fd, p, owner, group, flags);
+  int r = __nrp_fchownat(fd, p, owner, group, flags);
+  if (r == -1 && errno == EPERM && nr_ids()) return 0;  // as root would
+  return r;
 }
 
 extern "C" int fstatat(int fd, const char* path, struct stat* st, int flags) {
   NR_MAP(p, path);
-  return __nrp_fstatat64(fd, p, st, flags);
+  int r = __nrp_fstatat64(fd, p, st, flags);
+  if (r == 0) nr_fake_owner(&st->st_uid, &st->st_gid);
+  return r;
 }
 extern "C" int fstatat64(int fd, const char* path, struct stat64* st, int flags) {
   return fstatat(fd, path, reinterpret_cast<struct stat*>(st), flags);
@@ -410,7 +599,15 @@ extern "C" int lremovexattr(const char* path, const char* name) {
 
 extern "C" int statx(int fd, const char* path, int flags, unsigned mask, struct statx* buf) {
   NR_MAP(p, path);
-  return __nrp_statx(fd, p, flags, mask, buf);
+  int r = __nrp_statx(fd, p, flags, mask, buf);
+  if (r == 0) {
+    uid_t u = buf->stx_uid;
+    gid_t g = buf->stx_gid;
+    nr_fake_owner(&u, &g);
+    buf->stx_uid = u;
+    buf->stx_gid = g;
+  }
+  return r;
 }
 
 extern "C" int inotify_add_watch(int fd, const char* path, uint32_t mask) {
@@ -490,25 +687,51 @@ static bool nr_elf_interp(int fd, const Ehdr* eh, char* out, size_t out_size) {
 
 // envp, with ANDROID_NATIVE_ROOT added if the caller dropped it, so that the
 // new program keeps looking up paths under the root.
-static char* const* nr_env(char* const* envp, char** out, size_t out_count, char* var_buf) {
-  size_t n = 0;
-  if (envp != nullptr) {
-    for (; envp[n] != nullptr; n++) {
-      if (strncmp(envp[n], kRootVar, sizeof(kRootVar) - 1) == 0 &&
-          envp[n][sizeof(kRootVar) - 1] == '=') {
-        return envp;
-      }
-    }
-  }
-  if (n + 2 > out_count) return envp;
+// envp with ANDROID_NATIVE_ROOT and the current virtual ids (ANDROID_NATIVE_IDS),
+// replacing any earlier values. `out` has room for envc + 3 entries.
+static char* const* nr_env(char* const* envp, char** out, char* root_var, char* ids_var) {
   size_t rl;
   const char* root = nr_root(&rl);
-  memcpy(var_buf, kRootVar, sizeof(kRootVar) - 1);
-  var_buf[sizeof(kRootVar) - 1] = '=';
-  memcpy(var_buf + sizeof(kRootVar), root, rl + 1);
-  for (size_t i = 0; i < n; i++) out[i] = envp[i];
-  out[n] = var_buf;
-  out[n + 1] = nullptr;
+  memcpy(root_var, kRootVar, sizeof(kRootVar) - 1);
+  root_var[sizeof(kRootVar) - 1] = '=';
+  memcpy(root_var + sizeof(kRootVar), root, rl + 1);
+  size_t k = 0;
+  if (envp != nullptr) {
+    for (size_t i = 0; envp[i] != nullptr; i++) {
+      if (strncmp(envp[i], kRootVar, sizeof(kRootVar) - 1) == 0 &&
+          envp[i][sizeof(kRootVar) - 1] == '=') {
+        continue;
+      }
+      if (strncmp(envp[i], kIdsVar, sizeof(kIdsVar) - 1) == 0 &&
+          envp[i][sizeof(kIdsVar) - 1] == '=') {
+        continue;
+      }
+      out[k++] = envp[i];
+    }
+  }
+  out[k++] = root_var;
+  if (nr_ids()) {
+    // "ANDROID_NATIVE_IDS=" + 6 numbers of up to 10 digits and commas
+    char* p = ids_var;
+    memcpy(p, kIdsVar, sizeof(kIdsVar) - 1);
+    p += sizeof(kIdsVar) - 1;
+    *p++ = '=';
+    const unsigned long v[6] = {g_ids.r, g_ids.e, g_ids.s, g_ids.gr, g_ids.ge, g_ids.gs};
+    for (int i = 0; i < 6; i++) {
+      char digits[12];
+      int n = 0;
+      unsigned long x = v[i];
+      do {
+        digits[n++] = static_cast<char>('0' + x % 10);
+        x /= 10;
+      } while (x != 0);
+      while (n > 0) *p++ = digits[--n];
+      if (i < 5) *p++ = ',';
+    }
+    *p = '\0';
+    out[k++] = ids_var;
+  }
+  out[k] = nullptr;
   return out;
 }
 
@@ -535,9 +758,10 @@ static int nr_execve(const char* path, char* const* argv, char* const* envp, int
     errno = E2BIG;
     return -1;
   }
-  char** env_store = static_cast<char**>(alloca((envc + 2) * sizeof(char*)));
-  char* env_var = static_cast<char*>(alloca(sizeof(kRootVar) + rl + 1));
-  char* const* env = nr_env(envp, env_store, envc + 2, env_var);
+  char** env_store = static_cast<char**>(alloca((envc + 3) * sizeof(char*)));
+  char* root_var = static_cast<char*>(alloca(sizeof(kRootVar) + rl + 1));
+  char ids_var[sizeof(kIdsVar) + 6 * 11 + 1];
+  char* const* env = nr_env(envp, env_store, root_var, ids_var);
 
   int fd = __nrp_openat(AT_FDCWD, host, O_RDONLY | O_CLOEXEC, 0);
   if (fd == -1) return -1;

@@ -55,3 +55,9 @@ runner.
 Checked on the CI-built root under qemu-aarch64: Android 17's servicemanager
 becomes the context manager and `service list` gets
 `0 manager: [android.os.IServiceManager]` back through nbinder.
+On the phone servicemanager came up but registered nothing: Android's
+services check the caller's uid, and an app uid may not register services.
+libc now virtualizes user and group ids like proot -0: programs see root
+(ids passed on through ANDROID_NATIVE_IDS), set*id() change the virtual
+ids, files owned by the app look owned by them and chown() succeeds; libc
+tells nbinder its virtual euid, which binder reports to callees.
