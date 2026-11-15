@@ -164,7 +164,12 @@ static bool nr_under(const char* p, const char* dir, size_t dir_len) {
 
 static bool nr_host_path(const char* p) {
   if (nr_under(p, "/proc", 5)) return true;
-  if (nr_under(p, "/sys", 4)) return !nr_under(p, "/sys/fs/selinux", 15);
+  if (nr_under(p, "/sys", 4)) {
+    // The phone's tracefs: an app may open trace_marker but not stat it, and
+    // zygote stats every fd before forking. Tracing stays off in the root.
+    return !nr_under(p, "/sys/fs/selinux", 15) && !nr_under(p, "/sys/kernel/tracing", 19) &&
+           !nr_under(p, "/sys/kernel/debug", 17);
+  }
   if (nr_under(p, "/dev", 4)) {
     // Android's property area and sockets come from the image; binderfs
     // (driver feature files) isn't the phone's either.
