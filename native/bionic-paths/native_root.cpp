@@ -24,8 +24,8 @@
  *
  * User and group ids are virtual, as with proot -0: programs see root (or
  * the ids in ANDROID_NATIVE_IDS) instead of the app's uid, set*id() change
- * the virtual ids, files owned by the app look owned by the virtual ids and
- * chown() of them succeeds. Android's own services check these ids (an app
+ * the virtual ids, files owned by the app look owned by root and chown() of
+ * them succeeds. Android's own services check these ids (an app
  * uid may not register services, for one); the kernel still checks the real
  * ones.
  */
@@ -269,11 +269,13 @@ static bool nr_ids() {
   return g_ids_state == 1;
 }
 
-// Files the app owns look owned by the virtual ids.
+// Files the app owns look owned by root, as with proot -0 (most of an
+// Android system's files are root's; zygote checks property files while
+// running as uid 9999, which must still see them as root's).
 static void nr_fake_owner(uid_t* uid, gid_t* gid) {
   if (!nr_ids()) return;
-  if (*uid == g_real_uid) *uid = g_ids.e;
-  if (*gid == g_real_gid) *gid = g_ids.ge;
+  if (*uid == g_real_uid) *uid = 0;
+  if (*gid == g_real_gid) *gid = 0;
 }
 
 extern "C" uid_t getuid() {

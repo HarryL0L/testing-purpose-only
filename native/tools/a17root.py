@@ -330,7 +330,7 @@ def overlay(mini_root, root):
 
 # Start nprops for one command, and wait until its properties are there.
 WITH_PROPS = ("nprops -f >/dev/null 2>&1 & p=$!; i=0; "
-              "while [ \"$(getprop native.nprops.ready)\" != 1 ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i + 1)); done; ")
+              "while [ \"$(getprop native.nprops.ready 2>/dev/null)\" != 1 ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i + 1)); done; ")
 
 
 def native(out, script):
