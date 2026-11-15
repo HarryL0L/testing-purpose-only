@@ -44,6 +44,9 @@ jobs:
             --depth=1 --no-clone-bundle
           repo sync -q -c -j8 --no-tags --no-clone-bundle --fail-fast $(cat "$GITHUB_WORKSPACE/native/bionic-projects.txt")
           du -sh ~/aosp; df -h /
+          # sizes, to plan a download cache (GitHub's cache holds 10 GB per repo)
+          du -sh ~/aosp/.repo $(sed 's#^#'"$HOME"'/aosp/#' "$GITHUB_WORKSPACE/native/bionic-projects.txt") 2>/dev/null | sort -rh | head -25
+          ls ~/aosp/prebuilts/clang/host/linux-x86/ | head -40
 
       - name: Build libc and linker
         run: |
