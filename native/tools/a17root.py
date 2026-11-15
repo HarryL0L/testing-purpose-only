@@ -293,6 +293,8 @@ RUNTIME = [  # our build, from MINI_DIR, over the image's
     "system/bin/nprops",
     "system/bin/nbinder",
     "system/bin/nboot",
+    "system/bin/nsocket",
+    "system/bin/nzygote",
 ]
 
 
@@ -322,7 +324,7 @@ def overlay(mini_root, root):
     shutil.rmtree(sel, ignore_errors=True)
     shutil.copytree(os.path.join(mini_root, "sys", "fs", "selinux"), sel)
     for d in ("dev/socket", "data/local/tmp", "data/system/environ", "data/dalvik-cache/arm64",
-              "tmp", "linkerconfig"):
+              "data/misc/apexdata/com.android.art", "data/misc/odrefresh", "tmp", "linkerconfig"):
         os.makedirs(os.path.join(root, d), exist_ok=True)
 
 
@@ -381,6 +383,14 @@ def main():
     with open(os.path.join(root, "system", "etc", "native-env.sh"), "w") as f:
         f.write("\n".join(env) + "\n")
     log("class paths derived")
+    # The boot image in /system is built for ART's userfaultfd collector, which
+    # needs kernel features (5.13+ mremap) this phone may lack; ART then runs
+    # the concurrent-copying collector and needs an image built for it.
+    # odrefresh compiles one into /data/misc/apexdata (a few minutes, once).
+    log("compiling the boot image and system_server (odrefresh; takes a while)")
+    native(out, "nprops -f >/dev/null 2>&1 & p=$!; sleep 2; "
+                "/apex/com.android.art/bin/odrefresh --force-compile; "
+                "echo \"odrefresh: exit status $?\"; kill $p; exit 0")
     log("done:", out)
 
 

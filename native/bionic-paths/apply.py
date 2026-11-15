@@ -91,6 +91,15 @@ RENAMES = [
     ("setregid", "setregid", "lp64"),
     ("fchown", "fchown32", "lp32"),
     ("fchown", "fchown", "lp64"),
+    # capabilities, namespaces and mounts (native_root.cpp)
+    ("capget", "capget", None),
+    ("capset", "capset", None),
+    ("prctl", "prctl", None),
+    ("mount", "mount", None),
+    ("umount2", "umount2", None),
+    ("unshare", "unshare", None),
+    ("setns", "setns", None),
+    ("__fsetxattr", "fsetxattr", None),
     ("fstat64|fstat", "fstat64", "lp32"),
     ("fstat64|fstat", "fstat", "lp64"),
 ]

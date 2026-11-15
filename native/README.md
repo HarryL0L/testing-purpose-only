@@ -80,3 +80,17 @@ system_server).
 Tested on the phone: a17root.py builds the full root in Termux (system
 914 MB, 38 APEXes, linkerconfig, derive_classpath); `./run.sh nboot` and
 Android 17's ART running abx (XML to binary XML and back) work natively.
+
+Step 6 (in progress): zygote and system_server. Under qemu, Android 17's
+zygote starts, loads the framework and preloads classes. Learned so far:
+- ART needs device properties a vendor partition would set (heap sizes,
+  ro.zygote, ISA variant): nprops sets defaults when nothing else does.
+- The image's boot image is built for the userfaultfd (CMC) collector; on a
+  kernel without MREMAP_DONTUNMAP ART uses the concurrent-copying collector,
+  which can't use it. odrefresh compiles a fitting one into /data at the end
+  of a17root.py (trusted through odsign.verification.success=true).
+- libc now also fakes what zygote does for each process it forks: capget/
+  capset (remembered), capability prctls, mount/umount2/unshare/setns, SELinux
+  context writes to /proc/<pid>/attr/* and security.selinux xattrs.
+- nsocket creates init-style service sockets; nzygote starts zygote with
+  them, as init.zygote64.rc does.

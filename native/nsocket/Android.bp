@@ -1,0 +1,7 @@
+// nsocket: init's "socket" option for native mode (see nsocket.cpp).
+cc_binary {
+    name: "nsocket",
+    srcs: ["nsocket.cpp"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+    static_executable: true,
+}

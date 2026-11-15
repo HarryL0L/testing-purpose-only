@@ -74,6 +74,7 @@ int __nrp_chdir(const char*);
 int __nrp_getcwd(char*, size_t);
 int __nrp_setxattr(const char*, const char*, const void*, size_t, int);
 int __nrp_lsetxattr(const char*, const char*, const void*, size_t, int);
+int __nrp_fsetxattr(int, const char*, const void*, size_t, int);
 ssize_t __nrp_getxattr(const char*, const char*, void*, size_t);
 ssize_t __nrp_lgetxattr(const char*, const char*, void*, size_t);
 ssize_t __nrp_listxattr(const char*, char*, size_t);
@@ -102,6 +103,13 @@ int __nrp_setresgid(gid_t, gid_t, gid_t);
 int __nrp_setgroups(int, const gid_t*);
 int __nrp_fchown(int, uid_t, gid_t);
 int __nrp_fstat64(int, struct stat*);
+int __nrp_capget(void*, void*);
+int __nrp_capset(void*, const void*);
+int __nrp_prctl(int, unsigned long, unsigned long, unsigned long, unsigned long);
+int __nrp_mount(const char*, const char*, const char*, unsigned long, const void*);
+int __nrp_umount2(const char*, int);
+int __nrp_unshare(int);
+int __nrp_setns(int, int);
 int __nrp_close(int);
 #if defined(__LP64__)
 void* __nrp_mmap(void*, size_t, int, int, int, off_t);
@@ -377,6 +385,78 @@ extern "C" int fstat64(int fd, struct stat64* st) {
   return fstat(fd, reinterpret_cast<struct stat*>(st));
 }
 
+// ------------------------- capabilities, namespaces and mounts, virtually
+//
+// Zygote drops capabilities, makes mount namespaces and mounts storage for
+// every process it starts; an app may do none of that. In native mode these
+// calls succeed (capabilities are remembered, so capget() reads back what
+// capset() set) and change nothing on the phone, as with proot -0.
+
+struct nr_cap_data {  // __user_cap_data_struct
+  uint32_t effective, permitted, inheritable;
+};
+static nr_cap_data g_caps[2] = {{0xffffffff, 0xffffffff, 0}, {0x1ff, 0x1ff, 0}};  // all, as root
+
+extern "C" int capget(void* header, void* data) {
+  if (!nr_ids()) return __nrp_capget(header, data);
+  uint32_t* h = static_cast<uint32_t*>(header);
+  if (h[0] == 0x19980330) {  // version 1: one 32-bit set
+    if (data) memcpy(data, &g_caps[0], sizeof(g_caps[0]));
+  } else {
+    h[0] = 0x20080522;  // version 3
+    if (data) memcpy(data, g_caps, sizeof(g_caps));
+  }
+  return 0;
+}
+
+extern "C" int capset(void* header, const void* data) {
+  if (!nr_ids()) return __nrp_capset(header, data);
+  const uint32_t* h = static_cast<const uint32_t*>(header);
+  if (data == nullptr) {
+    errno = EFAULT;
+    return -1;
+  }
+  memcpy(g_caps, data, h[0] == 0x19980330 ? sizeof(g_caps[0]) : sizeof(g_caps));
+  return 0;
+}
+
+extern "C" int prctl(int option, unsigned long a2, unsigned long a3, unsigned long a4,
+                     unsigned long a5) {
+  int r = __nrp_prctl(option, a2, a3, a4, a5);
+  if (r == -1 && (errno == EPERM || errno == EINVAL) && nr_ids()) {
+    switch (option) {
+      case 8:   // PR_SET_KEEPCAPS
+      case 24:  // PR_CAPBSET_DROP
+      case 28:  // PR_SET_SECUREBITS
+      case 47:  // PR_CAP_AMBIENT
+        return 0;
+      case 23:  // PR_CAPBSET_READ
+        return 1;
+    }
+  }
+  return r;
+}
+
+extern "C" int unshare(int flags) {
+  int r = __nrp_unshare(flags);
+  if (r == -1 && (errno == EPERM || errno == EINVAL) && nr_ids()) return 0;
+  return r;
+}
+
+extern "C" int setns(int fd, int type) {
+  int r = __nrp_setns(fd, type);
+  if (r == -1 && (errno == EPERM || errno == EINVAL) && nr_ids()) return 0;
+  return r;
+}
+
+// /proc/<self>/attr/{current,exec,fscreate,...}: setting an SELinux context
+// isn't allowed in an app; writes there go nowhere (reads stay real).
+static bool nr_proc_attr(const char* p) {
+  if (strncmp(p, "/proc/", 6) != 0) return false;
+  const char* a = strstr(p, "/attr/");
+  return a != nullptr && strchr(a + 6, '/') == nullptr;
+}
+
 #define NR_MAP(var, path)                                                 \
   size_t var##_size = nr_map_size(path);                                  \
   char* var##_buf = var##_size ? static_cast<char*>(alloca(var##_size)) : nullptr; \
@@ -387,6 +467,9 @@ extern "C" int __openat(int fd, const char* path, int flags, int mode) {
   size_t rl;
   if (path != nullptr && path[0] == '/' && nr_root(&rl) != nullptr) {
     if (const char* dev = nb_device(path)) return nb_open(dev, flags);
+    if ((flags & O_ACCMODE) != O_RDONLY && nr_proc_attr(path)) {
+      return __nrp_openat(AT_FDCWD, "/dev/null", flags & ~(O_CREAT | O_TRUNC | O_EXCL), 0);
+    }
     if (strcmp(path, "/dev/kmsg") == 0) {
       // Every writer appends to the same file, as to the kernel's log.
       flags |= O_APPEND | O_CREAT;
@@ -395,6 +478,21 @@ extern "C" int __openat(int fd, const char* path, int flags, int mode) {
   }
   NR_MAP(p, path);
   return __nrp_openat(fd, p, flags, mode);
+}
+
+extern "C" int mount(const char* source, const char* target, const char* type,
+                     unsigned long flags, const void* data) {
+  NR_MAP(t, target);
+  int r = __nrp_mount(source, t, type, flags, data);
+  if (r == -1 && errno == EPERM && nr_ids()) return 0;
+  return r;
+}
+
+extern "C" int umount2(const char* target, int flags) {
+  NR_MAP(t, target);
+  int r = __nrp_umount2(t, flags);
+  if (r == -1 && (errno == EPERM || errno == EINVAL) && nr_ids()) return 0;
+  return r;
 }
 
 extern "C" int __faccessat(int fd, const char* path, int mode) {
@@ -557,14 +655,25 @@ extern "C" int __getcwd(char* buf, size_t size) {
   return rc;
 }
 
+// Setting a file's SELinux label isn't allowed in an app; in native mode it
+// "succeeds" (restorecon, odrefresh committing its files, ...).
+static int nr_selinux_xattr(int r, const char* name) {
+  if (r == -1 && name != nullptr && strcmp(name, "security.selinux") == 0 && nr_ids()) return 0;
+  return r;
+}
+
 extern "C" int setxattr(const char* path, const char* name, const void* value, size_t size, int flags) {
   NR_MAP(p, path);
-  return __nrp_setxattr(p, name, value, size, flags);
+  return nr_selinux_xattr(__nrp_setxattr(p, name, value, size, flags), name);
 }
 
 extern "C" int lsetxattr(const char* path, const char* name, const void* value, size_t size, int flags) {
   NR_MAP(p, path);
-  return __nrp_lsetxattr(p, name, value, size, flags);
+  return nr_selinux_xattr(__nrp_lsetxattr(p, name, value, size, flags), name);
+}
+
+extern "C" int __fsetxattr(int fd, const char* name, const void* value, size_t size, int flags) {
+  return nr_selinux_xattr(__nrp_fsetxattr(fd, name, value, size, flags), name);
 }
 
 extern "C" ssize_t getxattr(const char* path, const char* name, void* value, size_t size) {

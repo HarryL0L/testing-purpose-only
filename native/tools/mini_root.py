@@ -27,7 +27,7 @@ PROGRAMS = ["toybox", "sh", "toolbox", "servicemanager", "service", "fsck.erofs"
 TOYBOX_APPLETS = ["ls", "cat", "uname", "id", "ps", "env", "echo", "readlink", "pwd", "mkdir",
                   "rm", "cp", "mv", "ln", "touch", "head", "tail", "grep", "sed", "wc", "find",
                   "sleep", "pkill", "kill", "timeout"]
-BUILT_PROGRAMS = ["nlogd", "nprops", "nbinder"]  # static, from our build
+BUILT_PROGRAMS = ["nlogd", "nprops", "nbinder", "nsocket"]  # static, from our build
 
 # Started by ./run.sh nboot: what init starts first on a device.
 NBOOT = """#!/system/bin/sh
@@ -52,6 +52,13 @@ if [ "$r" != true ]; then
   echo "--- log.txt"; tail -n 40 /data/local/tmp/log.txt
   echo "--- nbinder.log"; tail -n 30 /data/local/tmp/nbinder.log
 fi
+"""
+
+# Zygote, as init.zygote64.rc starts it (needs the full root from a17root.py).
+NZYGOTE = """#!/system/bin/sh
+# Start zygote and, through it, system_server (run nboot first).
+exec nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\
+    /system/bin/app_process64 -Xzygote /system/bin --zygote --start-system-server --socket-name=zygote
 """
 
 # selinux_status_t: version 1, sequence 0, enforcing 0, policyload 0, deny_unknown 0
@@ -287,9 +294,10 @@ def main():
         with open(os.path.join(sel, name), "wb") as f:
             f.write(data)
     os.chmod(os.path.join(sel, "context"), 0o666)
-    with open(os.path.join(root, "system", "bin", "nboot"), "w") as f:
-        f.write(NBOOT)
-    os.chmod(os.path.join(root, "system", "bin", "nboot"), 0o755)
+    for name, text in (("nboot", NBOOT), ("nzygote", NZYGOTE)):
+        with open(os.path.join(root, "system", "bin", name), "w") as f:
+            f.write(text)
+        os.chmod(os.path.join(root, "system", "bin", name), 0o755)
     mkshrc = img.host("/system/etc/mkshrc")
     if mkshrc:
         place("/system/etc/mkshrc", mkshrc)

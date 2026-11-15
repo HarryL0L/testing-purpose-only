@@ -146,6 +146,25 @@ static void DeriveProperties(std::map<std::string, std::string>* props) {
   }
 }
 
+// What a device's vendor and product partitions set and native mode lacks.
+// Only used when nothing else sets them.
+static const std::pair<const char*, const char*> kDeviceDefaults[] = {
+    {"ro.zygote", "zygote64"},
+    {"dalvik.vm.isa.arm64.variant", "generic"},
+    {"dalvik.vm.isa.arm64.features", "default"},
+    {"dalvik.vm.heapstartsize", "8m"},
+    {"dalvik.vm.heapgrowthlimit", "192m"},
+    {"dalvik.vm.heapsize", "512m"},
+    {"dalvik.vm.heaptargetutilization", "0.75"},
+    {"dalvik.vm.heapminfree", "512k"},
+    {"dalvik.vm.heapmaxfree", "8m"},
+    {"ro.sf.lcd_density", "420"},
+    // The boot image odrefresh compiles in /data (the image in /system is for
+    // a collector that needs kernel features this phone lacks); there is no
+    // odsign here to verify it, so trust it as odsign would.
+    {"odsign.verification.success", "true"},
+};
+
 static uint32_t SetProperty(const std::string& name, const std::string& value) {
   if (name.empty() || name.find_first_of(" \t\n=") != std::string::npos) {
     return PROP_ERROR_INVALID_NAME;
@@ -283,6 +302,7 @@ int main(int argc, char** argv) {
     LoadPropFile(f, &props);
   }
   DeriveProperties(&props);
+  for (const auto& [k, v] : kDeviceDefaults) props.emplace(k, v);
   for (const auto& [k, v] : overrides) props[k] = v;
   props["ro.property_service.version"] = "2";  // as init: clients use PROP_MSG_SETPROP2
   size_t loaded = 0;
