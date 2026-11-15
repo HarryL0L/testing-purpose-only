@@ -1,0 +1,42 @@
+// Stand-ins for two small no_std Rust helpers that Android 17's libc and
+// linker link (bionic commit a5f408954, "icu4x: Remove dependency on std"),
+// whose defining project isn't part of the public android-17.0.0_r1 tree.
+// Copied to the AOSP checkout by .github/workflows/bionic.yml.
+
+package {
+    default_visibility: ["//visibility:public"],
+}
+
+rust_defaults {
+    name: "bionic_rust_shim_defaults",
+    edition: "2021",
+    no_stdlibs: true,
+    sdk_version: "minimum",
+    vendor_available: true,
+    product_available: true,
+    ramdisk_available: true,
+    vendor_ramdisk_available: true,
+    recovery_available: true,
+    native_bridge_supported: true,
+    apex_available: [
+        "//apex_available:platform",
+        "//apex_available:anyapex",
+    ],
+    defaults: ["linux_bionic_supported"],
+}
+
+// Rust panics in libc/the linker abort the process.
+rust_library_rlib {
+    name: "libbionic_panic_abort",
+    crate_name: "bionic_panic_abort",
+    crate_root: "panic_abort.rs",
+    defaults: ["bionic_rust_shim_defaults"],
+}
+
+// Rust heap allocations go to bionic's malloc/free.
+rust_library_rlib {
+    name: "liblibc_alloc_rust",
+    crate_name: "libc_alloc_rust",
+    crate_root: "libc_alloc.rs",
+    defaults: ["bionic_rust_shim_defaults"],
+}

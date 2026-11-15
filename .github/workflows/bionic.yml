@@ -52,6 +52,8 @@ jobs:
           for v in 31 32 33 34; do mkdir -p prebuilts/vndk/v$v/arm64; : > prebuilts/vndk/v$v/arm64/Android.bp; done
           # the runtime APEX packaging isn't needed for libc, and its apex_available checks fail here
           rm -f bionic/apex/Android.bp
+          # stand-ins for libc's two no_std Rust helpers (not in the public tree)
+          rm -rf bionic-rust-shims && cp -r "$GITHUB_WORKSPACE/native/rust-shims" bionic-rust-shims
           # host sqlite links ICU's C libraries; ICU's Java libraries need SDK API files we don't have
           rm -f external/icu/android_icu4j/Android.bp external/icu/icu4j/Android.bp
           source build/envsetup.sh
@@ -59,8 +61,7 @@ jobs:
           export ALLOW_MISSING_DEPENDENCIES=true
           # no Java boot image (needs ART's dex2oat, not part of this checkout)
           export WITH_DEXPREOPT=false
-          # the linker needs two Rust helpers whose source project isn't found yet; libc first
-          m libc 2>&1 | tee ~/build.log | tail -100
+          m libc linker 2>&1 | tee ~/build.log | tail -100
           test ${PIPESTATUS[0]} -eq 0
 
       - name: Collect
