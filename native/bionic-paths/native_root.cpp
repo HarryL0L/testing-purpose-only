@@ -167,15 +167,20 @@ static bool nr_host_path(const char* p) {
   if (nr_under(p, "/sys", 4)) {
     // The phone's tracefs: an app may open trace_marker but not stat it, and
     // zygote stats every fd before forking. Tracing stays off in the root.
+    // Cgroups too: Android puts each process in its own group, which an app
+    // may not create in the phone's hierarchy; in the root they're folders.
     return !nr_under(p, "/sys/fs/selinux", 15) && !nr_under(p, "/sys/kernel/tracing", 19) &&
-           !nr_under(p, "/sys/kernel/debug", 17);
+           !nr_under(p, "/sys/kernel/debug", 17) && !nr_under(p, "/sys/fs/cgroup", 14);
   }
   if (nr_under(p, "/dev", 4)) {
     // Android's property area and sockets come from the image; binderfs
     // (driver feature files) isn't the phone's either.
     // /dev/kmsg is a file in the root (android::base's KernelLogger writes there).
     return !nr_under(p, "/dev/__properties__", 19) && !nr_under(p, "/dev/socket", 11) &&
-           !nr_under(p, "/dev/binderfs", 13) && strcmp(p, "/dev/kmsg") != 0;
+           !nr_under(p, "/dev/binderfs", 13) && strcmp(p, "/dev/kmsg") != 0 &&
+           !nr_under(p, "/dev/blkio", 10) && !nr_under(p, "/dev/cpuctl", 11) &&
+           !nr_under(p, "/dev/cpuset", 11) && !nr_under(p, "/dev/stune", 10) &&
+           !nr_under(p, "/dev/memcg", 10);
   }
   return false;
 }

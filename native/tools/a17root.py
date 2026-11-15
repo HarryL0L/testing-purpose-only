@@ -324,13 +324,43 @@ def overlay(mini_root, root):
     shutil.rmtree(sel, ignore_errors=True)
     shutil.copytree(os.path.join(mini_root, "sys", "fs", "selinux"), sel)
     for d in ("dev/socket", "data/local/tmp", "data/system/environ", "data/dalvik-cache/arm64",
-              "data/misc/apexdata/com.android.art", "data/misc/odrefresh", "tmp", "linkerconfig"):
+              "data/misc/apexdata/com.android.art", "data/misc/odrefresh", "tmp", "linkerconfig",
+              # cgroups (cgroups.json), as plain folders: libc maps them here
+              "sys/fs/cgroup/system", "sys/fs/cgroup/apps", "dev/blkio", "dev/cpuctl",
+              "dev/cpuset", "dev/stune", "dev/memcg"):
         os.makedirs(os.path.join(root, d), exist_ok=True)
 
 
 # Start nprops for one command, and wait until its properties are there.
 WITH_PROPS = ("nprops -f >/dev/null 2>&1 & p=$!; i=0; "
               "while [ \"$(getprop native.nprops.ready 2>/dev/null)\" != 1 ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i + 1)); done; ")
+
+
+def init_dirs(root):
+    """Create the directories init's .rc files make at boot (mkdir lines)."""
+    n = 0
+    for base in ("system/etc/init", "system_ext/etc/init", "vendor/etc/init"):
+        top = os.path.join(root, base)
+        for d, _dirs, files in os.walk(top):
+            for f in files:
+                if not f.endswith(".rc"):
+                    continue
+                try:
+                    lines = open(os.path.join(d, f), errors="replace").read().splitlines()
+                except OSError:
+                    continue
+                for line in lines:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[0] == "mkdir" and parts[1].startswith("/") \
+                            and "$" not in parts[1]:
+                        target = os.path.join(root, parts[1].lstrip("/"))
+                        if not os.path.lexists(target):
+                            try:
+                                os.makedirs(target, exist_ok=True)
+                                n += 1
+                            except OSError:
+                                pass
+    return n
 
 
 def native(out, script):
@@ -369,6 +399,7 @@ def main():
     overlay(os.path.join(mini, "root"), root)
     shutil.copy2(os.path.join(mini, "run.sh"), os.path.join(out, "run.sh"))
     log("apex-info-list.xml: %d APEXes" % write_apex_info(root))
+    log("%d directories init would create" % init_dirs(root))
 
     native(out, "/apex/com.android.runtime/bin/linkerconfig --target /linkerconfig")
     log("linker configuration written")
