@@ -21,6 +21,7 @@ external/libcxx
 external/libcxxabi
 external/libffi
 external/llvm-libc
+external/lzma
 external/mpdecimal
 external/pogreb
 external/protobuf

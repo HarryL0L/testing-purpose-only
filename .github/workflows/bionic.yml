@@ -66,20 +66,21 @@ jobs:
           test ${PIPESTATUS[0]} -eq 0
 
       - name: Collect
-        if: success()
+        if: always()
         run: |
           mkdir -p out
           I=~/aosp/out/soong/.intermediates/bionic
           find $I/libc/libc $I/linker -type f \( -name libc.so -o -name linker64 \) -path '*android_arm64*' | sort | tee found.txt
-          cp "$(grep '/libc.so$' found.txt | grep -v apex | grep -v '/unstripped/' | head -1)" out/libc.so
+          C="$(grep '/libc.so$' found.txt | grep -v apex | grep -v '/unstripped/' | head -1)"; [ -n "$C" ] && cp "$C" out/libc.so || true
           L="$(grep '/linker64$' found.txt | grep -v apex | grep -v '/unstripped/' | head -1)"; [ -n "$L" ] && cp "$L" out/linker64 || true
           cp found.txt out/
-          ls -la out; file out/*
+          ls -la out; file out/* || true
 
       - uses: actions/upload-artifact@v4
-        if: success()
+        if: always()
         with:
           name: bionic-android17-arm64
+          if-no-files-found: ignore
           path: out/
 
       - name: Logs on failure
