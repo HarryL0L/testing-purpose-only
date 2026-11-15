@@ -100,6 +100,8 @@ RENAMES = [
     ("unshare", "unshare", None),
     ("setns", "setns", None),
     ("__fsetxattr", "fsetxattr", None),
+    ("getsockname", "getsockname", None),
+    ("getpeername", "getpeername", None),
     ("fstat64|fstat", "fstat64", "lp32"),
     ("fstat64|fstat", "fstat", "lp64"),
 ]

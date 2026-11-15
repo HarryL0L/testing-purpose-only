@@ -86,6 +86,8 @@ int __nrp_inotify_add_watch(int, const char*, uint32_t);
 int __nrp_execve(const char*, char* const*, char* const*);
 int __nrp_bind(int, const struct sockaddr*, socklen_t);
 int __nrp_connect(int, const struct sockaddr*, socklen_t);
+int __nrp_getsockname(int, struct sockaddr*, socklen_t*);
+int __nrp_getpeername(int, struct sockaddr*, socklen_t*);
 int __nrp_ioctl(int, int, void*);
 uid_t __nrp_getuid();
 uid_t __nrp_geteuid();
@@ -221,8 +223,6 @@ static size_t nr_unmap(char* buf, size_t len) {
   return len - rl;
 }
 
-// Declares `var`: `path` mapped under the root. The buffer is sized to the
-// path (bionic limits stack frames to 2 KiB, so no PATH_MAX arrays).
 // ------------------------------------------------- virtual uids and gids
 
 struct nr_ids_t {
@@ -457,6 +457,8 @@ static bool nr_proc_attr(const char* p) {
   return a != nullptr && strchr(a + 6, '/') == nullptr;
 }
 
+// Declares `var`: `path` mapped under the root. The buffer is sized to the
+// path (bionic limits stack frames to 2 KiB, so no PATH_MAX arrays).
 #define NR_MAP(var, path)                                                 \
   size_t var##_size = nr_map_size(path);                                  \
   char* var##_buf = var##_size ? static_cast<char*>(alloca(var##_size)) : nullptr; \
@@ -770,6 +772,40 @@ extern "C" int __connect(int fd, const struct sockaddr* addr, socklen_t len) {
   const struct sockaddr* a = nr_map_sockaddr(addr, &len, &buf);
   if (a == nullptr) return -1;
   return __nrp_connect(fd, a, len);
+}
+
+// Socket addresses read back (getsockname, getpeername) lose the root again:
+// android_get_control_socket() checks that a socket is bound to
+// /dev/socket/NAME, for one.
+static void nr_unmap_sockaddr(struct sockaddr* addr, socklen_t user_len, socklen_t* len) {
+  constexpr size_t kPathOff = offsetof(struct sockaddr_un, sun_path);
+  if (addr == nullptr || len == nullptr || addr->sa_family != AF_UNIX ||
+      static_cast<int64_t>(*len) <= static_cast<int64_t>(kPathOff) ||
+      static_cast<int64_t>(user_len) <= static_cast<int64_t>(kPathOff)) {
+    return;
+  }
+  struct sockaddr_un* un = reinterpret_cast<struct sockaddr_un*>(addr);
+  if (un->sun_path[0] != '/') return;
+  size_t avail = static_cast<size_t>(*len < user_len ? *len : user_len) - kPathOff;
+  size_t n = strnlen(un->sun_path, avail);
+  size_t m = nr_unmap(un->sun_path, n);
+  if (m == n) return;
+  if (m < avail) un->sun_path[m] = '\0';
+  *len = static_cast<socklen_t>(kPathOff + m + 1);
+}
+
+extern "C" int getsockname(int fd, struct sockaddr* addr, socklen_t* len) {
+  socklen_t user_len = len ? *len : 0;
+  int r = __nrp_getsockname(fd, addr, len);
+  if (r == 0) nr_unmap_sockaddr(addr, user_len, len);
+  return r;
+}
+
+extern "C" int getpeername(int fd, struct sockaddr* addr, socklen_t* len) {
+  socklen_t user_len = len ? *len : 0;
+  int r = __nrp_getpeername(fd, addr, len);
+  if (r == 0) nr_unmap_sockaddr(addr, user_len, len);
+  return r;
 }
 
 // ---- execve ----
