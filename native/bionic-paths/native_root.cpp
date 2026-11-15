@@ -16,6 +16,11 @@
  * execve() also starts dynamic programs through the image's own linker
  * ("linker64 PROGRAM ARGS..."), because the kernel would otherwise load the
  * host's /system/bin/linker64, and handles "#!" scripts the same way.
+ *
+ * /dev/binder and /dev/vndbinder are nbinder's (native_binder.cpp): open,
+ * ioctl, mmap and close on them go there, never to the phone's binder.
+ * /sys/fs/selinux is the root's: a stand-in that tells libselinux SELinux is
+ * permissive (an app can't consult the phone's policy for its own services).
  */
 
 #include <alloca.h>
@@ -71,7 +76,22 @@ int __nrp_inotify_add_watch(int, const char*, uint32_t);
 int __nrp_execve(const char*, char* const*, char* const*);
 int __nrp_bind(int, const struct sockaddr*, socklen_t);
 int __nrp_connect(int, const struct sockaddr*, socklen_t);
+int __nrp_ioctl(int, int, void*);
+int __nrp_close(int);
+#if defined(__LP64__)
+void* __nrp_mmap(void*, size_t, int, int, int, off_t);
+#else
+void* __nrp_mmap2(void*, size_t, int, int, int, long);
+#endif
 }
+
+// native_binder.cpp
+bool nb_is_binder(int fd);
+const char* nb_device(const char* path);
+int nb_open(const char* device, int flags);
+void* nb_mmap(int fd, void* addr, size_t size, int prot, int flags);
+int nb_ioctl(int fd, unsigned long request, void* arg);
+void nb_forget(int fd);
 
 static constexpr char kRootVar[] = "ANDROID_NATIVE_ROOT";
 
@@ -107,12 +127,24 @@ static bool nr_under(const char* p, const char* dir, size_t dir_len) {
 }
 
 static bool nr_host_path(const char* p) {
-  if (nr_under(p, "/proc", 5) || nr_under(p, "/sys", 4)) return true;
+  if (nr_under(p, "/proc", 5)) return true;
+  if (nr_under(p, "/sys", 4)) return !nr_under(p, "/sys/fs/selinux", 15);
   if (nr_under(p, "/dev", 4)) {
-    // Android's property area and sockets come from the image.
-    return !nr_under(p, "/dev/__properties__", 19) && !nr_under(p, "/dev/socket", 11);
+    // Android's property area and sockets come from the image; binderfs
+    // (driver feature files) isn't the phone's either.
+    return !nr_under(p, "/dev/__properties__", 19) && !nr_under(p, "/dev/socket", 11) &&
+           !nr_under(p, "/dev/binderfs", 13);
   }
   return false;
+}
+
+// libselinux only uses a selinuxfs whose statfs() says so.
+static constexpr unsigned long kSelinuxMagic = 0xf97cff8c;
+static void nr_fake_selinuxfs(const char* path, struct statfs* buf) {
+  size_t rl;
+  if (path != nullptr && nr_root(&rl) != nullptr && nr_under(path, "/sys/fs/selinux", 15)) {
+    buf->f_type = kSelinuxMagic;
+  }
 }
 
 // Bytes needed to map `path` (see nr_map), or 0 when it stays as it is.
@@ -164,6 +196,10 @@ static size_t nr_unmap(char* buf, size_t len) {
   if (var == nullptr && (path) != nullptr) return -1
 
 extern "C" int __openat(int fd, const char* path, int flags, int mode) {
+  size_t rl;
+  if (path != nullptr && path[0] == '/' && nr_root(&rl) != nullptr) {
+    if (const char* dev = nb_device(path)) return nb_open(dev, flags);
+  }
   NR_MAP(p, path);
   return __nrp_openat(fd, p, flags, mode);
 }
@@ -250,7 +286,9 @@ extern "C" int truncate64(const char* path, off64_t length) {
 
 extern "C" int __statfs(const char* path, struct statfs* buf) {
   NR_MAP(p, path);
-  return __nrp_statfs(p, buf);
+  int r = __nrp_statfs(p, buf);
+  if (r == 0) nr_fake_selinuxfs(path, buf);
+  return r;
 }
 #else
 extern "C" int truncate64(const char* path, off64_t length) {
@@ -260,7 +298,37 @@ extern "C" int truncate64(const char* path, off64_t length) {
 
 extern "C" int __statfs64(const char* path, size_t size, struct statfs* buf) {
   NR_MAP(p, path);
-  return __nrp_statfs64(p, size, buf);
+  int r = __nrp_statfs64(p, size, buf);
+  if (r == 0) nr_fake_selinuxfs(path, buf);
+  return r;
+}
+#endif
+
+// Binder fds (from nb_open) are sockets to nbinder: their ioctls and mmap
+// go there. A quick lock-free check for every other fd.
+extern "C" int __ioctl(int fd, int request, void* arg) {
+  if (fd >= 0 && nb_is_binder(fd)) return nb_ioctl(fd, static_cast<unsigned>(request), arg);
+  return __nrp_ioctl(fd, request, arg);
+}
+
+extern "C" int __close(int fd) {
+  if (fd >= 0 && nb_is_binder(fd)) nb_forget(fd);
+  return __nrp_close(fd);
+}
+
+#if defined(__LP64__)
+extern "C" void* mmap(void* addr, size_t size, int prot, int flags, int fd, off_t offset) {
+  if (fd >= 0 && nb_is_binder(fd)) return nb_mmap(fd, addr, size, prot, flags);
+  return __nrp_mmap(addr, size, prot, flags, fd, offset);
+}
+
+extern "C" void* mmap64(void* addr, size_t size, int prot, int flags, int fd, off64_t offset) {
+  return mmap(addr, size, prot, flags, fd, static_cast<off_t>(offset));
+}
+#else
+extern "C" void* __mmap2(void* addr, size_t size, int prot, int flags, int fd, long pgoffset) {
+  if (fd >= 0 && nb_is_binder(fd)) return nb_mmap(fd, addr, size, prot, flags);
+  return __nrp_mmap2(addr, size, prot, flags, fd, pgoffset);
 }
 #endif
 

@@ -36,3 +36,19 @@ Step 3 (`nprops/`): Android properties. nprops does init's part: it builds
 answers setprop on /dev/socket/property_service (init's protocol, ro.* stays
 read-only). libc now also maps AF_UNIX socket paths (bind/connect), so
 setprop reaches nprops instead of the phone's own property service.
+Property files in an app belong to the app's uid, so the property readers
+accept files owned by the caller as well as by root. Tested on the phone:
+113 properties loaded, getprop/setprop work.
+
+Step 4 (`nbinder/`): binder. An app can't get a binder context from the
+kernel, so nbinder is a userspace binder driver (drivers/android/binder.c's
+commands, reference counting, nested calls, oneway ordering and death
+notifications), and libc's `native_binder.cpp` turns open/ioctl/mmap on
+/dev/binder into messages to it: libbinder runs unchanged. Transaction data
+goes straight into the receiver's buffer (a memfd shared with nbinder); fds
+travel as SCM_RIGHTS. HIDL's scatter-gather objects are not supported.
+`/sys/fs/selinux` is a permissive stand-in in the root, so servicemanager's
+SELinux checks pass. `./run.sh nboot` starts nprops, nbinder and the
+image's servicemanager; `./run.sh service list` asks it for its services.
+`nbinder/test/nbtest.cpp` runs both halves against each other on the CI
+runner.

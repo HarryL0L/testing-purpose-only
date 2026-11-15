@@ -1,0 +1,8 @@
+// nbinder: the userspace binder driver for native mode (see nbinder.cpp).
+cc_binary {
+    name: "nbinder",
+    srcs: ["nbinder.cpp"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+    // Static, like nprops: it is started before anything else of the image.
+    static_executable: true,
+}

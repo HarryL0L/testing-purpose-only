@@ -23,9 +23,27 @@ import tempfile
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PROGRAMS = ["toybox", "sh", "toolbox"]
+PROGRAMS = ["toybox", "sh", "toolbox", "servicemanager", "service"]
 TOYBOX_APPLETS = ["ls", "cat", "uname", "id", "ps", "env", "echo", "readlink", "pwd", "mkdir",
-                  "rm", "cp", "mv", "ln", "touch", "head", "tail", "grep", "sed", "wc", "find"]
+                  "rm", "cp", "mv", "ln", "touch", "head", "tail", "grep", "sed", "wc", "find",
+                  "sleep", "pkill", "kill"]
+BUILT_PROGRAMS = ["nprops", "nbinder"]  # static, from our build
+
+# Started by ./run.sh nboot: what init starts first on a device.
+NBOOT = """#!/system/bin/sh
+# Native mode's first services, as init starts them on a device: properties
+# (nprops), binder (nbinder) and servicemanager.
+#   ./run.sh nboot [NAME=VALUE...]      NAME=VALUE: extra properties
+nprops "$@" || exit 1
+nbinder || exit 1
+servicemanager > /data/local/tmp/servicemanager.log 2>&1 &
+i=0
+while [ "$(getprop servicemanager.ready)" != true ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+echo "servicemanager.ready=$(getprop servicemanager.ready)"
+"""
+
+# selinux_status_t: version 1, sequence 0, enforcing 0, policyload 0, deny_unknown 0
+SELINUX_STATUS = struct.pack("<5I", 1, 0, 0, 0, 0).ljust(4096, b"\0")
 OURS = {  # image path -> our build's file name
     "/apex/com.android.runtime/bin/linker64": "linker64",
     "/apex/com.android.runtime/lib64/bionic/libc.so": "libc.so",
@@ -106,6 +124,26 @@ class Image:
         self.apexes[name] = dest
         return dest
 
+    def find_lib(self, lib):
+        """A 64-bit library: /system/lib64, the runtime APEX, then any APEX."""
+        for d in LIB_DIRS:
+            src = self.host(d + "/" + lib)
+            if src is not None:
+                return src
+        apex_root = os.path.join(self.system, "system", "apex")
+        for f in sorted(os.listdir(apex_root)):
+            name, ext = os.path.splitext(f)
+            if ext not in (".apex", ".capex"):
+                continue
+            try:
+                p = os.path.join(self.apex_dir(name), "lib64", lib)
+            except (zipfile.BadZipFile, KeyError, subprocess.CalledProcessError):
+                continue
+            if os.path.exists(p) and not os.path.islink(p):
+                print("library %s from APEX %s" % (lib, name))
+                return p
+        return None
+
     def host(self, guest, depth=0):
         """Host path of an image path, following symlinks inside the image."""
         if depth > 16:
@@ -168,9 +206,12 @@ def main():
 
     done = {"libc.so", "libdl.so", "libm.so", "ld-android.so"}
     todo = []
-    nprops = os.path.join(built, "nprops")
-    if os.path.exists(nprops):
-        todo.append(place("/system/bin/nprops", nprops))
+    for prog in BUILT_PROGRAMS:
+        src = os.path.join(built, prog)
+        if os.path.exists(src):
+            todo.append(place("/system/bin/" + prog, src))
+        else:
+            print("not built:", prog)
     for prog in PROGRAMS:
         src = img.host("/system/bin/" + prog)
         if src is None:
@@ -181,11 +222,9 @@ def main():
             if lib in done:
                 continue
             done.add(lib)
-            for d in LIB_DIRS:
-                src = img.host(d + "/" + lib)
-                if src is not None:
-                    todo.append(place("/system/lib64/" + lib, src))
-                    break
+            src = img.find_lib(lib)
+            if src is not None:
+                todo.append(place("/system/lib64/" + lib, src))
             else:
                 print("library not found:", lib)
 
@@ -193,11 +232,29 @@ def main():
         symlink("/system/bin/" + applet, "/system/bin/toybox")
     for tool in ("getprop", "setprop"):
         symlink("/system/bin/" + tool, "/system/bin/toolbox")
-    # Properties: the image's contexts and build.prop for nprops to load.
-    for f in ("/system/etc/selinux/plat_property_contexts", "/system/build.prop"):
+    # Properties: the image's contexts and build.prop for nprops to load;
+    # service contexts for servicemanager.
+    for f in ("/system/etc/selinux/plat_property_contexts", "/system/build.prop",
+              "/system/etc/selinux/plat_service_contexts"):
         src = img.host(f)
         if src:
             place(f, src)
+        else:
+            print("not in the image:", f)
+    # A permissive selinuxfs stand-in (libc maps /sys/fs/selinux here and
+    # gives it selinuxfs's statfs type): SELinux checks in the image's
+    # programs pass, since an app can't ask the phone's policy about them.
+    sel = os.path.join(root, "sys", "fs", "selinux")
+    os.makedirs(sel, exist_ok=True)
+    for name, data in (("status", SELINUX_STATUS), ("enforce", b"0"), ("deny_unknown", b"0"),
+                       ("reject_unknown", b"0"), ("mls", b"1"), ("policyvers", b"33"),
+                       ("checkreqprot", b"0"), ("context", b"")):
+        with open(os.path.join(sel, name), "wb") as f:
+            f.write(data)
+    os.chmod(os.path.join(sel, "context"), 0o666)
+    with open(os.path.join(root, "system", "bin", "nboot"), "w") as f:
+        f.write(NBOOT)
+    os.chmod(os.path.join(root, "system", "bin", "nboot"), 0o755)
     mkshrc = img.host("/system/etc/mkshrc")
     if mkshrc:
         place("/system/etc/mkshrc", mkshrc)
@@ -215,7 +272,7 @@ def main():
     with open(os.path.join(out, "run.sh"), "w") as f:
         f.write("""#!/bin/sh
 # Run an Android 17 program from root/ directly on this phone's kernel.
-#   ./run.sh toybox uname -a      ./run.sh sh
+#   ./run.sh toybox uname -a      ./run.sh sh      ./run.sh nboot
 cd "$(dirname "$0")"
 export ANDROID_NATIVE_ROOT="$PWD/root"
 # Termux preloads its own helper (libtermux-exec); Android 17's linker would look for it in root/

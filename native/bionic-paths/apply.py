@@ -5,7 +5,8 @@
 
 1. In libc/SYSCALLS.TXT, rename the stubs of system calls that take paths to
    __nrp_<name>, so that native_root.cpp can provide the real names.
-2. Copy native_root.cpp to libc/bionic/ and add it to libc_bionic's sources.
+2. Copy native_root.cpp and native_binder.cpp (with nbinder_proto.h) to
+   libc/bionic/ and add them to libc_bionic's sources.
 3. Let the property readers trust files owned by the caller as well as by
    root: in an app (Termux) every file in the root belongs to the app's uid.
 
@@ -54,6 +55,11 @@ RENAMES = [
     ("inotify_add_watch", "inotify_add_watch", None),
     ("bind", "bind", None),
     ("__connect", "connect", None),
+    # binder fds (native_binder.cpp)
+    ("__ioctl", "ioctl", None),
+    ("__close", "close", None),
+    ("mmap|mmap64", "mmap", "lp64"),
+    ("__mmap2", "mmap2", "lp32"),
 ]
 
 # The internal name each renamed stub gets (matches native_root.cpp).
@@ -102,7 +108,8 @@ def patch_android_bp(path):
     anchor = '        "bionic/open.cpp",\n'
     if s.count(anchor) != 1:
         sys.exit("libc/Android.bp: expected one bionic/open.cpp entry")
-    s = s.replace(anchor, anchor + '        "bionic/native_root.cpp",\n')
+    s = s.replace(anchor, anchor + '        "bionic/native_root.cpp",\n'
+                                   '        "bionic/native_binder.cpp",\n')
     with open(path, "w") as f:
         f.write(s)
 
@@ -127,8 +134,10 @@ def main():
     bionic = sys.argv[1]
     here = os.path.dirname(os.path.abspath(__file__))
     patch_syscalls(os.path.join(bionic, "libc", "SYSCALLS.TXT"))
-    shutil.copy(os.path.join(here, "native_root.cpp"),
-                os.path.join(bionic, "libc", "bionic", "native_root.cpp"))
+    for f in ("native_root.cpp", "native_binder.cpp"):
+        shutil.copy(os.path.join(here, f), os.path.join(bionic, "libc", "bionic", f))
+    shutil.copy(os.path.join(here, "..", "nbinder", "nbinder_proto.h"),
+                os.path.join(bionic, "libc", "bionic", "nbinder_proto.h"))
     patch_android_bp(os.path.join(bionic, "libc", "Android.bp"))
     patch_owner_check(os.path.join(bionic, "libc", "system_properties", "prop_area.cpp"))
     patch_owner_check(os.path.join(os.path.dirname(os.path.abspath(bionic)), "system", "core",
