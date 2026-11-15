@@ -431,15 +431,16 @@ extern "C" int capset(void* header, const void* data) {
 extern "C" int prctl(int option, unsigned long a2, unsigned long a3, unsigned long a4,
                      unsigned long a5) {
   int r = __nrp_prctl(option, a2, a3, a4, a5);
-  if (r == -1 && (errno == EPERM || errno == EINVAL) && nr_ids()) {
+  // Only "not allowed" is faked: EINVAL stays (zygote drops the bounding set
+  // with "for (i = 0; prctl(PR_CAPBSET_READ, i) >= 0; i++)", which ends on
+  // EINVAL; reading is never refused, so PR_CAPBSET_READ is left alone).
+  if (r == -1 && errno == EPERM && nr_ids()) {
     switch (option) {
       case 8:   // PR_SET_KEEPCAPS
       case 24:  // PR_CAPBSET_DROP
       case 28:  // PR_SET_SECUREBITS
       case 47:  // PR_CAP_AMBIENT
         return 0;
-      case 23:  // PR_CAPBSET_READ
-        return 1;
     }
   }
   return r;

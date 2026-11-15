@@ -99,3 +99,7 @@ do), and the log works (crash_dump's backtrace lands in log.txt). Zygote's
 fd check (fd_utils.cpp: only /dev/null, its sockets, framework jars...)
 refused the redirected stdout; nzygote now gives it /dev/null as init does,
 and nsocket closes every other inherited fd.
+Phone: zygote forks system_server (pid created, zygote accepting command
+connections), after 0.76 s of zygote start-up. system_server then spun in
+zygote's bounding-set loop (the PR_CAPBSET_READ fake turned the ending
+EINVAL into "present"); only EPERM is faked now.
