@@ -6,6 +6,8 @@
 1. In libc/SYSCALLS.TXT, rename the stubs of system calls that take paths to
    __nrp_<name>, so that native_root.cpp can provide the real names.
 2. Copy native_root.cpp to libc/bionic/ and add it to libc_bionic's sources.
+3. Let the property readers trust files owned by the caller as well as by
+   root: in an app (Termux) every file in the root belongs to the app's uid.
 
 Idempotent: running it twice changes nothing the second time.
 """
@@ -105,6 +107,22 @@ def patch_android_bp(path):
         f.write(s)
 
 
+OWNER_OLD = "(fd_stat.st_uid != 0) || (fd_stat.st_gid != 0)"
+OWNER_NEW = ("(fd_stat.st_uid != 0 && fd_stat.st_uid != getuid()) || "
+             "(fd_stat.st_gid != 0 && fd_stat.st_gid != getgid())")
+
+
+def patch_owner_check(path):
+    with open(path) as f:
+        s = f.read()
+    if OWNER_NEW in s:
+        return
+    if s.count(OWNER_OLD) != 1:
+        sys.exit("%s: expected one root-owner check" % path)
+    with open(path, "w") as f:
+        f.write(s.replace(OWNER_OLD, OWNER_NEW))
+
+
 def main():
     bionic = sys.argv[1]
     here = os.path.dirname(os.path.abspath(__file__))
@@ -112,6 +130,10 @@ def main():
     shutil.copy(os.path.join(here, "native_root.cpp"),
                 os.path.join(bionic, "libc", "bionic", "native_root.cpp"))
     patch_android_bp(os.path.join(bionic, "libc", "Android.bp"))
+    patch_owner_check(os.path.join(bionic, "libc", "system_properties", "prop_area.cpp"))
+    patch_owner_check(os.path.join(os.path.dirname(os.path.abspath(bionic)), "system", "core",
+                                   "property_service", "libpropertyinfoparser",
+                                   "property_info_parser.cpp"))
     print("bionic: path prefixing applied")
 
 

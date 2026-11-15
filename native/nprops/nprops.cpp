@@ -216,11 +216,23 @@ int main(int argc, char** argv) {
 
   ClearPropertyDir();
   if (!WritePropertyInfo()) return 1;
-  // The area files can't get SELinux labels from an app; bionic still sets
-  // them up (and returns -1), so carry on without property separation.
-  if (__system_property_area_init() != 0) {
-    msg("property areas created without SELinux labels (expected in an app)");
+  // The area files can't get SELinux labels from an app: bionic logs one line
+  // per file, still sets the areas up and returns -1. Keep stderr quiet
+  // meanwhile and check that the areas work instead.
+  int saved_stderr = dup(STDERR_FILENO);
+  int null_fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
+  if (saved_stderr != -1 && null_fd != -1) dup2(null_fd, STDERR_FILENO);
+  int init_result = __system_property_area_init();
+  if (saved_stderr != -1) {
+    dup2(saved_stderr, STDERR_FILENO);
+    close(saved_stderr);
   }
+  if (null_fd != -1) close(null_fd);
+  if (SetProperty("ro.native.nprops", "1") != PROP_SUCCESS) {
+    msg("cannot create the property areas in %s", PROP_DIRNAME);
+    return 1;
+  }
+  if (init_result != 0) msg("property areas have no SELinux labels (expected in an app)");
 
   std::map<std::string, std::string> props;
   for (const char* f : {"/system/build.prop", "/system_ext/etc/build.prop", "/vendor/build.prop",
@@ -228,6 +240,7 @@ int main(int argc, char** argv) {
     LoadPropFile(f, &props);
   }
   for (const auto& [k, v] : overrides) props[k] = v;
+  props["ro.property_service.version"] = "2";  // as init: clients use PROP_MSG_SETPROP2
   size_t loaded = 0;
   for (const auto& [k, v] : props) {
     if (__system_property_add(k.c_str(), k.size(), v.c_str(), v.size()) == 0) loaded++;
@@ -238,7 +251,6 @@ int main(int argc, char** argv) {
   int fds[2] = {Listen("/dev/socket/" PROP_SERVICE_NAME),
                 Listen("/dev/socket/" PROP_SERVICE_FOR_SYSTEM_NAME)};
   if (fds[0] == -1) return 1;
-  SetProperty("ro.native.nprops", "1");
 
   if (!foreground && daemon(1, 1) != 0) {
     msg("daemon: %s", strerror(errno));
