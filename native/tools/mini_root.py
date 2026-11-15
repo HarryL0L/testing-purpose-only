@@ -202,6 +202,9 @@ cd "$(dirname "$0")"
 export ANDROID_NATIVE_ROOT="$PWD/root"
 # Termux preloads its own helper (libtermux-exec); Android 17's linker would look for it in root/
 unset LD_PRELOAD LD_LIBRARY_PATH
+# Android's own environment (Termux's PATH points at folders the image doesn't have)
+export PATH=/system/bin:/system/xbin HOME=/data/local/tmp TMPDIR=/data/local/tmp \
+  ANDROID_ROOT=/system ANDROID_DATA=/data
 prog="$1"; shift
 exec "$ANDROID_NATIVE_ROOT/apex/com.android.runtime/bin/linker64" "/system/bin/$prog" "$@"
 """)
