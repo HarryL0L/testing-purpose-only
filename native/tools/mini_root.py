@@ -224,7 +224,9 @@ unset LD_PRELOAD LD_LIBRARY_PATH
 export PATH=/system/bin:/system/xbin HOME=/data/local/tmp TMPDIR=/data/local/tmp \
   ANDROID_ROOT=/system ANDROID_DATA=/data
 prog="$1"; shift
-exec "$ANDROID_NATIVE_ROOT/apex/com.android.runtime/bin/linker64" "/system/bin/$prog" "$@"
+# Start it through the image's shell: its execve() runs dynamic programs through
+# the image's linker and static ones (nprops) directly.
+exec "$ANDROID_NATIVE_ROOT/apex/com.android.runtime/bin/linker64" /system/bin/sh -c 'exec "$@"' sh "/system/bin/$prog" "$@"
 """)
     os.chmod(os.path.join(out, "run.sh"), 0o755)
     shutil.rmtree(work, ignore_errors=True)

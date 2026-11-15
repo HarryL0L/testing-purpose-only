@@ -8,10 +8,13 @@ cc_binary {
         "-Wall",
         "-Werror",
     ],
+    // Static, like init: the property-writing calls (__system_property_add,
+    // ...) are platform-only and not in the libc that dynamic programs link.
+    static_executable: true,
     static_libs: [
         "libbase",
+        "liblog",
         "libpropertyinfoparser",
         "libpropertyinfoserializer",
     ],
-    shared_libs: ["liblog"],
 }

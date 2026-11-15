@@ -338,7 +338,8 @@ extern "C" int inotify_add_watch(int fd, const char* path, uint32_t mask) {
 static const struct sockaddr* nr_map_sockaddr(const struct sockaddr* addr, socklen_t* len,
                                               struct sockaddr_un* out) {
   constexpr size_t kPathOff = offsetof(struct sockaddr_un, sun_path);
-  if (addr == nullptr || *len < 0 || static_cast<size_t>(*len) <= kPathOff ||
+  // socklen_t is signed on 32-bit arm and unsigned on arm64.
+  if (addr == nullptr || static_cast<int64_t>(*len) <= static_cast<int64_t>(kPathOff) ||
       addr->sa_family != AF_UNIX) {
     return addr;
   }
