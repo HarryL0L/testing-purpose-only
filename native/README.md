@@ -48,7 +48,10 @@ notifications), and libc's `native_binder.cpp` turns open/ioctl/mmap on
 goes straight into the receiver's buffer (a memfd shared with nbinder); fds
 travel as SCM_RIGHTS. HIDL's scatter-gather objects are not supported.
 `/sys/fs/selinux` is a permissive stand-in in the root, so servicemanager's
-SELinux checks pass. `./run.sh nboot` starts nprops, nbinder and the
+SELinux checks pass. `./run.sh nboot` starts nlogd (logd's socket, to /data/local/tmp/log.txt), nprops, nbinder and the
 image's servicemanager; `./run.sh service list` asks it for its services.
 `nbinder/test/nbtest.cpp` runs both halves against each other on the CI
 runner.
+Checked on the CI-built root under qemu-aarch64: Android 17's servicemanager
+becomes the context manager and `service list` gets
+`0 manager: [android.os.IServiceManager]` back through nbinder.

@@ -26,20 +26,32 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROGRAMS = ["toybox", "sh", "toolbox", "servicemanager", "service"]
 TOYBOX_APPLETS = ["ls", "cat", "uname", "id", "ps", "env", "echo", "readlink", "pwd", "mkdir",
                   "rm", "cp", "mv", "ln", "touch", "head", "tail", "grep", "sed", "wc", "find",
-                  "sleep", "pkill", "kill"]
-BUILT_PROGRAMS = ["nprops", "nbinder"]  # static, from our build
+                  "sleep", "pkill", "kill", "timeout"]
+BUILT_PROGRAMS = ["nlogd", "nprops", "nbinder"]  # static, from our build
 
 # Started by ./run.sh nboot: what init starts first on a device.
 NBOOT = """#!/system/bin/sh
-# Native mode's first services, as init starts them on a device: properties
-# (nprops), binder (nbinder) and servicemanager.
+# Native mode's first services, as init starts them on a device: logging
+# (nlogd), properties (nprops), binder (nbinder) and servicemanager.
 #   ./run.sh nboot [NAME=VALUE...]      NAME=VALUE: extra properties
+# Logs: /data/local/tmp/log.txt (liblog), /dev/kmsg (KernelLogger),
+# /data/local/tmp/nbinder.log, /data/local/tmp/servicemanager.log
+cd /data/local/tmp
+: > /dev/kmsg
+nlogd || exit 1
 nprops "$@" || exit 1
-nbinder || exit 1
+nbinder -v 2> /data/local/tmp/nbinder.log || { cat /data/local/tmp/nbinder.log; exit 1; }
 servicemanager > /data/local/tmp/servicemanager.log 2>&1 &
 i=0
 while [ "$(getprop servicemanager.ready)" != true ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
-echo "servicemanager.ready=$(getprop servicemanager.ready)"
+r=$(getprop servicemanager.ready)
+echo "servicemanager.ready=$r"
+if [ "$r" != true ]; then
+  echo "--- servicemanager.log"; cat /data/local/tmp/servicemanager.log
+  echo "--- /dev/kmsg"; tail -n 30 /dev/kmsg
+  echo "--- log.txt"; tail -n 40 /data/local/tmp/log.txt
+  echo "--- nbinder.log"; tail -n 30 /data/local/tmp/nbinder.log
+fi
 """
 
 # selinux_status_t: version 1, sequence 0, enforcing 0, policyload 0, deny_unknown 0
@@ -161,6 +173,17 @@ class Image:
         return p if os.path.exists(p) else None
 
 
+def interp(path):
+    """PT_INTERP of an ELF file, or None."""
+    if os.path.islink(path):
+        return None
+    out = subprocess.run(["readelf", "-lW", path], capture_output=True, text=True).stdout
+    for l in out.splitlines():
+        if "Requesting program interpreter:" in l:
+            return l.split(":", 1)[1].strip().rstrip("]").strip()
+    return None
+
+
 def needed(path):
     out = subprocess.run(["readelf", "-d", path], capture_output=True, text=True).stdout
     return [l.split("[", 1)[1].split("]", 1)[0] for l in out.splitlines() if "(NEEDED)" in l]
@@ -227,6 +250,18 @@ def main():
                 todo.append(place("/system/lib64/" + lib, src))
             else:
                 print("library not found:", lib)
+
+    # Programs ask for their linker by path: most for /system/bin/linker64,
+    # "bootstrap" ones (servicemanager, ...) for /system/bin/bootstrap/linker64.
+    # All of them get ours.
+    bindir = os.path.join(root, "system", "bin")
+    for f in sorted(os.listdir(bindir)):
+        ip = interp(os.path.join(bindir, f))
+        if ip and not os.path.lexists(os.path.join(root, ip.lstrip("/"))):
+            print("linker path", ip, "for", f)
+            symlink(ip, "/apex/com.android.runtime/bin/linker64")
+    for lib in ("libc.so", "libdl.so", "libm.so"):
+        symlink("/system/lib64/bootstrap/" + lib, "/apex/com.android.runtime/lib64/bionic/" + lib)
 
     for applet in TOYBOX_APPLETS:
         symlink("/system/bin/" + applet, "/system/bin/toybox")

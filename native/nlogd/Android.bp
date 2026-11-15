@@ -1,0 +1,7 @@
+// nlogd: logd's socket for native mode (see nlogd.cpp).
+cc_binary {
+    name: "nlogd",
+    srcs: ["nlogd.cpp"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+    static_executable: true,
+}

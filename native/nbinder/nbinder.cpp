@@ -52,6 +52,9 @@ namespace {
 
 bool g_verbose = false;
 
+// When a process's SELinux context can't be read (no SELinux on the host).
+constexpr char kFallbackSecctx[] = "u:r:untrusted_app:s0";
+
 // Freeze notifications (newer than some uapi headers; the values are fixed).
 constexpr uint32_t kBcRequestFreezeNotification = _IOW('c', 19, struct binder_handle_cookie);
 constexpr uint32_t kBcClearFreezeNotification = _IOW('c', 20, struct binder_handle_cookie);
@@ -821,8 +824,9 @@ void do_transaction(Thread* th, const struct binder_transaction_data& tr, const 
   t->is_reply = reply;
 
   std::string secctx;
-  if (target_node && target_node->txn_security_ctx && !proc->secctx.empty()) {
-    secctx = proc->secctx;
+  if (target_node && target_node->txn_security_ctx) {
+    // As the driver, always give one: servicemanager aborts without it.
+    secctx = proc->secctx.empty() ? kFallbackSecctx : proc->secctx;
     secctx.push_back('\0');
   }
   bool async = !reply && (tr.flags & TF_ONE_WAY);

@@ -40,6 +40,8 @@
 #include <sys/xattr.h>
 #include <unistd.h>
 
+#include "nbinder_proto.h"
+
 extern "C" {
 int __nrp_openat(int, const char*, int, int);
 int __nrp_faccessat(int, const char*, int);
@@ -132,8 +134,9 @@ static bool nr_host_path(const char* p) {
   if (nr_under(p, "/dev", 4)) {
     // Android's property area and sockets come from the image; binderfs
     // (driver feature files) isn't the phone's either.
+    // /dev/kmsg is a file in the root (android::base's KernelLogger writes there).
     return !nr_under(p, "/dev/__properties__", 19) && !nr_under(p, "/dev/socket", 11) &&
-           !nr_under(p, "/dev/binderfs", 13);
+           !nr_under(p, "/dev/binderfs", 13) && strcmp(p, "/dev/kmsg") != 0;
   }
   return false;
 }
@@ -199,12 +202,29 @@ extern "C" int __openat(int fd, const char* path, int flags, int mode) {
   size_t rl;
   if (path != nullptr && path[0] == '/' && nr_root(&rl) != nullptr) {
     if (const char* dev = nb_device(path)) return nb_open(dev, flags);
+    if (strcmp(path, "/dev/kmsg") == 0) {
+      // Every writer appends to the same file, as to the kernel's log.
+      flags |= O_APPEND | O_CREAT;
+      mode = 0666;
+    }
   }
   NR_MAP(p, path);
   return __nrp_openat(fd, p, flags, mode);
 }
 
 extern "C" int __faccessat(int fd, const char* path, int mode) {
+  size_t rl;
+  if (path != nullptr && path[0] == '/' && nr_root(&rl) != nullptr) {
+    // A binder device exists when nbinder is listening (the phone's own
+    // /dev/binder doesn't matter); hwbinder never does.
+    if (const char* dev = nb_device(path)) {
+      if (dev[0] == '\0') {
+        errno = ENOENT;
+        return -1;
+      }
+      path = NB_SOCKET;
+    }
+  }
   NR_MAP(p, path);
   return __nrp_faccessat(fd, p, mode);
 }
