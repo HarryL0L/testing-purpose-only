@@ -25,7 +25,10 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
 #include <sys/inotify.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/statfs.h>
 #include <sys/types.h>
@@ -66,6 +69,8 @@ int __nrp_lremovexattr(const char*, const char*);
 int __nrp_statx(int, const char*, int, unsigned, struct statx*);
 int __nrp_inotify_add_watch(int, const char*, uint32_t);
 int __nrp_execve(const char*, char* const*, char* const*);
+int __nrp_bind(int, const struct sockaddr*, socklen_t);
+int __nrp_connect(int, const struct sockaddr*, socklen_t);
 }
 
 static constexpr char kRootVar[] = "ANDROID_NATIVE_ROOT";
@@ -323,6 +328,53 @@ extern "C" int statx(int fd, const char* path, int flags, unsigned mask, struct 
 extern "C" int inotify_add_watch(int fd, const char* path, uint32_t mask) {
   NR_MAP(p, path);
   return __nrp_inotify_add_watch(fd, p, mask);
+}
+
+// ---- Unix domain sockets ----
+
+// A filesystem AF_UNIX address mapped under the root (Android's /dev/socket/
+// sockets belong to the image, e.g. the property service). Abstract and
+// relative addresses stay as they are.
+static const struct sockaddr* nr_map_sockaddr(const struct sockaddr* addr, socklen_t* len,
+                                              struct sockaddr_un* out) {
+  constexpr size_t kPathOff = offsetof(struct sockaddr_un, sun_path);
+  if (addr == nullptr || *len < 0 || static_cast<size_t>(*len) <= kPathOff ||
+      addr->sa_family != AF_UNIX) {
+    return addr;
+  }
+  const struct sockaddr_un* un = reinterpret_cast<const struct sockaddr_un*>(addr);
+  if (un->sun_path[0] != '/') return addr;
+  char path[sizeof(un->sun_path) + 1];
+  size_t max = static_cast<size_t>(*len) - kPathOff;
+  if (max > sizeof(un->sun_path)) max = sizeof(un->sun_path);
+  size_t n = strnlen(un->sun_path, max);
+  memcpy(path, un->sun_path, n);
+  path[n] = '\0';
+  size_t need = nr_map_size(path);
+  if (need == 0) return addr;
+  if (need > sizeof(out->sun_path)) {
+    errno = ENAMETOOLONG;
+    return nullptr;
+  }
+  out->sun_family = AF_UNIX;
+  nr_map(path, out->sun_path, need);
+  *len = static_cast<socklen_t>(kPathOff + need);
+  return reinterpret_cast<const struct sockaddr*>(out);
+}
+
+extern "C" int bind(int fd, const struct sockaddr* addr, socklen_t len) {
+  struct sockaddr_un buf;
+  const struct sockaddr* a = nr_map_sockaddr(addr, &len, &buf);
+  if (a == nullptr) return -1;
+  return __nrp_bind(fd, a, len);
+}
+
+// connect() itself goes through NetdClient's dispatch, which ends up here.
+extern "C" int __connect(int fd, const struct sockaddr* addr, socklen_t len) {
+  struct sockaddr_un buf;
+  const struct sockaddr* a = nr_map_sockaddr(addr, &len, &buf);
+  if (a == nullptr) return -1;
+  return __nrp_connect(fd, a, len);
 }
 
 // ---- execve ----

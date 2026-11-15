@@ -30,3 +30,9 @@ toybox and mksh run from `a17-mini` with no root and no second kernel. `ls`
 shows the image's /system/bin, cd/pwd, file writes, and programs starting
 other programs (through the image's linker) all work; no system call was
 blocked by the app sandbox.
+
+Step 3 (`nprops/`): Android properties. nprops does init's part: it builds
+/dev/__properties__ from the image's property_contexts, loads build.prop and
+answers setprop on /dev/socket/property_service (init's protocol, ro.* stays
+read-only). libc now also maps AF_UNIX socket paths (bind/connect), so
+setprop reaches nprops instead of the phone's own property service.

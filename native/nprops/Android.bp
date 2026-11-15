@@ -1,0 +1,17 @@
+// Android's property service for native mode (see nprops.cpp).
+// Copied into the AOSP checkout by .github/workflows/bionic.yml.
+
+cc_binary {
+    name: "nprops",
+    srcs: ["nprops.cpp"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    static_libs: [
+        "libbase",
+        "libpropertyinfoparser",
+        "libpropertyinfoserializer",
+    ],
+    shared_libs: ["liblog"],
+}

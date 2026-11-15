@@ -50,6 +50,8 @@ RENAMES = [
     ("lremovexattr", "lremovexattr", None),
     ("statx", "statx", None),
     ("inotify_add_watch", "inotify_add_watch", None),
+    ("bind", "bind", None),
+    ("__connect", "connect", None),
 ]
 
 # The internal name each renamed stub gets (matches native_root.cpp).

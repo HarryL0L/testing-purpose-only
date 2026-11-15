@@ -23,7 +23,7 @@ import tempfile
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PROGRAMS = ["toybox", "sh"]
+PROGRAMS = ["toybox", "sh", "toolbox"]
 TOYBOX_APPLETS = ["ls", "cat", "uname", "id", "ps", "env", "echo", "readlink", "pwd", "mkdir",
                   "rm", "cp", "mv", "ln", "touch", "head", "tail", "grep", "sed", "wc", "find"]
 OURS = {  # image path -> our build's file name
@@ -168,6 +168,9 @@ def main():
 
     done = {"libc.so", "libdl.so", "libm.so", "ld-android.so"}
     todo = []
+    nprops = os.path.join(built, "nprops")
+    if os.path.exists(nprops):
+        todo.append(place("/system/bin/nprops", nprops))
     for prog in PROGRAMS:
         src = img.host("/system/bin/" + prog)
         if src is None:
@@ -188,6 +191,13 @@ def main():
 
     for applet in TOYBOX_APPLETS:
         symlink("/system/bin/" + applet, "/system/bin/toybox")
+    for tool in ("getprop", "setprop"):
+        symlink("/system/bin/" + tool, "/system/bin/toolbox")
+    # Properties: the image's contexts and build.prop for nprops to load.
+    for f in ("/system/etc/selinux/plat_property_contexts", "/system/build.prop"):
+        src = img.host(f)
+        if src:
+            place(f, src)
     mkshrc = img.host("/system/etc/mkshrc")
     if mkshrc:
         place("/system/etc/mkshrc", mkshrc)
