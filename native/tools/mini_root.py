@@ -191,6 +191,14 @@ def main():
     mkshrc = img.host("/system/etc/mkshrc")
     if mkshrc:
         place("/system/etc/mkshrc", mkshrc)
+    # A minimal linker configuration (on a device, linkerconfig generates this at boot).
+    os.makedirs(os.path.join(root, "linkerconfig"), exist_ok=True)
+    with open(os.path.join(root, "linkerconfig", "ld.config.txt"), "w") as f:
+        f.write("dir.system = /system/bin/\n"
+                "[system]\n"
+                "additional.namespaces =\n"
+                "namespace.default.isolated = false\n"
+                "namespace.default.search.paths = /system/${LIB}\n")
     for d in ("/dev/socket", "/data/local/tmp", "/tmp"):
         os.makedirs(os.path.join(root, d.lstrip("/")), exist_ok=True)
 

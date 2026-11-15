@@ -24,3 +24,9 @@ and /dev/socket). execve() starts dynamic programs through the image's own
 linker. Without ANDROID_NATIVE_ROOT, libc behaves like stock. `apply.py`
 renames the path-taking system call stubs in SYSCALLS.TXT and adds
 `native_root.cpp` to libc.
+
+Tested on the phone (RMX3031, Android 13, kernel 4.19) in Termux: Android 17's
+toybox and mksh run from `a17-mini` with no root and no second kernel. `ls`
+shows the image's /system/bin, cd/pwd, file writes, and programs starting
+other programs (through the image's linker) all work; no system call was
+blocked by the app sandbox.
