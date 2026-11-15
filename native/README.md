@@ -61,3 +61,7 @@ libc now virtualizes user and group ids like proot -0: programs see root
 (ids passed on through ANDROID_NATIVE_IDS), set*id() change the virtual
 ids, files owned by the app look owned by them and chown() succeeds; libc
 tells nbinder its virtual euid, which binder reports to callees.
+Tested on the phone (Termux): `./run.sh nboot` brings up nlogd, nprops,
+nbinder and servicemanager (`servicemanager.ready=true`); `./run.sh service
+list` prints `0 manager: [android.os.IServiceManager]`; `./run.sh id` gives
+`uid=0(root)`. Binder works natively in an app, without root.
