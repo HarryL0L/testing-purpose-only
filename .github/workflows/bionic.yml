@@ -85,7 +85,7 @@ jobs:
         if: failure()
         run: |
           cp ~/build.log . 2>/dev/null || true
-          grep -n -A3 -E '^error:|internal error|panic|^FAILED:|missing dependencies' ~/build.log | head -40 || true
+          grep -n -A6 -E '^error|internal error: panic|^FAILED: |missing dependencies' ~/build.log | grep -v '%.*\] ' | head -80 || true
           cp ~/aosp/out/error.log . 2>/dev/null || true
           cp ~/aosp/out/soong.log . 2>/dev/null || true
 

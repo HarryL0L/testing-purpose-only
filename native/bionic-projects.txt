@@ -9,9 +9,11 @@ external/boringssl
 external/bzip2
 external/compiler-rt
 external/expat
+external/fmtlib
 external/go-cmp
 external/golang-protobuf
 external/google-highway
+external/googletest
 external/gwp_asan
 external/icu
 external/jemalloc_new
