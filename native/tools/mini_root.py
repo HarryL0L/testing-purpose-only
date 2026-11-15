@@ -200,6 +200,8 @@ def main():
 #   ./run.sh toybox uname -a      ./run.sh sh
 cd "$(dirname "$0")"
 export ANDROID_NATIVE_ROOT="$PWD/root"
+# Termux preloads its own helper (libtermux-exec); Android 17's linker would look for it in root/
+unset LD_PRELOAD LD_LIBRARY_PATH
 prog="$1"; shift
 exec "$ANDROID_NATIVE_ROOT/apex/com.android.runtime/bin/linker64" "/system/bin/$prog" "$@"
 """)
