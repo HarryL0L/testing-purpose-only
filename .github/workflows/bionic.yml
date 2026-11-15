@@ -69,7 +69,7 @@ jobs:
           # no Java boot image (needs ART's dex2oat, not part of this checkout)
           export WITH_DEXPREOPT=false
           # -k: keep going, so one run reports every missing piece
-          m -k libc linker 2>&1 | tee ~/build.log | tail -100
+          m -k libc linker libdl libm 2>&1 | tee ~/build.log | tail -100
           test ${PIPESTATUS[0]} -eq 0
 
       - name: Collect
@@ -77,10 +77,14 @@ jobs:
         run: |
           mkdir -p out
           I=~/aosp/out/soong/.intermediates/bionic
-          find $I/libc/libc $I/linker -type f \( -name libc.so -o -name linker64 \) -path '*android_arm64*' | sort | tee found.txt
-          C="$(grep '/libc.so$' found.txt | grep -v apex | grep -v '/unstripped/' | head -1)"; [ -n "$C" ] && cp "$C" out/libc.so || true
-          L="$(grep '/linker64$' found.txt | grep -v apex | grep -v '/unstripped/' | head -1)"; [ -n "$L" ] && cp "$L" out/linker64 || true
-          cp found.txt out/
+          find $I -type f \( -name libc.so -o -name libdl.so -o -name libm.so -o -name linker64 \) \
+            \( -path '*/android_arm64_armv8-a_shared/*' -o -path '*/android_arm64_armv8-a/*' \) \
+            -not -path '*/unstripped/*' -not -path '*/before_final_validations/*' | sort | tee out/found.txt
+          # the final output of each file is the shortest path (others are intermediates)
+          for n in libc.so libdl.so libm.so linker64; do
+            f=$(grep "/$n\$" out/found.txt | awk '{ print length, $0 }' | sort -n | head -1 | cut -d' ' -f2-)
+            [ -n "$f" ] && cp "$f" out/ && echo "$n <- $f"
+          done
           ls -la out; file out/* || true
 
       - uses: actions/upload-artifact@v4
@@ -106,3 +110,30 @@ jobs:
             build.log
             error.log
             soong.log
+
+  mini-root:
+    # A small Android 17 root (toybox, sh, their libraries, our libc and linker)
+    # to test native mode in Termux on the phone.
+    needs: build
+    runs-on: ubuntu-24.04
+    env:
+      IMG_URL: https://ci.android.com/builds/submitted/16644040/aosp_cf_arm64_only_phone-userdebug/latest/raw/aosp_cf_arm64_only_phone-img-16644040.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bionic-android17-arm64
+          path: built
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq erofs-utils e2fsprogs
+      - name: Android 17 image
+        run: curl -sSfL -o img.zip "$IMG_URL" && ls -la img.zip
+      - name: Assemble
+        run: |
+          python3 native/tools/mini_root.py img.zip built a17-mini
+          find a17-mini -maxdepth 4 | sort | head -80
+          tar czf a17-mini.tar.gz a17-mini && ls -la a17-mini.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a17-mini
+          path: a17-mini.tar.gz
