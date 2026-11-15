@@ -56,6 +56,8 @@ jobs:
           rm -rf bionic-rust-shims && cp -r "$GITHUB_WORKSPACE/native/rust-shims" bionic-rust-shims
           # host sqlite links ICU's C libraries; ICU's Java libraries need SDK API files we don't have
           rm -f external/icu/android_icu4j/Android.bp external/icu/icu4j/Android.bp
+          # debuggerd only lists ART's libdexfile as a runtime (install-time) dependency
+          sed -i 's#"libdexfile", // libdexfile_support dependency##' system/core/debuggerd/Android.bp
           source build/envsetup.sh
           lunch module_arm64-trunk_staging-userdebug
           export ALLOW_MISSING_DEPENDENCIES=true
