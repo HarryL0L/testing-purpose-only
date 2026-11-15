@@ -328,6 +328,11 @@ def overlay(mini_root, root):
         os.makedirs(os.path.join(root, d), exist_ok=True)
 
 
+# Start nprops for one command, and wait until its properties are there.
+WITH_PROPS = ("nprops -f >/dev/null 2>&1 & p=$!; i=0; "
+              "while [ \"$(getprop native.nprops.ready)\" != 1 ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i + 1)); done; ")
+
+
 def native(out, script):
     """Run a shell command in the new root (through its own run.sh)."""
     subprocess.run([os.path.join(out, "run.sh"), "sh", "-c", script], check=True)
@@ -368,7 +373,7 @@ def main():
     native(out, "/apex/com.android.runtime/bin/linkerconfig --target /linkerconfig")
     log("linker configuration written")
     # derive_classpath reads properties: give it a property service for a moment.
-    native(out, "nprops -f >/dev/null 2>&1 & p=$!; sleep 2; "
+    native(out, WITH_PROPS +
                 "/apex/com.android.sdkext/bin/derive_classpath /data/system/environ/classpath; "
                 "r=$?; kill $p; exit $r")
     env = ["# Android's boot environment (init.environ.rc and derive_classpath)"]
@@ -388,7 +393,7 @@ def main():
     # the concurrent-copying collector and needs an image built for it.
     # odrefresh compiles one into /data/misc/apexdata (a few minutes, once).
     log("compiling the boot image and system_server (odrefresh; takes a while)")
-    native(out, "nprops -f >/dev/null 2>&1 & p=$!; sleep 2; "
+    native(out, WITH_PROPS +
                 "/apex/com.android.art/bin/odrefresh --force-compile; "
                 "echo \"odrefresh: exit status $?\"; kill $p; exit 0")
     log("done:", out)

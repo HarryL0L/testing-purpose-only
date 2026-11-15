@@ -317,6 +317,8 @@ int main(int argc, char** argv) {
   int fds[2] = {Listen("/dev/socket/" PROP_SERVICE_NAME),
                 Listen("/dev/socket/" PROP_SERVICE_FOR_SYSTEM_NAME)};
   if (fds[0] == -1) return 1;
+  // Everything is loaded and the service listens: tell whoever waits.
+  SetProperty("native.nprops.ready", "1");
 
   if (!foreground && daemon(1, 1) != 0) {
     msg("daemon: %s", strerror(errno));

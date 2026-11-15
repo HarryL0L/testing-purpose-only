@@ -75,6 +75,7 @@ int __nrp_getcwd(char*, size_t);
 int __nrp_setxattr(const char*, const char*, const void*, size_t, int);
 int __nrp_lsetxattr(const char*, const char*, const void*, size_t, int);
 int __nrp_fsetxattr(int, const char*, const void*, size_t, int);
+ssize_t __nrp_fgetxattr(int, const char*, void*, size_t);
 ssize_t __nrp_getxattr(const char*, const char*, void*, size_t);
 ssize_t __nrp_lgetxattr(const char*, const char*, void*, size_t);
 ssize_t __nrp_listxattr(const char*, char*, size_t);
@@ -482,19 +483,17 @@ extern "C" int __openat(int fd, const char* path, int flags, int mode) {
   return __nrp_openat(fd, p, flags, mode);
 }
 
+// In native mode mounts never happen: they "succeed" and change nothing
+// (zygote remounts / as a slave and mounts storage for every process).
 extern "C" int mount(const char* source, const char* target, const char* type,
                      unsigned long flags, const void* data) {
-  NR_MAP(t, target);
-  int r = __nrp_mount(source, t, type, flags, data);
-  if (r == -1 && errno == EPERM && nr_ids()) return 0;
-  return r;
+  if (nr_ids()) return 0;
+  return __nrp_mount(source, target, type, flags, data);
 }
 
 extern "C" int umount2(const char* target, int flags) {
-  NR_MAP(t, target);
-  int r = __nrp_umount2(t, flags);
-  if (r == -1 && (errno == EPERM || errno == EINVAL) && nr_ids()) return 0;
-  return r;
+  if (nr_ids()) return 0;
+  return __nrp_umount2(target, flags);
 }
 
 extern "C" int __faccessat(int fd, const char* path, int mode) {
@@ -678,14 +677,35 @@ extern "C" int __fsetxattr(int fd, const char* name, const void* value, size_t s
   return nr_selinux_xattr(__nrp_fsetxattr(fd, name, value, size, flags), name);
 }
 
+// A file without an SELinux label (a filesystem that keeps none) reads as
+// unlabeled instead of failing: restorecon reads the old label first.
+static ssize_t nr_selinux_label(ssize_t r, const char* name, void* value, size_t size) {
+  if (r != -1 || (errno != ENODATA && errno != ENOTSUP) || name == nullptr ||
+      strcmp(name, "security.selinux") != 0 || !nr_ids()) {
+    return r;
+  }
+  static const char kLabel[] = "u:object_r:unlabeled:s0";
+  if (size == 0) return sizeof(kLabel);
+  if (size < sizeof(kLabel)) {
+    errno = ERANGE;
+    return -1;
+  }
+  memcpy(value, kLabel, sizeof(kLabel));
+  return sizeof(kLabel);
+}
+
 extern "C" ssize_t getxattr(const char* path, const char* name, void* value, size_t size) {
   NR_MAP(p, path);
-  return __nrp_getxattr(p, name, value, size);
+  return nr_selinux_label(__nrp_getxattr(p, name, value, size), name, value, size);
 }
 
 extern "C" ssize_t lgetxattr(const char* path, const char* name, void* value, size_t size) {
   NR_MAP(p, path);
-  return __nrp_lgetxattr(p, name, value, size);
+  return nr_selinux_label(__nrp_lgetxattr(p, name, value, size), name, value, size);
+}
+
+extern "C" ssize_t __fgetxattr(int fd, const char* name, void* value, size_t size) {
+  return nr_selinux_label(__nrp_fgetxattr(fd, name, value, size), name, value, size);
 }
 
 extern "C" ssize_t listxattr(const char* path, char* list, size_t size) {
