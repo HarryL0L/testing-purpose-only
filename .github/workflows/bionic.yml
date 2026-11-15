@@ -37,16 +37,37 @@ jobs:
           git config --global user.email ci@localhost
           git config --global color.ui false
 
+      - name: Restore AOSP checkout
+        id: aosp
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/aosp
+          key: aosp17-${{ hashFiles('native/bionic-projects.txt') }}-v1
+
       - name: Minimal AOSP checkout
+        if: steps.aosp.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/aosp && cd ~/aosp
           repo init -q -u https://android.googlesource.com/platform/manifest -b "$AOSP_REV" \
             --depth=1 --no-clone-bundle
           repo sync -q -c -j8 --no-tags --no-clone-bundle --fail-fast $(cat "$GITHUB_WORKSPACE/native/bionic-projects.txt")
+          du -sh ~/aosp
+          # keep it under GitHub's 10 GB cache: only the clang and Rust versions the
+          # build uses, and no git metadata
+          cd ~/aosp/prebuilts/clang/host/linux-x86
+          for d in clang-*; do case "$d" in clang-r584948b|clang-stable) ;; *) rm -rf "$d" ;; esac; done
+          cd ~/aosp/prebuilts/rust-toolchain/linux-x86
+          for d in [0-9]*; do [ "$d" = 1.93.1 ] || rm -rf "$d"; done
+          cd ~/aosp && rm -rf .repo
+          find . -maxdepth 6 -name .git \( -type l -o -type d \) -prune -exec rm -rf {} +
           du -sh ~/aosp; df -h /
-          # sizes, to plan a download cache (GitHub's cache holds 10 GB per repo)
-          du -sh ~/aosp/.repo $(sed 's#^#'"$HOME"'/aosp/#' "$GITHUB_WORKSPACE/native/bionic-projects.txt") 2>/dev/null | sort -rh | head -25
-          ls ~/aosp/prebuilts/clang/host/linux-x86/ | head -40
+
+      - name: Save AOSP checkout
+        if: steps.aosp.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/aosp
+          key: aosp17-${{ hashFiles('native/bionic-projects.txt') }}-v1
 
       - name: Build libc and linker
         run: |

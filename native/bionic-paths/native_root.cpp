@@ -110,21 +110,28 @@ static bool nr_host_path(const char* p) {
   return false;
 }
 
-// Map an absolute image path to the host path under the root. `buf` holds
-// PATH_MAX bytes. Relative paths, host-only paths and paths already under
-// the root are returned unchanged; a path too long to map gives nullptr.
-static const char* nr_map(const char* path, char* buf) {
+// Bytes needed to map `path` (see nr_map), or 0 when it stays as it is.
+static size_t nr_map_size(const char* path) {
   size_t rl;
   const char* root = nr_root(&rl);
-  if (root == nullptr || path == nullptr || path[0] != '/') return path;
-  if (nr_host_path(path) || nr_under(path, root, rl)) return path;
-  size_t pl = strlen(path);
-  if (rl + pl + 1 > PATH_MAX) {
+  if (root == nullptr || path == nullptr || path[0] != '/') return 0;
+  if (nr_host_path(path) || nr_under(path, root, rl)) return 0;
+  return rl + strlen(path) + 1;
+}
+
+// Map an absolute image path to the host path under the root, in `buf` of
+// nr_map_size(path) bytes. Relative paths, host-only paths and paths already
+// under the root are returned unchanged; a path too long to map gives nullptr.
+static const char* nr_map(const char* path, char* buf, size_t size) {
+  if (size == 0) return path;
+  if (size > PATH_MAX) {
     errno = ENAMETOOLONG;
     return nullptr;
   }
+  size_t rl;
+  const char* root = nr_root(&rl);
   memcpy(buf, root, rl);
-  memcpy(buf + rl, path, pl + 1);
+  memcpy(buf + rl, path, size - rl);
   return buf;
 }
 
@@ -143,9 +150,12 @@ static size_t nr_unmap(char* buf, size_t len) {
   return len - rl;
 }
 
-#define NR_MAP(var, path)                      \
-  char var##_buf[PATH_MAX];                    \
-  const char* var = nr_map(path, var##_buf);   \
+// Declares `var`: `path` mapped under the root. The buffer is sized to the
+// path (bionic limits stack frames to 2 KiB, so no PATH_MAX arrays).
+#define NR_MAP(var, path)                                                 \
+  size_t var##_size = nr_map_size(path);                                  \
+  char* var##_buf = var##_size ? static_cast<char*>(alloca(var##_size)) : nullptr; \
+  const char* var = nr_map(path, var##_buf, var##_size);                  \
   if (var == nullptr && (path) != nullptr) return -1
 
 extern "C" int __openat(int fd, const char* path, int flags, int mode) {
@@ -429,15 +439,15 @@ static int nr_execve(const char* path, char* const* argv, char* const* envp, int
   }
 
   // Dynamic ELF: run the image's own interpreter with the program as argument.
-  char interp[PATH_MAX];
+  char* interp = static_cast<char*>(alloca(PATH_MAX));
   bool dynamic = false;
   if (got >= static_cast<ssize_t>(EI_NIDENT) && memcmp(head, ELFMAG, SELFMAG) == 0) {
     if (head[EI_CLASS] == ELFCLASS64 && got >= static_cast<ssize_t>(sizeof(Elf64_Ehdr))) {
       dynamic = nr_elf_interp<Elf64_Ehdr, Elf64_Phdr>(
-          fd, reinterpret_cast<const Elf64_Ehdr*>(head), interp, sizeof(interp));
+          fd, reinterpret_cast<const Elf64_Ehdr*>(head), interp, PATH_MAX);
     } else if (head[EI_CLASS] == ELFCLASS32 && got >= static_cast<ssize_t>(sizeof(Elf32_Ehdr))) {
       dynamic = nr_elf_interp<Elf32_Ehdr, Elf32_Phdr>(
-          fd, reinterpret_cast<const Elf32_Ehdr*>(head), interp, sizeof(interp));
+          fd, reinterpret_cast<const Elf32_Ehdr*>(head), interp, PATH_MAX);
     }
   }
   close(fd);
