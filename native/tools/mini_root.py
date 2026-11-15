@@ -23,7 +23,7 @@ import tempfile
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PROGRAMS = ["toybox", "sh", "toolbox", "servicemanager", "service"]
+PROGRAMS = ["toybox", "sh", "toolbox", "servicemanager", "service", "fsck.erofs"]
 TOYBOX_APPLETS = ["ls", "cat", "uname", "id", "ps", "env", "echo", "readlink", "pwd", "mkdir",
                   "rm", "cp", "mv", "ln", "touch", "head", "tail", "grep", "sed", "wc", "find",
                   "sleep", "pkill", "kill", "timeout"]
@@ -315,12 +315,18 @@ unset LD_PRELOAD LD_LIBRARY_PATH
 # Android's own environment (Termux's PATH points at folders the image doesn't have)
 export PATH=/system/bin:/system/xbin HOME=/data/local/tmp TMPDIR=/data/local/tmp \
   ANDROID_ROOT=/system ANDROID_DATA=/data
+# Android's boot environment in a full root (BOOTCLASSPATH, ...; a17root.py writes it)
+[ -f "$ANDROID_NATIVE_ROOT/system/etc/native-env.sh" ] && . "$ANDROID_NATIVE_ROOT/system/etc/native-env.sh"
 prog="$1"; shift
+case "$prog" in /*) ;; *) prog="/system/bin/$prog" ;; esac
 # Start it through the image's shell: its execve() runs dynamic programs through
 # the image's linker and static ones (nprops) directly.
-exec "$ANDROID_NATIVE_ROOT/apex/com.android.runtime/bin/linker64" /system/bin/sh -c 'exec "$@"' sh "/system/bin/$prog" "$@"
+exec "$ANDROID_NATIVE_ROOT/apex/com.android.runtime/bin/linker64" /system/bin/sh -c 'exec "$@"' sh "$prog" "$@"
 """)
     os.chmod(os.path.join(out, "run.sh"), 0o755)
+    # The full-root builder, to run on the phone (python3 a17root.py ...).
+    for tool in ("a17root.py", "ext4x.py"):
+        shutil.copy2(os.path.join(HERE, tool), os.path.join(out, tool))
     shutil.rmtree(work, ignore_errors=True)
     print("root:", sum(len(f) for _, _, f in os.walk(root)), "files")
 

@@ -65,3 +65,15 @@ Tested on the phone (Termux): `./run.sh nboot` brings up nlogd, nprops,
 nbinder and servicemanager (`servicemanager.ready=true`); `./run.sh service
 list` prints `0 manager: [android.os.IServiceManager]`; `./run.sh id` gives
 `uid=0(root)`. Binder works natively in an app, without root.
+
+Step 5 (`tools/a17root.py`): the full root, built on the phone. From the
+image zip it streams the system partition out of super.img, unpacks it with
+the image's own fsck.erofs (run natively from a17-mini), unpacks every APEX
+under /apex (ext4 payloads with `ext4x.py`, pure Python), makes absolute
+symlinks relative, puts our runtime on top, then does what init and apexd
+do at boot: apex-info-list.xml, linkerconfig, derive_classpath (the boot
+environment goes to /system/etc/native-env.sh, which run.sh loads). nprops
+now derives ro.product.*, ro.build.fingerprint and ro.product.cpu.abilist*
+like init. Checked under qemu: Android 17's ART runs Java from the framework
+(`abx` converts XML to binary XML and back; `am` runs until it needs
+system_server).

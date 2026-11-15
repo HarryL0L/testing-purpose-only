@@ -103,6 +103,49 @@ static void LoadPropFile(const char* path, std::map<std::string, std::string>* p
   }
 }
 
+// What init derives from the partitions' build.prop files
+// (property_initialize_ro_product_props, property_derive_build_fingerprint,
+// ro.product.cpu.abilist*), for the properties that aren't set yet.
+static void DeriveProperties(std::map<std::string, std::string>* props) {
+  auto get = [&](const std::string& k) {
+    auto it = props->find(k);
+    return it == props->end() ? std::string() : it->second;
+  };
+  static const char* const kPartitions[] = {"product", "odm", "vendor", "system_ext", "system"};
+  for (const char* item : {"brand", "device", "manufacturer", "model", "name"}) {
+    std::string key = std::string("ro.product.") + item;
+    if (!get(key).empty()) continue;
+    for (const char* part : kPartitions) {
+      std::string v = get(std::string("ro.product.") + part + "." + item);
+      if (!v.empty()) {
+        (*props)[key] = v;
+        break;
+      }
+    }
+  }
+  if (get("ro.build.fingerprint").empty()) {
+    (*props)["ro.build.fingerprint"] =
+        get("ro.product.brand") + "/" + get("ro.product.name") + "/" + get("ro.product.device") +
+        ":" + get("ro.build.version.release_or_codename") + "/" + get("ro.build.id") + "/" +
+        get("ro.build.version.incremental") + ":" + get("ro.build.type") + "/" +
+        get("ro.build.tags");
+  }
+  for (const char* suffix : {"", "32", "64"}) {
+    std::string key = std::string("ro.product.cpu.abilist") + suffix;
+    if (!get(key).empty()) continue;
+    bool found = false;
+    for (const char* part : {"vendor", "odm", "product", "system_ext", "system"}) {
+      std::string src = std::string("ro.") + part + ".product.cpu.abilist" + suffix;
+      if (props->count(src)) {
+        (*props)[key] = get(src);
+        found = true;
+        break;
+      }
+    }
+    if (!found) (*props)[key] = strcmp(suffix, "32") == 0 ? "" : "arm64-v8a";
+  }
+}
+
 static uint32_t SetProperty(const std::string& name, const std::string& value) {
   if (name.empty() || name.find_first_of(" \t\n=") != std::string::npos) {
     return PROP_ERROR_INVALID_NAME;
@@ -239,6 +282,7 @@ int main(int argc, char** argv) {
                         "/vendor/default.prop", "/odm/etc/build.prop", "/product/etc/build.prop"}) {
     LoadPropFile(f, &props);
   }
+  DeriveProperties(&props);
   for (const auto& [k, v] : overrides) props[k] = v;
   props["ro.property_service.version"] = "2";  // as init: clients use PROP_MSG_SETPROP2
   size_t loaded = 0;
