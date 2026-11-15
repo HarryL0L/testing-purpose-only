@@ -94,3 +94,8 @@ zygote starts, loads the framework and preloads classes. Learned so far:
   context writes to /proc/<pid>/attr/* and security.selinux xattrs.
 - nsocket creates init-style service sockets; nzygote starts zygote with
   them, as init.zygote64.rc does.
+Phone, step 6: zygote reaches nativeForkSystemServer (the fork qemu can't
+do), and the log works (crash_dump's backtrace lands in log.txt). Zygote's
+fd check (fd_utils.cpp: only /dev/null, its sockets, framework jars...)
+refused the redirected stdout; nzygote now gives it /dev/null as init does,
+and nsocket closes every other inherited fd.

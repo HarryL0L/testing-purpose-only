@@ -56,9 +56,12 @@ fi
 
 # Zygote, as init.zygote64.rc starts it (needs the full root from a17root.py).
 NZYGOTE = """#!/system/bin/sh
-# Start zygote and, through it, system_server (run nboot first).
+# Start zygote and, through it, system_server (run nboot first). Its output
+# goes to the log (/data/local/tmp/log.txt); stdio is /dev/null, as from init
+# (zygote refuses to fork with fds it doesn't know).
 exec nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\
-    /system/bin/app_process64 -Xzygote /system/bin --zygote --start-system-server --socket-name=zygote
+    /system/bin/app_process64 -Xzygote /system/bin --zygote --start-system-server \\
+    --socket-name=zygote </dev/null >/dev/null 2>&1
 """
 
 # selinux_status_t: version 1, sequence 0, enforcing 0, policyload 0, deny_unknown 0

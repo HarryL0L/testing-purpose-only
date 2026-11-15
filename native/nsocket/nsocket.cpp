@@ -8,12 +8,15 @@
  *
  *   nsocket NAME:TYPE[:PERM] ... -- PROGRAM [ARGS...]
  *
- * TYPE is stream, dgram or seqpacket; PERM is octal (default 0666).
+ * TYPE is stream, dgram or seqpacket; PERM is octal (default 0666). Every
+ * other inherited fd except stdio is closed, as for a service init starts.
  *   nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \
  *       /system/bin/app_process64 -Xzygote /system/bin --zygote ...
  */
 
+#include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,9 +25,26 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <set>
 #include <string>
 
+// Close every fd but stdio and `keep`: a service started by init has no
+// others, and zygote refuses to fork with any fd it doesn't know.
+static void close_others(const std::set<int>& keep) {
+  DIR* d = opendir("/proc/self/fd");
+  if (d == nullptr) return;
+  std::set<int> fds;
+  while (struct dirent* e = readdir(d)) {
+    if (e->d_name[0] < '0' || e->d_name[0] > '9') continue;
+    int fd = atoi(e->d_name);
+    if (fd > 2 && fd != dirfd(d) && !keep.count(fd)) fds.insert(fd);
+  }
+  closedir(d);
+  for (int fd : fds) close(fd);
+}
+
 int main(int argc, char** argv) {
+  std::set<int> keep;
   int i = 1;
   for (; i < argc && strcmp(argv[i], "--") != 0; i++) {
     std::string spec = argv[i];
@@ -61,7 +81,9 @@ int main(int argc, char** argv) {
       if (ch == '-' || ch == '.') ch = '_';
     }
     setenv(var.c_str(), std::to_string(fd).c_str(), 1);
+    keep.insert(fd);
   }
+  close_others(keep);
   if (i + 1 >= argc) {
     fprintf(stderr, "usage: nsocket NAME:TYPE[:PERM]... -- PROGRAM [ARGS...]\n");
     return 2;
