@@ -103,3 +103,12 @@ Phone: zygote forks system_server (pid created, zygote accepting command
 connections), after 0.76 s of zygote start-up. system_server then spun in
 zygote's bounding-set loop (the PR_CAPBSET_READ fake turned the ending
 EINVAL into "present"); only EPERM is faked now.
+With ART's single-threaded check patched in a local copy (qemu-only: qemu
+adds a thread to every process), system_server runs under qemu too: it
+starts its bootstrap and core services (activity manager, package-related
+services, power, thermal, lights, recovery) and stops at the display
+manager, which waits for SurfaceFlinger (step 8). On the way: init's
+directories, cgroups as folders, memfd instead of ashmem, napexd (an
+apexservice stand-in: the APEXes are unpacked already), the image's own
+suspend service and installd, init.environ.rc's environment, hwbinder as an
+empty binder context.

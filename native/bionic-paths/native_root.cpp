@@ -170,7 +170,9 @@ static bool nr_host_path(const char* p) {
     // Cgroups too: Android puts each process in its own group, which an app
     // may not create in the phone's hierarchy; in the root they're folders.
     return !nr_under(p, "/sys/fs/selinux", 15) && !nr_under(p, "/sys/kernel/tracing", 19) &&
-           !nr_under(p, "/sys/kernel/debug", 17) && !nr_under(p, "/sys/fs/cgroup", 14);
+           !nr_under(p, "/sys/kernel/debug", 17) && !nr_under(p, "/sys/fs/cgroup", 14) &&
+           // the suspend service must never put the phone to sleep
+           !nr_under(p, "/sys/power", 10);
   }
   if (nr_under(p, "/dev", 4)) {
     // Android's property area and sockets come from the image; binderfs

@@ -171,6 +171,10 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq erofs-utils e2fsprogs
       - name: Android 17 image
         run: curl -sSfL -o img.zip "$IMG_URL" && ls -la img.zip
+      - name: napexd (apexservice stand-in, Java)
+        run: |
+          curl -sSfL -o /tmp/r8.jar https://maven.google.com/com/android/tools/r8/8.5.35/r8-8.5.35.jar
+          native/napexd/build.sh /tmp/r8.jar "$PWD/built/napexd.jar"
       - name: Assemble
         run: |
           python3 native/tools/mini_root.py img.zip built a17-mini

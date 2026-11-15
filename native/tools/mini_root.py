@@ -59,6 +59,15 @@ NZYGOTE = """#!/system/bin/sh
 # Start zygote and, through it, system_server (run nboot first). Its output
 # goes to the log (/data/local/tmp/log.txt); stdio is /dev/null, as from init
 # (zygote refuses to fork with fds it doesn't know).
+# First the services init starts before zygote that system_server waits for:
+# apexservice (napexd, our stand-in: the APEXes are unpacked already), the
+# suspend service and installd.
+CLASSPATH=/system/framework/services.jar:/system/framework/napexd.jar \\
+    app_process64 /system/bin nmode.ApexService </dev/null >/dev/null 2>&1 &
+/system/bin/hw/android.system.suspend-service </dev/null >/dev/null 2>&1 &
+installd </dev/null >/dev/null 2>&1 &
+i=0
+while ! service check apexservice | grep -q ': found' && [ $i -lt 100 ]; do sleep 0.2; i=$((i + 1)); done
 exec nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\
     /system/bin/app_process64 -Xzygote /system/bin --zygote --start-system-server \\
     --socket-name=zygote </dev/null >/dev/null 2>&1
@@ -239,6 +248,8 @@ def main():
 
     done = {"libc.so", "libdl.so", "libm.so", "ld-android.so"}
     todo = []
+    if os.path.exists(os.path.join(built, "napexd.jar")):
+        place("/system/framework/napexd.jar", os.path.join(built, "napexd.jar"))
     for prog in BUILT_PROGRAMS:
         src = os.path.join(built, prog)
         if os.path.exists(src):

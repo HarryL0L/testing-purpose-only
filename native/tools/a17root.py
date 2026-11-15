@@ -295,6 +295,7 @@ RUNTIME = [  # our build, from MINI_DIR, over the image's
     "system/bin/nboot",
     "system/bin/nsocket",
     "system/bin/nzygote",
+    "system/framework/napexd.jar",
 ]
 
 
@@ -309,7 +310,7 @@ def overlay(mini_root, root):
         if os.path.lexists(dst):
             os.remove(dst)
         shutil.copy2(src, dst)
-        os.chmod(dst, 0o755)
+        os.chmod(dst, 0o644 if rel.endswith(".jar") else 0o755)
     # bootstrap programs (servicemanager, ...) use the same linker and libc
     for rel, target in (("system/bin/bootstrap/linker64", "../../../apex/com.android.runtime/bin/linker64"),
                         ("system/lib64/bootstrap/libc.so", "../../../apex/com.android.runtime/lib64/bionic/libc.so"),
@@ -320,6 +321,13 @@ def overlay(mini_root, root):
         if os.path.lexists(p):
             os.remove(p)
         os.symlink(target, p)
+    # /sys/power is the root's (libc maps it): files the suspend service uses
+    power = os.path.join(root, "sys", "power")
+    os.makedirs(power, exist_ok=True)
+    for name, data in (("state", "freeze mem\n"), ("wakeup_count", "0\n"), ("wake_lock", ""),
+                       ("wake_unlock", ""), ("autosleep", "off\n")):
+        with open(os.path.join(power, name), "w") as f:
+            f.write(data)
     sel = os.path.join(root, "sys", "fs", "selinux")
     shutil.rmtree(sel, ignore_errors=True)
     shutil.copytree(os.path.join(mini_root, "sys", "fs", "selinux"), sel)
@@ -413,9 +421,16 @@ def main():
             p = line.split()
             if len(p) >= 3 and p[0] == "export":
                 env.append("export %s=%s" % (p[1], p[2]))
-    env.append("export ANDROID_ART_ROOT=/apex/com.android.art ANDROID_I18N_ROOT=/apex/com.android.i18n "
-               "ANDROID_TZDATA_ROOT=/apex/com.android.tzdata ANDROID_STORAGE=/storage "
-               "ANDROID_ASSETS=/system/app EXTERNAL_STORAGE=/sdcard")
+    # init.environ.rc's exports (installd crashes without ASEC_MOUNTPOINT)
+    try:
+        for line in open(os.path.join(root, "init.environ.rc")):
+            p = line.split()
+            if len(p) >= 3 and p[0] == "export":
+                env.append("export %s=%s" % (p[1], p[2]))
+    except OSError:
+        env.append("export ANDROID_ART_ROOT=/apex/com.android.art ANDROID_I18N_ROOT=/apex/com.android.i18n "
+                   "ANDROID_TZDATA_ROOT=/apex/com.android.tzdata ANDROID_STORAGE=/storage "
+                   "ANDROID_ASSETS=/system/app EXTERNAL_STORAGE=/sdcard ASEC_MOUNTPOINT=/mnt/asec")
     with open(os.path.join(root, "system", "etc", "native-env.sh"), "w") as f:
         f.write("\n".join(env) + "\n")
     log("class paths derived")

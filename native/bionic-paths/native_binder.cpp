@@ -470,8 +470,8 @@ bool nb_is_binder(int fd) {
   return false;
 }
 
-// "binder" for /dev/binder and /dev/binderfs/binder; nullptr for other paths.
-// hwbinder (HIDL) is not supported: "" (the open fails).
+// "binder" for /dev/binder and /dev/binderfs/binder, likewise vndbinder and
+// hwbinder; nullptr for other paths.
 const char* nb_device(const char* path) {
   const char* name = nullptr;
   if (strncmp(path, "/dev/binderfs/", 14) == 0) {
@@ -481,8 +481,12 @@ const char* nb_device(const char* path) {
   } else {
     return nullptr;
   }
-  if (strcmp(name, "binder") == 0 || strcmp(name, "vndbinder") == 0) return name;
-  if (strcmp(name, "hwbinder") == 0) return "";
+  // hwbinder is a context of its own with no manager: HIDL lookups come back
+  // empty (libhwbinder aborts when the device can't be opened at all).
+  if (strcmp(name, "binder") == 0 || strcmp(name, "vndbinder") == 0 ||
+      strcmp(name, "hwbinder") == 0) {
+    return name;
+  }
   return nullptr;
 }
 
