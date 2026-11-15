@@ -1,4 +1,4 @@
-// Panic handler for no_std Rust code linked into bionic: abort the process.
+//! Panic handler for no_std Rust code linked into bionic: abort the process.
 #![no_std]
 
 use core::panic::PanicInfo;

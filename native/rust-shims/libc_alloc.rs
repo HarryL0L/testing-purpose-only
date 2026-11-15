@@ -1,4 +1,4 @@
-// Global allocator for no_std Rust code linked into bionic: malloc/free.
+//! Global allocator for no_std Rust code linked into bionic: malloc/free.
 #![no_std]
 
 use core::alloc::{GlobalAlloc, Layout};

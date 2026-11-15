@@ -3,6 +3,7 @@ build/blueprint
 build/make
 build/release
 build/soong
+external/abseil-cpp
 external/arm-optimized-routines
 external/boringssl
 external/bzip2
