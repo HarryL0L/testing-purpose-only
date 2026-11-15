@@ -77,3 +77,6 @@ now derives ro.product.*, ro.build.fingerprint and ro.product.cpu.abilist*
 like init. Checked under qemu: Android 17's ART runs Java from the framework
 (`abx` converts XML to binary XML and back; `am` runs until it needs
 system_server).
+Tested on the phone: a17root.py builds the full root in Termux (system
+914 MB, 38 APEXes, linkerconfig, derive_classpath); `./run.sh nboot` and
+Android 17's ART running abx (XML to binary XML and back) work natively.
