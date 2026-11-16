@@ -40,6 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <linux/netlink.h>
 #include <linux/sync_file.h>
 #include <stdio.h>
 #include <sys/eventfd.h>
@@ -1214,12 +1215,16 @@ static const struct sockaddr* nr_map_sockaddr(const struct sockaddr* addr, sockl
 }
 
 // vsock sockets (Cuttlefish's HALs listen on one for their host side: the
-// lights HAL panics without it): an app may not open one, so it gets a Unix
-// socket in their place (__socket below). Binding it to a vsock address
-// binds it to an unnamed abstract address, so listen() and accept() work and
-// nothing connects; connecting to a vsock address is refused.
+// lights HAL panics without it) and uevent netlink sockets (system_server's
+// UEventObserver throws without one): an app may not open them, so it gets
+// a Unix socket in their place (__socket below). Binding it to a vsock or
+// netlink address binds it to an unnamed abstract address, so listen(),
+// accept() and recv() work and nothing arrives; connecting is refused.
 static bool nr_vsock_standin(int fd, const struct sockaddr* addr) {
-  if (addr == nullptr || addr->sa_family != AF_VSOCK || !nr_ids()) return false;
+  if (addr == nullptr || (addr->sa_family != AF_VSOCK && addr->sa_family != AF_NETLINK) ||
+      !nr_ids()) {
+    return false;
+  }
   int domain = 0;
   socklen_t dl = sizeof(domain);
   int saved = errno;
@@ -1274,13 +1279,15 @@ static void nr_unmap_sockaddr(struct sockaddr* addr, socklen_t user_len, socklen
 // PF_KEY sockets: the connectivity module opens and closes one only to make
 // the kernel wait for RCU readers of BPF maps (BpfUtils' synchronizeKernelRCU).
 // With BPF emulated there are none, and an app can't open one: any socket
-// does for that. vsock sockets get a Unix one too (see nr_vsock_standin).
+// does for that. vsock and uevent sockets get a Unix one too (see
+// nr_vsock_standin).
 extern "C" int __socket(int domain, int type, int protocol) {
   int fd = __nrp_socket(domain, type, protocol);
   if (fd < 0 && domain == AF_KEY && nr_ids()) {
     fd = __nrp_socket(AF_UNIX, SOCK_DGRAM | (type & SOCK_CLOEXEC), 0);
-  } else if (fd < 0 && domain == AF_VSOCK && nr_ids() &&
-             (errno == EACCES || errno == EPERM || errno == EAFNOSUPPORT)) {
+  } else if (fd < 0 && (domain == AF_VSOCK || (domain == AF_NETLINK &&
+                                                protocol == NETLINK_KOBJECT_UEVENT)) &&
+             nr_ids() && (errno == EACCES || errno == EPERM || errno == EAFNOSUPPORT)) {
     fd = __nrp_socket(AF_UNIX, type, 0);
   }
   return fd;
