@@ -439,6 +439,10 @@ def overlay(mini_root, root):
               "sys/fs/cgroup/system", "sys/fs/cgroup/apps", "dev/blkio", "dev/cpuctl",
               "dev/cpuset", "dev/stune", "dev/memcg"):
         os.makedirs(os.path.join(root, d), exist_ok=True)
+    # bpffs as the kernel mounts it (libc keeps BPF objects there)
+    bpf = os.path.join(root, "sys", "fs", "bpf")
+    os.makedirs(bpf, exist_ok=True)
+    os.chmod(bpf, 0o1777)
 
 
 # Start nprops for one command, and wait until its properties are there.

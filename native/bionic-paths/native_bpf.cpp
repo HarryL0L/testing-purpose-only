@@ -33,6 +33,7 @@ namespace {
 
 constexpr uint32_t kMagic = 0x6670626e;  // 'nbpf'
 constexpr size_t kHeaderSize = 4096;
+constexpr uint32_t kStorageCapacity = 4096;
 #ifdef NBPF_HOST_TEST
 #define kBpfDir NBPF_HOST_TEST
 #else
@@ -377,7 +378,8 @@ int map_update(const bpf_attr& a) {
   bool lru = mp.h->type == BPF_MAP_TYPE_LRU_HASH || mp.h->type == BPF_MAP_TYPE_LRU_PERCPU_HASH;
   uint32_t n = mp.h->nslots;
   uint32_t start = static_cast<uint32_t>(hash_key(key, mp.h->key_size) % n);
-  if (mp.h->count >= mp.h->max_entries) {
+  uint32_t capacity = mp.h->max_entries ? mp.h->max_entries : (mp.h->nslots - 1) / 2;
+  if (mp.h->count >= capacity) {
     if (!lru) {
       errno = E2BIG;
       return -1;
@@ -468,7 +470,13 @@ int map_next_key(const bpf_attr& a) {
 }
 
 int map_create(const bpf_attr& a) {
-  if (a.key_size > 512 || a.value_size > (1u << 20) || a.max_entries == 0 ||
+  // Local storages (per socket, inode, task, cgroup) have no fixed size:
+  // the kernel wants max_entries 0. Here they get room for kStorageCapacity.
+  bool storage = a.map_type == BPF_MAP_TYPE_SK_STORAGE ||
+                 a.map_type == BPF_MAP_TYPE_INODE_STORAGE ||
+                 a.map_type == BPF_MAP_TYPE_TASK_STORAGE ||
+                 a.map_type == BPF_MAP_TYPE_CGRP_STORAGE;
+  if (a.key_size > 512 || a.value_size > (1u << 20) || (a.max_entries == 0 && !storage) ||
       a.max_entries > (1u << 24)) {
     errno = EINVAL;
     return -1;
@@ -483,6 +491,10 @@ int map_create(const bpf_attr& a) {
                                        : a.value_size;
   h.max_entries = a.max_entries;
   h.map_flags = a.map_flags;
+  // The kernel adds this itself for device maps (dev_map_init_map).
+  if (a.map_type == BPF_MAP_TYPE_DEVMAP || a.map_type == BPF_MAP_TYPE_DEVMAP_HASH) {
+    h.map_flags |= BPF_F_RDONLY_PROG;
+  }
   h.id = next_id();
   h.btf_id = 0;
   h.btf_key_type_id = a.btf_key_type_id;
@@ -498,7 +510,7 @@ int map_create(const bpf_attr& a) {
       data = 2 * 4096 + 2 * static_cast<uint64_t>(h.max_entries);
       break;
     default:
-      h.nslots = h.max_entries * 2 + 1;
+      h.nslots = (storage ? kStorageCapacity : h.max_entries) * 2 + 1;
       h.slot_size = static_cast<uint32_t>(8 + round8(h.key_size) + round8(h.value_size));
       data = static_cast<uint64_t>(h.nslots) * h.slot_size;
   }
@@ -569,6 +581,9 @@ int obj_info(const bpf_attr& a) {
     bpf_prog_info info{};
     info.type = h->type;
     info.id = h->id;
+    // "JIT-compiled" and translated sizes: loaders check that the JIT ran.
+    info.jited_prog_len = h->prog_insn_cnt * 8;
+    info.xlated_prog_len = h->prog_insn_cnt * 8;
     memcpy(info.name, h->name, sizeof(info.name));
     memcpy(out, &info, len < sizeof(info) ? len : sizeof(info));
   } else if (h->kind == KIND_BTF) {
