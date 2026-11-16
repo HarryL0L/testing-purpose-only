@@ -35,6 +35,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -96,6 +97,7 @@ int __nrp_execve(const char*, char* const*, char* const*);
 int __nrp_bind(int, const struct sockaddr*, socklen_t);
 int __nrp_connect(int, const struct sockaddr*, socklen_t);
 int __nrp_getsockname(int, struct sockaddr*, socklen_t*);
+int __nrp_getsockopt(int, int, int, void*, socklen_t*);
 int __nrp_getpeername(int, struct sockaddr*, socklen_t*);
 int __nrp_ioctl(int, int, void*);
 uid_t __nrp_getuid();
@@ -260,6 +262,8 @@ static gid_t g_real_gid;
 static int g_ids_state;  // 0: not set up, 1: virtual, 2: real (no root)
 static constexpr char kIdsVar[] = "ANDROID_NATIVE_IDS";
 
+static void nr_publish_ids_init();
+
 static bool nr_ids() {
   if (g_ids_state == 0) {
     size_t rl;
@@ -289,6 +293,7 @@ static bool nr_ids() {
     }
     g_ids = ids;
     g_ids_state = 1;
+    nr_publish_ids_init();
   }
   return g_ids_state == 1;
 }
@@ -422,6 +427,77 @@ extern "C" int setgroups(size_t size, const gid_t* list) {
   return 0;
 }
 
+// ------------------------------------------- virtual ids seen by peers
+//
+// Daemons check who connects through the socket's kernel credentials
+// (SO_PEERCRED: zygote takes requests only from system_server, uid 1000),
+// which show the app's real uid. Each process whose virtual ids aren't
+// root's records them in /dev/socket/.nids/<pid> (with its start time, so a
+// reused pid doesn't match), and getsockopt(SO_PEERCRED) reports those.
+static constexpr char kNidsDir[] = "/dev/socket/.nids";
+
+static unsigned long long nr_start_time(pid_t pid) {
+  char path[32], buf[512];
+  snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+  int fd = __nrp_openat(AT_FDCWD, path, O_RDONLY | O_CLOEXEC, 0);
+  if (fd < 0) return 0;
+  ssize_t n = read(fd, buf, sizeof(buf) - 1);
+  close(fd);
+  if (n <= 0) return 0;
+  buf[n] = '\0';
+  const char* p = strrchr(buf, ')');  // the command may hold spaces
+  if (p == nullptr) return 0;
+  // fields after ")": state is 3; starttime is 22
+  for (int field = 2; field < 22 && *p; p++) {
+    if (*p == ' ') field++;
+  }
+  return strtoull(p, nullptr, 10);
+}
+
+static void nr_publish_ids() {
+  if (g_ids_state != 1) return;
+  char path[64];
+  snprintf(path, sizeof(path), "%s/%d", kNidsDir, getpid());
+  if (g_ids.e == 0 && g_ids.ge == 0) {
+    unlink(path);
+    return;
+  }
+  mkdir(kNidsDir, 0777);
+  char rec[96];
+  int len = snprintf(rec, sizeof(rec), "%llu %u %u\n", nr_start_time(getpid()), g_ids.e, g_ids.ge);
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+  if (fd < 0) return;
+  if (write(fd, rec, static_cast<size_t>(len)) < 0) unlink(path);
+  close(fd);
+}
+
+// The virtual ids of process `pid`, if it recorded any (root's otherwise).
+static void nr_peer_ids(pid_t pid, uid_t* uid, gid_t* gid) {
+  char path[64], rec[96];
+  snprintf(path, sizeof(path), "%s/%d", kNidsDir, pid);
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  *uid = 0;
+  *gid = 0;
+  if (fd < 0) return;
+  ssize_t n = read(fd, rec, sizeof(rec) - 1);
+  close(fd);
+  if (n <= 0) return;
+  rec[n] = '\0';
+  unsigned long long start;
+  unsigned u, g;
+  if (sscanf(rec, "%llu %u %u", &start, &u, &g) == 3 && start == nr_start_time(pid)) {
+    *uid = u;
+    *gid = g;
+  }
+}
+
+static void nr_after_fork() { nr_publish_ids(); }
+
+static void nr_publish_ids_init() {
+  pthread_atfork(nullptr, nullptr, nr_after_fork);  // children have new pids
+  nr_publish_ids();
+}
+
 // The kernel's rules for the set*id() calls, applied to the virtual ids.
 template <typename T>
 static int nr_setres(T* r, T* e, T* s, T nr, T ne, T ns, bool privileged) {
@@ -438,6 +514,7 @@ static int nr_setres(T* r, T* e, T* s, T nr, T ne, T ns, bool privileged) {
   if (nr != keep) *r = nr;
   if (ne != keep) *e = ne;
   if (ns != keep) *s = ns;
+  nr_publish_ids();
   return 0;
 }
 
@@ -1023,6 +1100,16 @@ static void nr_unmap_sockaddr(struct sockaddr* addr, socklen_t user_len, socklen
   if (m == n) return;
   if (m < avail) un->sun_path[m] = '\0';
   *len = static_cast<socklen_t>(kPathOff + m + 1);
+}
+
+extern "C" int getsockopt(int fd, int level, int name, void* value, socklen_t* len) {
+  int r = __nrp_getsockopt(fd, level, name, value, len);
+  if (r == 0 && level == SOL_SOCKET && name == SO_PEERCRED && value != nullptr && len != nullptr &&
+      *len >= sizeof(struct ucred) && nr_ids()) {
+    auto* cred = static_cast<struct ucred*>(value);
+    nr_peer_ids(cred->pid, &cred->uid, &cred->gid);
+  }
+  return r;
 }
 
 extern "C" int getsockname(int fd, struct sockaddr* addr, socklen_t* len) {
