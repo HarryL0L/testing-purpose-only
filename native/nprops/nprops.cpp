@@ -205,6 +205,9 @@ static const std::pair<const char*, const char*> kNativeOverrides[] = {
     // No HIDL HALs: as hwservicemanager says when it finds none (libhidl
     // otherwise waits for it in every process, since system_ext ships it).
     {"hwservicemanager.disabled", "true"},
+    // system_ext enables an audio HAL vendor extension the image's HALs
+    // don't provide; audioserver would wait for it forever.
+    {"ro.audio.ihaladaptervendorextension_enabled", "false"},
 };
 
 static uint32_t SetProperty(const std::string& name, const std::string& value) {
