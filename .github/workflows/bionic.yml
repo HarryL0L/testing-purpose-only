@@ -98,7 +98,7 @@ jobs:
           # no Java boot image (needs ART's dex2oat, not part of this checkout)
           export WITH_DEXPREOPT=false
           # -k: keep going, so one run reports every missing piece
-          m -k libc linker libdl libm nprops nbinder nlogd nsocket 2>&1 | tee ~/build.log | tail -100
+          m -k libc linker libdl libm nprops nbinder nlogd nsocket crtbegin_dynamic crtend_android crtbegin_so crtend_so 2>&1 | tee ~/build.log | tail -100
           test ${PIPESTATUS[0]} -eq 0
 
       - name: Collect
@@ -112,6 +112,11 @@ jobs:
           # the final output of each file is the shortest path (others are intermediates)
           for n in libc.so libdl.so libm.so linker64 nprops nbinder nlogd nsocket; do
             f=$(grep "/$n\$" out/found.txt | awk '{ print length, $0 }' | sort -n | head -1 | cut -d' ' -f2-)
+            [ -n "$f" ] && cp "$f" out/ && echo "$n <- $f"
+          done
+          # bionic's start files, for native/gfx (built outside soong)
+          for n in crtbegin_dynamic.o crtend_android.o crtbegin_so.o crtend_so.o; do
+            f=$(find $I/bionic -path '*android_arm64_armv8-a*' -name "$n" | awk '{ print length, $0 }' | sort -n | head -1 | cut -d' ' -f2-)
             [ -n "$f" ] && cp "$f" out/ && echo "$n <- $f"
           done
           ls -la out; file out/* || true
@@ -168,13 +173,24 @@ jobs:
           name: bionic-android17-arm64
           path: built
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq erofs-utils e2fsprogs
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo apt-get update -qq && sudo apt-get install -y -qq erofs-utils e2fsprogs
       - name: Android 17 image
         run: curl -sSfL -o img.zip "$IMG_URL" && ls -la img.zip
       - name: napexd (apexservice stand-in, Java)
         run: |
           curl -sSfL -o /tmp/r8.jar https://maven.google.com/com/android/tools/r8/8.5.35/r8-8.5.35.jar
           native/napexd/build.sh /tmp/r8.jar "$PWD/built/napexd.jar"
+      - name: Graphics HALs (native/gfx)
+        run: |
+          curl -sSfL -o /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          sudo bash /tmp/llvm.sh 20 > /dev/null
+          python3 native/gfx/image_libs.py img.zip "$RUNNER_TEMP/imglibs"
+          B="$RUNNER_TEMP/imglibs/apex/com.android.runtime/lib64/bionic"
+          mkdir -p "$B" && cp built/libc.so built/libdl.so built/libm.so "$B/"
+          GFX_WORK="$RUNNER_TEMP/gfxwork" native/gfx/build.sh built/gfx "$RUNNER_TEMP/imglibs" built
+          rm -rf "$RUNNER_TEMP/imglibs"
       - name: Assemble
         run: |
           python3 native/tools/mini_root.py img.zip built a17-mini

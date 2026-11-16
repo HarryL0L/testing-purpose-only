@@ -170,6 +170,12 @@ static const std::pair<const char*, const char*> kDeviceDefaults[] = {
     // a collector that needs kernel features this phone lacks); there is no
     // odsign here to verify it, so trust it as odsign would.
     {"odsign.verification.success", "true"},
+    // Graphics (native/gfx): CPU rendering, GLES through ANGLE on SwiftShader
+    // Vulkan from the vendor APEX, until a GPU path exists.
+    {"ro.hardware.egl", "angle"},
+    {"ro.hardware.vulkan", "pastel"},
+    {"ro.vulkan.apex", "com.google.cf.vulkan"},
+    {"ro.opengles.version", "196610"},
 };
 
 static uint32_t SetProperty(const std::string& name, const std::string& value) {
@@ -305,7 +311,8 @@ int main(int argc, char** argv) {
 
   std::map<std::string, std::string> props;
   for (const char* f : {"/system/build.prop", "/system_ext/etc/build.prop", "/vendor/build.prop",
-                        "/vendor/default.prop", "/odm/etc/build.prop", "/product/etc/build.prop"}) {
+                        "/vendor/default.prop", "/odm/etc/build.prop", "/product/etc/build.prop",
+                        "/data/local/native.prop"}) {  // the last: the user's own settings
     LoadPropFile(f, &props);
   }
   DeriveProperties(&props);

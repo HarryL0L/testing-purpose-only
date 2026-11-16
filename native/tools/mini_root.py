@@ -66,6 +66,11 @@ CLASSPATH=/system/framework/services.jar:/system/framework/napexd.jar \\
     app_process64 /system/bin nmode.ApexService </dev/null >/dev/null 2>&1 &
 /system/bin/hw/android.system.suspend-service </dev/null >/dev/null 2>&1 &
 installd </dev/null >/dev/null 2>&1 &
+# The display (native/gfx): graphics memory (nalloc), the composer HAL
+# (ncomposer, frames to /data/vendor/nfb) and SurfaceFlinger.
+/vendor/bin/nalloc </dev/null >/dev/null 2>&1 &
+ncomposer </dev/null >/dev/null 2>&1 &
+surfaceflinger </dev/null >/dev/null 2>&1 &
 i=0
 while ! service check apexservice | grep -q ': found' && [ $i -lt 100 ]; do sleep 0.2; i=$((i + 1)); done
 exec nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\
@@ -80,6 +85,12 @@ OURS = {  # image path -> our build's file name
     "/apex/com.android.runtime/lib64/bionic/libc.so": "libc.so",
     "/apex/com.android.runtime/lib64/bionic/libdl.so": "libdl.so",
     "/apex/com.android.runtime/lib64/bionic/libm.so": "libm.so",
+}
+GFX = {  # image path -> file of native/gfx
+    "/vendor/bin/nalloc": "nalloc",
+    "/vendor/lib64/hw/mapper.native.so": "mapper.native.so",
+    "/system/bin/ncomposer": "ncomposer",
+    "/vendor/etc/vintf/manifest/native-gfx.xml": "native-gfx.xml",
 }
 LIB_DIRS = ["/system/lib64", "/apex/com.android.runtime/lib64/bionic", "/apex/com.android.runtime/lib64"]
 
@@ -250,6 +261,17 @@ def main():
     todo = []
     if os.path.exists(os.path.join(built, "napexd.jar")):
         place("/system/framework/napexd.jar", os.path.join(built, "napexd.jar"))
+    # The graphics HALs (native/gfx/build.sh) and their VINTF manifest, for
+    # a17root.py to put over the image's vendor files.
+    for guest, name in GFX.items():
+        src = os.path.join(built, "gfx", name) if name != "native-gfx.xml" else \
+            os.path.join(HERE, "..", "gfx", name)
+        if os.path.exists(src):
+            place(guest, src)
+            if guest.endswith(".xml"):
+                os.chmod(os.path.join(root, guest.lstrip("/")), 0o644)
+        else:
+            print("not built:", name)
     for prog in BUILT_PROGRAMS:
         src = os.path.join(built, prog)
         if os.path.exists(src):

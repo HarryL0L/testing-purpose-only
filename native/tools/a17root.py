@@ -6,8 +6,8 @@
 IMG_ZIP:  the Cuttlefish image zip (super.img inside), as UMLDroid uses.
 MINI_DIR: an unpacked a17-mini (our libc, linker, nlogd/nprops/nbinder, and
           the image's fsck.erofs, which unpacks the erofs images natively).
-OUT_DIR:  gets root/ (the whole system image, every APEX unpacked under
-          /apex, our runtime on top) and run.sh. Needs about 2.5 GB, plus
+OUT_DIR:  gets root/ (the system and vendor partitions, every APEX unpacked
+          under /apex, our runtime on top) and run.sh. Needs about 3 GB, plus
           about 1 GB while it works.
 
 Nothing but Python's standard library is needed (Termux: pkg install python).
@@ -299,6 +299,11 @@ RUNTIME = [  # our build, from MINI_DIR, over the image's
     "system/bin/nsocket",
     "system/bin/nzygote",
     "system/framework/napexd.jar",
+    # native/gfx: the graphics HALs
+    "vendor/bin/nalloc",
+    "vendor/lib64/hw/mapper.native.so",
+    "system/bin/ncomposer",
+    "vendor/etc/vintf/manifest/native-gfx.xml",
 ]
 
 
@@ -313,7 +318,11 @@ def overlay(mini_root, root):
         if os.path.lexists(dst):
             os.remove(dst)
         shutil.copy2(src, dst)
-        os.chmod(dst, 0o644 if rel.endswith(".jar") else 0o755)
+        os.chmod(dst, 0o644 if rel.endswith((".jar", ".xml")) else 0o755)
+    # Our mapper and composer stand in for the image's (they need /dev/dri).
+    minigbm = os.path.join(root, "vendor", "etc", "vintf", "manifest", "mapper.minigbm.xml")
+    if os.path.exists(minigbm):
+        os.remove(minigbm)
     # bootstrap programs (servicemanager, ...) use the same linker and libc
     for rel, target in (("system/bin/bootstrap/linker64", "../../../apex/com.android.runtime/bin/linker64"),
                         ("system/lib64/bootstrap/libc.so", "../../../apex/com.android.runtime/lib64/bionic/libc.so"),
@@ -395,12 +404,22 @@ def main():
     u.unpack(sysimg, root)
     os.remove(sysimg)
 
-    apex_dir = os.path.join(root, "system", "apex")
-    names = sorted(f for f in os.listdir(apex_dir) if f.endswith((".apex", ".capex")))
-    for i, f in enumerate(names, 1):
-        name = os.path.splitext(f)[0]
+    log("vendor partition")
+    vendimg = u.image_path("vendor_a.img")
+    extract_partition(img_zip, "vendor_a", vendimg)
+    u.unpack(vendimg, os.path.join(root, "vendor"))
+    os.remove(vendimg)
+
+    names = []
+    for part in ("system", "vendor"):
+        apex_dir = os.path.join(root, part, "apex")
+        if os.path.isdir(apex_dir):
+            names += sorted(os.path.join(apex_dir, f) for f in os.listdir(apex_dir)
+                            if f.endswith((".apex", ".capex")))
+    for i, path in enumerate(names, 1):
+        name = os.path.splitext(os.path.basename(path))[0]
         payload = u.image_path("payload.img")
-        apex_payload(os.path.join(apex_dir, f), payload)
+        apex_payload(path, payload)
         u.unpack(payload, os.path.join(root, "apex", name))
         os.remove(payload)
         log("APEX %d/%d %s" % (i, len(names), name))

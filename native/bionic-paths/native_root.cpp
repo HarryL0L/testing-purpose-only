@@ -38,6 +38,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <linux/sync_file.h>
+#include <stdio.h>
+#include <sys/eventfd.h>
 #include <sys/inotify.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -45,6 +48,7 @@
 #include <sys/statfs.h>
 #include <sys/types.h>
 #include <sys/xattr.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "nbinder_proto.h"
@@ -629,9 +633,59 @@ extern "C" int __statfs64(const char* path, size_t size, struct statfs* buf) {
 
 // Binder fds (from nb_open) are sockets to nbinder: their ioctls and mmap
 // go there. A quick lock-free check for every other fd.
+// Signaled fences. An app can't create sync files (no sw_sync access), so
+// native mode's HALs (native/gfx) hand out an eventfd with a count as an
+// already-signaled fence: poll() sees it ready. Answer the two sync-file
+// queries libsync makes on such fds as the kernel would for a signaled fence.
+static bool nr_is_eventfd(int fd) {
+  char path[32], target[32];
+  snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
+  ssize_t n = readlink(path, target, sizeof(target));
+  return n == 20 && memcmp(target, "anon_inode:[eventfd]", 20) == 0;
+}
+
+static int nr_sync_ioctl(int fd, unsigned request, void* arg) {
+  if (request == SYNC_IOC_MERGE) {
+    auto* m = static_cast<sync_merge_data*>(arg);
+    if (!nr_is_eventfd(fd) || !nr_is_eventfd(m->fd2)) return -2;
+    int f = eventfd(1, EFD_CLOEXEC);
+    if (f < 0) return -1;
+    m->fence = f;
+    return 0;
+  }
+  if (request == SYNC_IOC_FILE_INFO) {
+    auto* info = static_cast<sync_file_info*>(arg);
+    if (!nr_is_eventfd(fd)) return -2;
+    strlcpy(info->name, "nfence", sizeof(info->name));
+    info->status = 1;
+    if (info->num_fences >= 1 && info->sync_fence_info) {
+      auto* f = reinterpret_cast<sync_fence_info*>(static_cast<uintptr_t>(info->sync_fence_info));
+      memset(f, 0, sizeof(*f));
+      strlcpy(f->obj_name, "nfence", sizeof(f->obj_name));
+      strlcpy(f->driver_name, "native", sizeof(f->driver_name));
+      f->status = 1;
+      struct timespec ts;
+      clock_gettime(CLOCK_MONOTONIC, &ts);
+      f->timestamp_ns = static_cast<uint64_t>(ts.tv_sec) * 1000000000ull + ts.tv_nsec;
+    }
+    info->num_fences = 1;
+    return 0;
+  }
+  return -2;
+}
+
 extern "C" int __ioctl(int fd, int request, void* arg) {
   if (fd >= 0 && nb_is_binder(fd)) return nb_ioctl(fd, static_cast<unsigned>(request), arg);
-  return __nrp_ioctl(fd, request, arg);
+  int r = __nrp_ioctl(fd, request, arg);
+  if (r == -1 && errno == ENOTTY && arg &&
+      (static_cast<unsigned>(request) == SYNC_IOC_MERGE ||
+       static_cast<unsigned>(request) == SYNC_IOC_FILE_INFO)) {
+    int saved = errno;
+    int e = nr_sync_ioctl(fd, static_cast<unsigned>(request), arg);
+    if (e != -2) return e;
+    errno = saved;
+  }
+  return r;
 }
 
 extern "C" int __close(int fd) {
