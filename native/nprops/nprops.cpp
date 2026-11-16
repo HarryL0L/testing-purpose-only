@@ -179,8 +179,6 @@ static const std::pair<const char*, const char*> kDeviceDefaults[] = {
     // Shared memory through memfd, not /dev/ashmem (an app can't count on
     // ashmem; the policy check libcutils does instead needs selinuxfs).
     {"sys.use_memfd", "true"},
-    // No bpfloader in native mode; services wait for this.
-    {"bpf.progs_loaded", "1"},
     // No GPU driver yet: zygote must not preload one.
     {"ro.zygote.disable_gl_preload", "true"},
     // The boot image odrefresh compiles in /data (the image in /system is for

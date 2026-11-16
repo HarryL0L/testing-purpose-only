@@ -45,6 +45,8 @@ nbinder -v 2> /data/local/tmp/nbinder.log || { cat /data/local/tmp/nbinder.log; 
 # under /sys/fs/bpf, then runs the platform's bpfloader (full root only).
 [ -x /apex/com.android.tethering/bin/netbpfload ] && \\
     /apex/com.android.tethering/bin/netbpfload </dev/null > /data/local/tmp/bpfloader.log 2>&1
+# netbpfload says so when it's done; services wait for it either way.
+[ "$(getprop bpf.progs_loaded)" = 1 ] || setprop bpf.progs_loaded 1
 servicemanager > /data/local/tmp/servicemanager.log 2>&1 &
 i=0
 while [ "$(getprop servicemanager.ready)" != true ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
