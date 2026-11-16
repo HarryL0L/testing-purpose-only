@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native mode: hardware the image declares but native mode has no HAL for yet
+     (each comes back with its bridge to the host app). SystemConfig drops
+     unavailable features after reading every permissions file. -->
+<permissions>
+    <unavailable-feature name="android.hardware.bluetooth" />
+    <unavailable-feature name="android.hardware.camera" />
+    <unavailable-feature name="android.hardware.camera.any" />
+    <unavailable-feature name="android.hardware.camera.autofocus" />
+    <unavailable-feature name="android.hardware.camera.capability.manual_post_processing" />
+    <unavailable-feature name="android.hardware.camera.capability.manual_sensor" />
+    <unavailable-feature name="android.hardware.camera.capability.raw" />
+    <unavailable-feature name="android.hardware.camera.concurrent" />
+    <unavailable-feature name="android.hardware.camera.flash" />
+    <unavailable-feature name="android.hardware.camera.front" />
+    <unavailable-feature name="android.hardware.camera.level.full" />
+    <unavailable-feature name="android.hardware.ethernet" />
+    <unavailable-feature name="android.hardware.fingerprint" />
+    <unavailable-feature name="android.hardware.biometrics.face" />
+    <unavailable-feature name="android.hardware.uwb" />
+    <unavailable-feature name="android.hardware.usb.accessory" />
+    <unavailable-feature name="android.hardware.usb.host" />
+    <unavailable-feature name="android.hardware.wifi" />
+    <unavailable-feature name="android.hardware.wifi.direct" />
+    <unavailable-feature name="android.hardware.wifi.passpoint" />
+    <unavailable-feature name="android.hardware.sensor.accelerometer" />
+    <unavailable-feature name="android.hardware.sensor.ambient_temperature" />
+    <unavailable-feature name="android.hardware.sensor.barometer" />
+    <unavailable-feature name="android.hardware.sensor.compass" />
+    <unavailable-feature name="android.hardware.sensor.gyroscope" />
+    <unavailable-feature name="android.hardware.sensor.light" />
+    <unavailable-feature name="android.hardware.sensor.proximity" />
+    <unavailable-feature name="android.hardware.sensor.relative_humidity" />
+    <unavailable-feature name="android.hardware.location" />
+    <unavailable-feature name="android.hardware.location.network" />
+    <unavailable-feature name="android.hardware.microphone" />
+    <unavailable-feature name="android.hardware.audio.output" />
+    <unavailable-feature name="android.hardware.consumerir" />
+</permissions>

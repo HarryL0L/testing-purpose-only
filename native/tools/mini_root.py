@@ -109,6 +109,7 @@ GFX = {  # image path -> file of native/gfx
     "/vendor/lib64/hw/mapper.native.so": "mapper.native.so",
     "/system/bin/ncomposer": "ncomposer",
     "/vendor/etc/vintf/manifest/native-gfx.xml": "native-gfx.xml",
+    "/vendor/etc/permissions/native-unavailable-features.xml": "native-unavailable-features.xml",
 }
 LIB_DIRS = ["/system/lib64", "/apex/com.android.runtime/lib64/bionic", "/apex/com.android.runtime/lib64"]
 
@@ -282,8 +283,11 @@ def main():
     # The graphics HALs (native/gfx/build.sh) and their VINTF manifest, for
     # a17root.py to put over the image's vendor files.
     for guest, name in GFX.items():
-        src = os.path.join(built, "gfx", name) if name != "native-gfx.xml" else \
-            os.path.join(HERE, "..", "gfx", name)
+        src = os.path.join(built, "gfx", name)
+        if name == "native-gfx.xml":
+            src = os.path.join(HERE, "..", "gfx", name)
+        elif name.endswith(".xml"):
+            src = os.path.join(HERE, "..", "config", name)
         if os.path.exists(src):
             place(guest, src)
             if guest.endswith(".xml"):

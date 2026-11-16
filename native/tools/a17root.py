@@ -287,6 +287,16 @@ INACTIVE_VENDOR_MANIFESTS = ["android.hardware.sensors-multihal.xml", "face-defa
 def write_apex_info(root):
     lines = ['<?xml version="1.0" encoding="utf-8"?>', "<apex-info-list>"]
     apex = os.path.join(root, "apex")
+    # Inactive APEXes live outside /apex: the system reads every folder there
+    # (features in etc/permissions, ...), as on a device it holds only active ones.
+    inactive = os.path.join(root, "apex-inactive")
+    if os.path.isdir(inactive):
+        for name in os.listdir(inactive):
+            if not os.path.lexists(os.path.join(apex, name)):
+                os.rename(os.path.join(inactive, name), os.path.join(apex, name))
+    for name in os.listdir(apex):
+        if os.path.islink(os.path.join(apex, name)):
+            os.remove(os.path.join(apex, name))
     modules = {}  # module name -> [(dir name, version, path, partition)]
     for name in sorted(os.listdir(apex)):
         mp = os.path.join(apex, name, "apex_manifest.pb")
@@ -305,6 +315,12 @@ def write_apex_info(root):
     for mod in sorted(modules):
         name, ver, src, part = min(modules[mod], key=lambda e: apex_preference(e[0]))
         if part == "VENDOR" and mod not in ACTIVE_VENDOR_APEXES:
+            name = None
+        for other in modules[mod]:
+            if other[0] != name:
+                os.makedirs(inactive, exist_ok=True)
+                os.rename(os.path.join(apex, other[0]), os.path.join(inactive, other[0]))
+        if name is None:
             continue
         # apexd mounts the active one at /apex/<module name>
         if name != mod:
@@ -339,6 +355,7 @@ RUNTIME = [  # our build, from MINI_DIR, over the image's
     "vendor/lib64/hw/mapper.native.so",
     "system/bin/ncomposer",
     "vendor/etc/vintf/manifest/native-gfx.xml",
+    "vendor/etc/permissions/native-unavailable-features.xml",
 ]
 
 
