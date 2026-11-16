@@ -385,6 +385,7 @@ RUNTIME = [  # our build, from MINI_DIR, over the image's
     "system/bin/nbinder",
     "system/bin/nboot",
     "system/bin/nsocket",
+    "system/bin/nlmkd",
     "system/bin/nzygote",
     "system/framework/napexd.jar",
     # native/gfx: the graphics HALs
@@ -518,6 +519,21 @@ def init_dirs(root):
     return n
 
 
+# One dex2oat "verify" pass per APK into /data/dalvik-cache (where ART looks
+# when the APK's own oat/ directory is unusable), four at a time.
+PRECOMPILE = r"""
+cd /
+find /system/app /system/priv-app /system_ext/app /system_ext/priv-app /product/app \
+     /product/priv-app /vendor/app /odm/app /apex -name '*.apk' 2>/dev/null |
+xargs -P 4 -n 1 sh -c '
+  o=/data/dalvik-cache/arm64/$(echo "${1#/}" | tr / @)@classes.dex
+  [ -s "$o" ] || dex2oat64 --dex-file="$1" --dex-location="$1" --oat-file="$o" \
+      --instruction-set=arm64 --compiler-filter=verify >/dev/null 2>&1 || rm -f "$o"
+' sh
+echo "apps verified: $(ls /data/dalvik-cache/arm64 | grep -c 'classes.dex$')"
+"""
+
+
 def native(out, script):
     """Run a shell command in the new root (through its own run.sh)."""
     subprocess.run([os.path.join(out, "run.sh"), "sh", "-c", script], check=True)
@@ -604,6 +620,11 @@ def main():
     native(out, WITH_PROPS +
                 "/apex/com.android.art/bin/odrefresh --force-compile; "
                 "echo \"odrefresh: exit status $?\"; kill $p; exit 0")
+    # The apps' prebuilt odex files are compiled against the /system boot image
+    # and are rejected with ours, so every app would verify its whole dex at
+    # start. Verify them ahead of time instead, as first-boot dexopt would.
+    log("verifying the apps' code (dex2oat; takes a while)")
+    native(out, PRECOMPILE)
     log("done:", out)
 
 

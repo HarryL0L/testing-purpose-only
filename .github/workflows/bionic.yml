@@ -88,6 +88,8 @@ jobs:
           rm -rf native-nlogd && cp -r "$GITHUB_WORKSPACE/native/nlogd" native-nlogd
           # nsocket: init's service sockets (zygote's, ...)
           rm -rf native-nsocket && cp -r "$GITHUB_WORKSPACE/native/nsocket" native-nsocket
+          # nlmkd: lmkd's control socket (ActivityManager's process priorities)
+          rm -rf native-nlmkd && cp -r "$GITHUB_WORKSPACE/native/nlmkd" native-nlmkd
           # host sqlite links ICU's C libraries; ICU's Java libraries need SDK API files we don't have
           rm -f external/icu/android_icu4j/Android.bp external/icu/icu4j/Android.bp
           # debuggerd only lists ART's libdexfile as a runtime (install-time) dependency
@@ -98,7 +100,7 @@ jobs:
           # no Java boot image (needs ART's dex2oat, not part of this checkout)
           export WITH_DEXPREOPT=false
           # -k: keep going, so one run reports every missing piece
-          m -k libc linker libdl libm nprops nbinder nlogd nsocket crtbegin_dynamic crtend_android crtbegin_so crtend_so 2>&1 | tee ~/build.log | tail -100
+          m -k libc linker libdl libm nprops nbinder nlogd nsocket nlmkd crtbegin_dynamic crtend_android crtbegin_so crtend_so 2>&1 | tee ~/build.log | tail -100
           test ${PIPESTATUS[0]} -eq 0
 
       - name: Collect
@@ -106,11 +108,11 @@ jobs:
         run: |
           mkdir -p out
           I=~/aosp/out/soong/.intermediates
-          find $I/bionic $I/native-nprops $I/native-nbinder $I/native-nlogd $I/native-nsocket -type f \( -name libc.so -o -name libdl.so -o -name libm.so -o -name linker64 -o -name nprops -o -name nbinder -o -name nlogd -o -name nsocket \) \
+          find $I/bionic $I/native-nprops $I/native-nbinder $I/native-nlogd $I/native-nsocket $I/native-nlmkd -type f \( -name libc.so -o -name libdl.so -o -name libm.so -o -name linker64 -o -name nprops -o -name nbinder -o -name nlogd -o -name nsocket -o -name nlmkd \) \
             \( -path '*/android_arm64_armv8-a_shared/*' -o -path '*/android_arm64_armv8-a/*' \) \
             -not -path '*/unstripped/*' -not -path '*/before_final_validations/*' | sort | tee out/found.txt
           # the final output of each file is the shortest path (others are intermediates)
-          for n in libc.so libdl.so libm.so linker64 nprops nbinder nlogd nsocket; do
+          for n in libc.so libdl.so libm.so linker64 nprops nbinder nlogd nsocket nlmkd; do
             f=$(grep "/$n\$" out/found.txt | awk '{ print length, $0 }' | sort -n | head -1 | cut -d' ' -f2-)
             [ -n "$f" ] && cp "$f" out/ && echo "$n <- $f"
           done

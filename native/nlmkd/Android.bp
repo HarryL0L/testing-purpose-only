@@ -1,0 +1,7 @@
+// nlmkd: lmkd's control socket for native mode (see nlmkd.cpp).
+cc_binary {
+    name: "nlmkd",
+    srcs: ["nlmkd.cpp"],
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+    static_executable: true,
+}

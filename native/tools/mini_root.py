@@ -27,7 +27,7 @@ PROGRAMS = ["toybox", "sh", "toolbox", "servicemanager", "service", "fsck.erofs"
 TOYBOX_APPLETS = ["ls", "cat", "uname", "id", "ps", "env", "echo", "readlink", "pwd", "mkdir",
                   "rm", "cp", "mv", "ln", "touch", "head", "tail", "grep", "sed", "wc", "find",
                   "sleep", "pkill", "kill", "timeout"]
-BUILT_PROGRAMS = ["nlogd", "nprops", "nbinder", "nsocket"]  # static, from our build
+BUILT_PROGRAMS = ["nlogd", "nprops", "nbinder", "nsocket", "nlmkd"]  # static, from our build
 
 # Started by ./run.sh nboot: what init starts first on a device.
 NBOOT = """#!/system/bin/sh
@@ -125,6 +125,9 @@ keystore2 /data/misc/keystore </dev/null >/dev/null 2>&1 &
 mkdir -p /data/tombstones /data/anr
 nsocket tombstoned_crash:seqpacket:0666 tombstoned_intercept:seqpacket:0666 \\
     tombstoned_java_trace:seqpacket:0666 -- /system/bin/tombstoned </dev/null >/dev/null 2>&1 &
+# lmkd's control socket (ActivityManager's process priorities): the real lmkd
+# needs kernel pressure monitors, so nlmkd answers in its place
+nsocket lmkd:seqpacket:0660 -- /system/bin/nlmkd </dev/null >/dev/null 2>&1 &
 # idmap2d (overlays): init starts it on request (ctl.start); here it just runs
 mkdir -p /data/resource-cache
 idmap2d </dev/null >/dev/null 2>&1 &
