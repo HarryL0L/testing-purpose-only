@@ -545,11 +545,36 @@ int obj_pin(const bpf_attr& a) {
   return -1;
 }
 
+// Open a pinned object. bpfloader gives pins modes for their groups (0660,
+// 0460, ----rw---- even), and every process here is the file's owner in the
+// kernel's eyes: where the owner bits refuse, a pin of ours gets them for the
+// moment of the open (the mode stat() shows stays bpfloader's).
+static int open_pin(const char* path, int mode) {
+  int fd = open(path, mode | O_CLOEXEC);
+  if (fd >= 0 || errno != EACCES) return fd;
+  struct stat st;
+  // (chmod() refuses a file that isn't ours; stat()'s owner is the virtual one)
+  if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
+    errno = EACCES;
+    return -1;
+  }
+  mode_t want = (mode == O_RDWR) ? (S_IRUSR | S_IWUSR) : S_IRUSR;
+  if (chmod(path, (st.st_mode & 07777) | want) != 0) {
+    errno = EACCES;
+    return -1;
+  }
+  fd = open(path, mode | O_CLOEXEC);
+  int e = errno;
+  chmod(path, st.st_mode & 07777);
+  errno = e;
+  return fd;
+}
+
 int obj_get(const bpf_attr& a) {
   const char* path = reinterpret_cast<const char*>(static_cast<uintptr_t>(a.pathname));
   int mode = (a.file_flags & BPF_F_RDONLY) ? O_RDONLY : O_RDWR;
-  int fd = open(path, mode | O_CLOEXEC);
-  if (fd < 0 && errno == EACCES && mode == O_RDWR) fd = open(path, O_RDONLY | O_CLOEXEC);
+  int fd = open_pin(path, mode);
+  if (fd < 0 && errno == EACCES && mode == O_RDWR) fd = open_pin(path, O_RDONLY);
   if (fd < 0) return -1;
   if (!object(fd)) {
     close(fd);
