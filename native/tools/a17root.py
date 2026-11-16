@@ -261,12 +261,19 @@ def apex_manifest(path):
     return out
 
 
+def apex_preference(name):
+    """Which of several APEXes of one module to activate (on a device the
+    bootloader names it): ones that need no special hardware first."""
+    return (0 if "nonsecure" in name else 1, "v4l2" in name or "remote" in name, len(name), name)
+
+
 def write_apex_info(root):
     lines = ['<?xml version="1.0" encoding="utf-8"?>', "<apex-info-list>"]
     apex = os.path.join(root, "apex")
+    modules = {}  # module name -> [(dir name, version, path, partition)]
     for name in sorted(os.listdir(apex)):
         mp = os.path.join(apex, name, "apex_manifest.pb")
-        if not os.path.exists(mp):
+        if os.path.islink(os.path.join(apex, name)) or not os.path.exists(mp):
             continue
         m = apex_manifest(mp)
         mod = m.get(1, name.encode()).decode()
@@ -277,6 +284,15 @@ def write_apex_info(root):
                 cand = "/%s/apex/%s%s" % (d, name, ext)
                 if os.path.exists(os.path.join(root, cand.lstrip("/"))):
                     src, part = cand, pt
+        modules.setdefault(mod, []).append((name, ver, src, part))
+    for mod in sorted(modules):
+        name, ver, src, part = min(modules[mod], key=lambda e: apex_preference(e[0]))
+        # apexd mounts the active one at /apex/<module name>
+        if name != mod:
+            link = os.path.join(apex, mod)
+            if os.path.lexists(link):
+                os.remove(link)
+            os.symlink(name, link)
         lines.append('    <apex-info moduleName="%s" modulePath="%s" preinstalledModulePath="%s" '
                      'versionCode="%d" versionName="" isFactory="true" isActive="true" '
                      'lastUpdateMillis="0" provideSharedApexLibs="false" partition="%s"/>'
