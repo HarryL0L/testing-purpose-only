@@ -123,3 +123,15 @@ can't open; the image does have ANGLE (system) and SwiftShader
 the CPU. Needed: the vendor partition in the root, a memfd-backed allocator
 service + stable-C mapper, and a composer3 service that takes SurfaceFlinger's
 client target and hands the frames to a viewer.
+Under qemu, with native/gfx (nalloc, mapper.native, ncomposer writing
+frames to /data/vendor/nfb, nfb2png.py to view them), Android 17 boots to
+the home screen: SurfaceFlinger reports "Boot is finished" after 90 s,
+user 0 unlocks and the launcher, wallpaper, status and navigation bars
+draw (2.5 min for the launcher under emulation). Missing pieces filled in
+on the way: stand-ins for vold, netd and dnsresolver (StubService), lmkd
+(nlmkd), userspace BPF in libc for the network stack's maps and programs,
+the vendor HALs (health, keymint, gatekeeper, power, audio, ...) and
+daemons (audioserver, keystore2, gatekeeperd, idmap2d, tombstoned),
+SO_PEERCRED and /proc/<pid>/status reporting the virtual ids, and a
+dex2oat verify pass over the apps (their prebuilt odex files don't match
+the concurrent-copying boot image odrefresh builds).
