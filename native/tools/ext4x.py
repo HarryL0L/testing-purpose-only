@@ -4,8 +4,9 @@
     ext4x.py IMAGE DEST
 
 Pure Python, no root: regular files, directories and symlinks with their
-permission bits (owners are not kept). Handles extents and block maps; htree
-directories read as linear ones. Used to unpack APEX payloads on the phone,
+permission bits; with --meta (a17root), owners and security./trusted.
+attributes are recorded as native mode's libc keeps them (user.nmode.*).
+Handles extents and block maps; htree directories read as linear ones. Used to unpack APEX payloads on the phone,
 where there is no debugfs.
 """
 import os
@@ -160,6 +161,55 @@ class Ext4:
                     yield name, ino
             pos += rec_len
 
+    PREFIXES = {1: "user.", 4: "trusted.", 6: "security."}
+
+    def owner(self, raw):
+        uid = struct.unpack_from("<H", raw, 0x2)[0] | (struct.unpack_from("<H", raw, 0x78)[0] << 16)
+        gid = struct.unpack_from("<H", raw, 0x18)[0] | (struct.unpack_from("<H", raw, 0x7A)[0] << 16)
+        return uid, gid
+
+    def _xattr_entries(self, buf, first, value_base, out):
+        pos = first
+        while pos + 16 <= len(buf):
+            name_len, idx, voff, vinum, vsize = struct.unpack_from("<BBHII", buf, pos)
+            if name_len == 0 and idx == 0 and voff == 0 and vinum == 0:
+                break
+            name = buf[pos + 16:pos + 16 + name_len].decode("utf-8", "replace")
+            if idx in self.PREFIXES and vinum == 0:
+                v = buf[value_base + voff:value_base + voff + vsize]
+                out[self.PREFIXES[idx] + name] = bytes(v)
+            pos += (16 + name_len + 3) & ~3
+
+    def xattrs(self, raw):
+        """security./trusted./user. attributes, in the inode and its xattr block."""
+        out = {}
+        if len(raw) > 0x82:
+            extra = struct.unpack_from("<H", raw, 0x80)[0]
+            base = 128 + extra
+            if base + 4 <= len(raw) and struct.unpack_from("<I", raw, base)[0] == 0xEA020000:
+                self._xattr_entries(raw, base + 4, base + 4, out)
+        acl = struct.unpack_from("<I", raw, 0x68)[0] | (struct.unpack_from("<H", raw, 0x76)[0] << 32)
+        if acl:
+            blk = self.read(acl * self.block_size, self.block_size)
+            if struct.unpack_from("<I", blk, 0)[0] == 0xEA020000:
+                self._xattr_entries(blk, 32, 0, out)
+        return out
+
+    def record(self, raw, path):
+        """Native mode's libc records of the owner and labels (see erofsmeta.py)."""
+        if not self.keep_meta:
+            return
+        try:
+            os.setxattr(path, "user.nmode.owner", struct.pack("<II", *self.owner(raw)),
+                        follow_symlinks=False)
+            for name, value in self.xattrs(raw).items():
+                if name.startswith(("security.", "trusted.")):
+                    os.setxattr(path, "user.nmode." + name, value, follow_symlinks=False)
+        except OSError:
+            pass
+
+    keep_meta = False
+
     def extract(self, dest, ino=2):
         raw = self.inode(ino)
         os.makedirs(dest, exist_ok=True)
@@ -172,6 +222,7 @@ class Ext4:
             if stat.S_ISDIR(mode):
                 self.extract(p, child)
                 os.chmod(p, stat.S_IMODE(mode) | 0o700)
+                self.record(craw, p)
             elif stat.S_ISLNK(mode):
                 size = self.size(craw)
                 flags = struct.unpack_from("<I", craw, 0x20)[0]
@@ -185,10 +236,13 @@ class Ext4:
             elif stat.S_ISREG(mode):
                 self.copy_to(craw, p)
                 os.chmod(p, stat.S_IMODE(mode) | 0o600)
+                self.record(craw, p)
 
 
 def main():
-    Ext4(sys.argv[1]).extract(sys.argv[2])
+    fs = Ext4(sys.argv[1])
+    fs.keep_meta = "--meta" in sys.argv[3:]
+    fs.extract(sys.argv[2])
 
 
 if __name__ == "__main__":

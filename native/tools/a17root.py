@@ -191,7 +191,10 @@ class Unpacker:
                 if m & 0o700 != 0o700:
                     os.chmod(d, m | 0o700)
         else:
-            ext4x.Ext4(image).extract(dest)
+            fs = ext4x.Ext4(image)
+            fs.keep_meta = True  # owners and labels, as for erofs
+            fs.extract(dest)
+            fs.record(fs.inode(2), dest)
 
     def done(self):
         shutil.rmtree(self.stage, ignore_errors=True)
