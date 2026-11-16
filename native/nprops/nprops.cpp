@@ -196,6 +196,14 @@ static const std::pair<const char*, const char*> kDeviceDefaults[] = {
     {"apex.all.ready", "true"},
 };
 
+// Settings of the image native mode overrides (they name hardware an app
+// can't reach).
+static const std::pair<const char*, const char*> kNativeOverrides[] = {
+    // Factory reset protection's partition: no block devices here; with no
+    // partition named, system_server doesn't start PersistentDataBlockService.
+    {"ro.frp.pst", ""},
+};
+
 static uint32_t SetProperty(const std::string& name, const std::string& value) {
   if (name.empty() || name.find_first_of(" \t\n=") != std::string::npos) {
     return PROP_ERROR_INVALID_NAME;
@@ -335,6 +343,8 @@ int main(int argc, char** argv) {
   }
   DeriveProperties(&props);
   for (const auto& [k, v] : kDeviceDefaults) props.emplace(k, v);
+  // What native mode must change in the image's own settings.
+  for (const auto& [k, v] : kNativeOverrides) props[k] = v;
   for (const auto& [k, v] : overrides) props[k] = v;
   props["ro.property_service.version"] = "2";  // as init: clients use PROP_MSG_SETPROP2
   size_t loaded = 0;
