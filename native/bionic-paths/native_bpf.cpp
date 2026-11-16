@@ -33,7 +33,12 @@ namespace {
 
 constexpr uint32_t kMagic = 0x6670626e;  // 'nbpf'
 constexpr size_t kHeaderSize = 4096;
-constexpr char kObjDir[] = "/sys/fs/bpf/.nbpf";
+#ifdef NBPF_HOST_TEST
+#define kBpfDir NBPF_HOST_TEST
+#else
+#define kBpfDir "/sys/fs/bpf"
+#endif
+constexpr char kObjDir[] = kBpfDir "/.nbpf";
 
 enum Kind : uint32_t { KIND_MAP = 1, KIND_PROG = 2, KIND_BTF = 3, KIND_LINK = 4 };
 
@@ -169,7 +174,7 @@ uint32_t next_id() {
   uint32_t id = 0;
   if (pread(fd, &id, sizeof(id), 0) != sizeof(id)) id = 0;
   id++;
-  pwrite(fd, &id, sizeof(id), 0);
+  if (pwrite(fd, &id, sizeof(id), 0) != sizeof(id)) id = 1;
   flock(fd, LOCK_UN);
   close(fd);
   return id;
@@ -177,7 +182,7 @@ uint32_t next_id() {
 
 // A new, unpinned object with `data_size` bytes of data: returns its fd.
 int create(const nbpf_header& h, uint64_t data_size) {
-  mkdir("/sys/fs/bpf", 01777);
+  mkdir(kBpfDir, 01777);
   mkdir(kObjDir, 0700);
   int fd = open(kObjDir, O_TMPFILE | O_RDWR | O_CLOEXEC, 0600);
   if (fd < 0) {

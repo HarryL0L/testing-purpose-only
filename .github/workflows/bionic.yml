@@ -158,6 +158,11 @@ jobs:
           g++ -std=c++17 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -DNB_HOST -I. \
             test/nbtest.cpp ../bionic-paths/native_binder.cpp -o /tmp/nbtest -lpthread
           timeout 120 /tmp/nbtest /tmp/nbinder
+          # libc's userspace BPF objects (native_bpf.cpp), on the runner
+          cd ../bionic-paths
+          g++ -std=c++17 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
+            -DNBPF_HOST_TEST='"/tmp/nbpft"' -I. test/nbpftest.cpp native_bpf.cpp -o /tmp/nbpftest
+          timeout 60 /tmp/nbpftest
 
   mini-root:
     # A small Android 17 root (toybox, sh, their libraries, our libc and linker)
