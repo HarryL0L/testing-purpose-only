@@ -112,3 +112,14 @@ directories, cgroups as folders, memfd instead of ashmem, napexd (an
 apexservice stand-in: the APEXes are unpacked already), the image's own
 suspend service and installd, init.environ.rc's environment, hwbinder as an
 empty binder context.
+Phone: same as qemu - system_server runs the core services natively and
+waits at the display manager for SurfaceFlinger (the watchdog then kills
+it, as expected without a display).
+
+Step 8 (display), plan: the Cuttlefish vendor graphics HALs (ranchu and
+drm_hwcomposer composers, minigbm allocator) all need /dev/dri, which an app
+can't open; the image does have ANGLE (system) and SwiftShader
+(vulkan.pastel.so in vendor's com.google.cf.vulkan), so rendering can run on
+the CPU. Needed: the vendor partition in the root, a memfd-backed allocator
+service + stable-C mapper, and a composer3 service that takes SurfaceFlinger's
+client target and hands the frames to a viewer.
