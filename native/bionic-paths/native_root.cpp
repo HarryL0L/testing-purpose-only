@@ -1273,15 +1273,40 @@ static bool nr_vsock_standin(int fd, const struct sockaddr* addr) {
   return unix_fd;
 }
 
+// A Unix socket of the same type and fd flags in place of socket `fd`.
+static bool nr_replace_with_unix(int fd) {
+  int type = 0;
+  socklen_t tl = sizeof(type);
+  if (__nrp_getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &tl) != 0) return false;
+  int fl = fcntl(fd, F_GETFL), fdfl = fcntl(fd, F_GETFD);
+  int u = __nrp_socket(AF_UNIX, type | ((fl & O_NONBLOCK) ? SOCK_NONBLOCK : 0), 0);
+  if (u < 0) return false;
+  int r = dup3(u, fd, (fdfl & FD_CLOEXEC) ? O_CLOEXEC : 0);
+  close(u);
+  return r == fd;
+}
+
 extern "C" int bind(int fd, const struct sockaddr* addr, socklen_t len) {
+  sa_family_t autobind = AF_UNIX;  // an abstract name of the kernel's choice
   if (nr_vsock_standin(fd, addr)) {
-    sa_family_t family = AF_UNIX;  // autobind: an abstract name of the kernel's choice
-    return __nrp_bind(fd, reinterpret_cast<const struct sockaddr*>(&family), sizeof(family));
+    return __nrp_bind(fd, reinterpret_cast<const struct sockaddr*>(&autobind), sizeof(autobind));
   }
   struct sockaddr_un buf;
   const struct sockaddr* a = nr_map_sockaddr(addr, &len, &buf);
   if (a == nullptr) return -1;
-  return __nrp_bind(fd, a, len);
+  int r = __nrp_bind(fd, a, len);
+  if (r == -1 && addr != nullptr && addr->sa_family == AF_VSOCK && nr_ids() &&
+      (errno == EACCES || errno == EPERM || errno == EADDRNOTAVAIL)) {
+    // An app may open a vsock socket but not bind it (ports below 1024 are
+    // privileged; the lights HAL binds port 0): the Unix stand-in instead.
+    int saved = errno;
+    if (!nr_replace_with_unix(fd)) {
+      errno = saved;
+      return -1;
+    }
+    r = __nrp_bind(fd, reinterpret_cast<const struct sockaddr*>(&autobind), sizeof(autobind));
+  }
+  return r;
 }
 
 // connect() itself goes through NetdClient's dispatch, which ends up here.
