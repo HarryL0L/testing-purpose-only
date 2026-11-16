@@ -204,10 +204,15 @@ static bool nr_host_path(const char* p) {
 
 // libselinux only uses a selinuxfs whose statfs() says so.
 static constexpr unsigned long kSelinuxMagic = 0xf97cff8c;
+// So is bpffs for libbpf, which pins objects only there (native_bpf.cpp).
+static constexpr unsigned long kBpfFsMagic = 0xcafe4a11;
 static void nr_fake_selinuxfs(const char* path, struct statfs* buf) {
   size_t rl;
   if (path != nullptr && nr_root(&rl) != nullptr && nr_under(path, "/sys/fs/selinux", 15)) {
     buf->f_type = kSelinuxMagic;
+  }
+  if (path != nullptr && nr_root(&rl) != nullptr && nr_under(path, "/sys/fs/bpf", 11)) {
+    buf->f_type = kBpfFsMagic;
   }
 }
 

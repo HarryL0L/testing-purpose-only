@@ -43,8 +43,11 @@ nprops "$@" || exit 1
 nbinder -v 2> /data/local/tmp/nbinder.log || { cat /data/local/tmp/nbinder.log; exit 1; }
 # BPF objects (libc emulates bpf(2)): netbpfload pins the networking maps
 # under /sys/fs/bpf, then runs the platform's bpfloader (full root only).
+# init opens /dev/kmsg for it ("file /dev/kmsg w"): the platform bpfloader it
+# runs next finds the fd in ANDROID_FILE__dev_kmsg.
 [ -x /apex/com.android.tethering/bin/netbpfload ] && \\
-    /apex/com.android.tethering/bin/netbpfload </dev/null > /data/local/tmp/bpfloader.log 2>&1
+    ANDROID_FILE__dev_kmsg=9 /apex/com.android.tethering/bin/netbpfload </dev/null 9>>/dev/kmsg \\
+    > /data/local/tmp/bpfloader.log 2>&1
 # netbpfload says so when it's done; services wait for it either way.
 [ "$(getprop bpf.progs_loaded)" = 1 ] || setprop bpf.progs_loaded 1
 servicemanager > /data/local/tmp/servicemanager.log 2>&1 &
