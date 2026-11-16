@@ -202,6 +202,9 @@ static const std::pair<const char*, const char*> kNativeOverrides[] = {
     // Factory reset protection's partition: no block devices here; with no
     // partition named, system_server doesn't start PersistentDataBlockService.
     {"ro.frp.pst", ""},
+    // No HIDL HALs: as hwservicemanager says when it finds none (libhidl
+    // otherwise waits for it in every process, since system_ext ships it).
+    {"hwservicemanager.disabled", "true"},
 };
 
 static uint32_t SetProperty(const std::string& name, const std::string& value) {
