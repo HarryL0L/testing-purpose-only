@@ -14,6 +14,9 @@ import stat
 import struct
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from erofsmeta import lsetxattr  # noqa: E402
+
 
 class Ext4:
     def __init__(self, path):
@@ -200,11 +203,10 @@ class Ext4:
         if not self.keep_meta:
             return
         try:
-            os.setxattr(path, "user.nmode.owner", struct.pack("<II", *self.owner(raw)),
-                        follow_symlinks=False)
+            lsetxattr(path, "user.nmode.owner", struct.pack("<II", *self.owner(raw)))
             for name, value in self.xattrs(raw).items():
                 if name.startswith(("security.", "trusted.")):
-                    os.setxattr(path, "user.nmode." + name, value, follow_symlinks=False)
+                    lsetxattr(path, "user.nmode." + name, value)
         except OSError:
             pass
 

@@ -11,6 +11,8 @@ file capabilities). This walks the image's metadata (no file data, so no
 decompression) and writes those on DEST's files. Symlinks can't carry user
 xattrs and are skipped.
 """
+import ctypes
+import ctypes.util
 import os
 import struct
 import sys
@@ -18,6 +20,26 @@ import sys
 EROFS_MAGIC = 0xE0F5E1E2
 PREFIXES = {1: "user.", 4: "trusted.", 6: "security."}
 FLAT_PLAIN, FLAT_INLINE = 0, 2
+
+
+_libc = None
+
+
+def lsetxattr(path, name, value):
+    """os.setxattr without following symlinks; Termux's Python lacks it, so
+    through libc's lsetxattr() there."""
+    global _libc
+    if hasattr(os, "setxattr"):
+        os.setxattr(path, name, value, follow_symlinks=False)
+        return
+    if _libc is None:
+        _libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so", use_errno=True)
+        _libc.lsetxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
+                                    ctypes.c_size_t, ctypes.c_int]
+    value = bytes(value)
+    if _libc.lsetxattr(os.fsencode(path), name.encode(), value, len(value), 0) != 0:
+        e = ctypes.get_errno()
+        raise OSError(e, os.strerror(e), path)
 
 
 class Erofs:
@@ -143,11 +165,10 @@ def record(image, dest):
         if not os.path.exists(path):
             continue
         try:
-            os.setxattr(path, "user.nmode.owner", struct.pack("<II", ino["uid"], ino["gid"]),
-                        follow_symlinks=False)
+            lsetxattr(path, "user.nmode.owner", struct.pack("<II", ino["uid"], ino["gid"]))
             for name, value in fs.xattrs(ino).items():
                 if name.startswith(("security.", "trusted.")):
-                    os.setxattr(path, "user.nmode." + name, value, follow_symlinks=False)
+                    lsetxattr(path, "user.nmode." + name, value)
             n += 1
         except OSError:
             pass
