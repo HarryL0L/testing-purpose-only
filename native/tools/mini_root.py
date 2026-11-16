@@ -103,6 +103,8 @@ for hal in \\
     /apex/com.google.cf.light/bin/hw/android.hardware.light-service.cuttlefish \\
     /apex/com.android.hardware.thermal/bin/hw/android.hardware.thermal-service.example \\
     /apex/com.android.hardware.memtrack/bin/hw/android.hardware.memtrack-service.example \\
+    /apex/com.android.hardware.audio/bin/hw/android.hardware.audio.service-aidl.example \\
+    /apex/com.android.hardware.audio/bin/hw/android.hardware.audio.effect.service-aidl.example \\
     ; do
   [ -x "$hal" ] && "$hal" </dev/null >/dev/null 2>&1 &
 done
@@ -112,6 +114,8 @@ done
 [ -x /apex/com.android.configinfrastructure/bin/aconfigd-mainline ] && \\
     nsocket aconfigd_mainline:stream:0666 -- \\
     /apex/com.android.configinfrastructure/bin/aconfigd-mainline start-socket </dev/null >/dev/null 2>&1 &
+# audioserver (AudioFlinger, audio policy), on the audio HAL above
+audioserver </dev/null >/dev/null 2>&1 &
 mkdir -p /data/misc/keystore
 keystore2 /data/misc/keystore </dev/null >/dev/null 2>&1 &
 i=0

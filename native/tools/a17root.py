@@ -311,6 +311,8 @@ ACTIVE_VENDOR_APEXES = {
     "com.android.hardware.authsecret", "com.android.hardware.power",
     "com.android.hardware.vibrator", "com.google.cf.light", "com.android.hardware.thermal",
     "com.android.hardware.memtrack", "com.google.cf.vulkan", "com.google.cf.input.config",
+    # the example audio HAL (software streams; audio to the host app comes later)
+    "com.android.hardware.audio",
 }
 # Vendor manifest fragments of HALs native mode doesn't run yet.
 INACTIVE_VENDOR_MANIFESTS = ["android.hardware.sensors-multihal.xml", "face-default.xml",
