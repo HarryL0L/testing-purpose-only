@@ -46,6 +46,14 @@ i=0
 while [ "$(getprop servicemanager.ready)" != true ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
 r=$(getprop servicemanager.ready)
 echo "servicemanager.ready=$r"
+# Feature flags (aconfig): the storage files aconfigd builds at boot under
+# /metadata/aconfig, as init runs it (full root only).
+for step in "/system/bin/aconfigd-system early-platform-init" \\
+    "/apex/com.android.configinfrastructure/bin/aconfigd-mainline bootstrap-init" \\
+    "/system/bin/aconfigd-system platform-init" \\
+    "/apex/com.android.configinfrastructure/bin/aconfigd-mainline init"; do
+  [ -x "${step%% *}" ] && $step </dev/null >/dev/null 2>&1
+done
 if [ "$r" != true ]; then
   echo "--- servicemanager.log"; cat /data/local/tmp/servicemanager.log
   echo "--- /dev/kmsg"; tail -n 30 /dev/kmsg
@@ -87,6 +95,12 @@ for hal in \\
     ; do
   [ -x "$hal" ] && "$hal" </dev/null >/dev/null 2>&1 &
 done
+# aconfigd's flag-override services (init-style sockets)
+[ -x /system/bin/aconfigd-system ] && nsocket aconfigd_system:stream:0666 -- \\
+    /system/bin/aconfigd-system start-socket </dev/null >/dev/null 2>&1 &
+[ -x /apex/com.android.configinfrastructure/bin/aconfigd-mainline ] && \\
+    nsocket aconfigd_mainline:stream:0666 -- \\
+    /apex/com.android.configinfrastructure/bin/aconfigd-mainline start-socket </dev/null >/dev/null 2>&1 &
 mkdir -p /data/misc/keystore
 keystore2 /data/misc/keystore </dev/null >/dev/null 2>&1 &
 i=0
