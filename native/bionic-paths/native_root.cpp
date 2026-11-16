@@ -1194,7 +1194,26 @@ static const struct sockaddr* nr_map_sockaddr(const struct sockaddr* addr, sockl
   return reinterpret_cast<const struct sockaddr*>(out);
 }
 
+// vsock sockets (Cuttlefish's HALs listen on one for their host side: the
+// lights HAL panics without it): an app may not open one, so it gets a Unix
+// socket in their place (__socket below). Binding it to a vsock address
+// binds it to an unnamed abstract address, so listen() and accept() work and
+// nothing connects; connecting to a vsock address is refused.
+static bool nr_vsock_standin(int fd, const struct sockaddr* addr) {
+  if (addr == nullptr || addr->sa_family != AF_VSOCK || !nr_ids()) return false;
+  int domain = 0;
+  socklen_t dl = sizeof(domain);
+  int saved = errno;
+  bool unix_fd = __nrp_getsockopt(fd, SOL_SOCKET, SO_DOMAIN, &domain, &dl) == 0 && domain == AF_UNIX;
+  errno = saved;
+  return unix_fd;
+}
+
 extern "C" int bind(int fd, const struct sockaddr* addr, socklen_t len) {
+  if (nr_vsock_standin(fd, addr)) {
+    sa_family_t family = AF_UNIX;  // autobind: an abstract name of the kernel's choice
+    return __nrp_bind(fd, reinterpret_cast<const struct sockaddr*>(&family), sizeof(family));
+  }
   struct sockaddr_un buf;
   const struct sockaddr* a = nr_map_sockaddr(addr, &len, &buf);
   if (a == nullptr) return -1;
@@ -1203,6 +1222,10 @@ extern "C" int bind(int fd, const struct sockaddr* addr, socklen_t len) {
 
 // connect() itself goes through NetdClient's dispatch, which ends up here.
 extern "C" int __connect(int fd, const struct sockaddr* addr, socklen_t len) {
+  if (nr_vsock_standin(fd, addr)) {
+    errno = ECONNREFUSED;  // no host side
+    return -1;
+  }
   struct sockaddr_un buf;
   const struct sockaddr* a = nr_map_sockaddr(addr, &len, &buf);
   if (a == nullptr) return -1;
@@ -1232,11 +1255,14 @@ static void nr_unmap_sockaddr(struct sockaddr* addr, socklen_t user_len, socklen
 // PF_KEY sockets: the connectivity module opens and closes one only to make
 // the kernel wait for RCU readers of BPF maps (BpfUtils' synchronizeKernelRCU).
 // With BPF emulated there are none, and an app can't open one: any socket
-// does for that.
+// does for that. vsock sockets get a Unix one too (see nr_vsock_standin).
 extern "C" int __socket(int domain, int type, int protocol) {
   int fd = __nrp_socket(domain, type, protocol);
   if (fd < 0 && domain == AF_KEY && nr_ids()) {
     fd = __nrp_socket(AF_UNIX, SOCK_DGRAM | (type & SOCK_CLOEXEC), 0);
+  } else if (fd < 0 && domain == AF_VSOCK && nr_ids() &&
+             (errno == EACCES || errno == EPERM || errno == EAFNOSUPPORT)) {
+    fd = __nrp_socket(AF_UNIX, type, 0);
   }
   return fd;
 }
