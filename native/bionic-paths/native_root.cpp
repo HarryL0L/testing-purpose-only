@@ -95,6 +95,7 @@ int __nrp_removexattr(const char*, const char*);
 int __nrp_lremovexattr(const char*, const char*);
 int __nrp_statx(int, const char*, int, unsigned, struct statx*);
 int __nrp_inotify_add_watch(int, const char*, uint32_t);
+int __nrp_timerfd_create(clockid_t, int);
 int __nrp_execve(const char*, char* const*, char* const*);
 int __nrp_bind(int, const struct sockaddr*, socklen_t);
 int __nrp_connect(int, const struct sockaddr*, socklen_t);
@@ -1219,6 +1220,20 @@ extern "C" int inotify_add_watch(int fd, const char* path, uint32_t mask) {
     if (r == -1) errno = saved;
   }
   return r;
+}
+
+// Alarm clocks (CLOCK_REALTIME_ALARM, CLOCK_BOOTTIME_ALARM) need
+// CAP_WAKE_ALARM, which an app lacks; AlarmManagerService then falls back
+// to a handler path that crashes on the first alarm. They get the clock of
+// the same kind instead: the timers run, they just don't wake a sleeping
+// phone (the host app keeps it awake while Android runs).
+extern "C" int timerfd_create(clockid_t clock, int flags) {
+  int fd = __nrp_timerfd_create(clock, flags);
+  if (fd == -1 && errno == EPERM && nr_ids()) {
+    if (clock == CLOCK_REALTIME_ALARM) fd = __nrp_timerfd_create(CLOCK_REALTIME, flags);
+    if (clock == CLOCK_BOOTTIME_ALARM) fd = __nrp_timerfd_create(CLOCK_BOOTTIME, flags);
+  }
+  return fd;
 }
 
 // ---- Unix domain sockets ----

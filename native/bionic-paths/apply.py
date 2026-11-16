@@ -54,6 +54,7 @@ RENAMES = [
     ("lremovexattr", "lremovexattr", None),
     ("statx", "statx", None),
     ("inotify_add_watch", "inotify_add_watch", None),
+    ("timerfd_create", "timerfd_create", None),
     ("bind", "bind", None),
     ("__connect", "connect", None),
     # binder fds (native_binder.cpp)
