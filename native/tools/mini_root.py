@@ -369,7 +369,7 @@ exec "$ANDROID_NATIVE_ROOT/apex/com.android.runtime/bin/linker64" /system/bin/sh
 """)
     os.chmod(os.path.join(out, "run.sh"), 0o755)
     # The full-root builder, to run on the phone (python3 a17root.py ...).
-    for tool in ("a17root.py", "ext4x.py"):
+    for tool in ("a17root.py", "ext4x.py", "nfb2png.py"):
         shutil.copy2(os.path.join(HERE, tool), os.path.join(out, tool))
     shutil.rmtree(work, ignore_errors=True)
     print("root:", sum(len(f) for _, _, f in os.walk(root)), "files")
