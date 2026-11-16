@@ -38,6 +38,9 @@ NBOOT = """#!/system/bin/sh
 # /data/local/tmp/nbinder.log, /data/local/tmp/servicemanager.log
 cd /data/local/tmp
 : > /dev/kmsg
+# What a reboot clears: BPF objects (bpffs is empty at boot) and the
+# processes' id records (pids start over).
+rm -rf /sys/fs/bpf/* /sys/fs/bpf/.nbpf /dev/socket/.nids
 nlogd || exit 1
 nprops "$@" || exit 1
 nbinder -v 2> /data/local/tmp/nbinder.log || { cat /data/local/tmp/nbinder.log; exit 1; }

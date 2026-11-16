@@ -353,12 +353,49 @@ static ssize_t nr_raw_getxattr_at(int dirfd, const char* mapped, int flags, cons
                                        : __nrp_getxattr(p, name, value, size);
 }
 
+// Setting a user xattr needs write access to the file, even for its owner
+// (root on a computer bypasses that; an app on the phone doesn't). bpfloader
+// makes each BPF map pin read-only before it chowns and labels it, so the
+// records (owner, labels) didn't stick there: a file of ours that isn't
+// writable gets the owner's write bit for the moment of the set. `fd` is used
+// when `p` is null; `nofollow` as for lsetxattr().
+template <typename Set>
+static int nr_set_writable(Set set, int fd, const char* p, bool nofollow) {
+  int r = set();
+  if (r == 0 || errno != EACCES || !nr_ids()) return r;
+  int saved = errno;
+  struct stat st;
+  int sr = p == nullptr ? __nrp_fstat64(fd, &st)
+                        : __nrp_fstatat64(AT_FDCWD, p, &st, nofollow ? AT_SYMLINK_NOFOLLOW : 0);
+  if (sr != 0 || S_ISLNK(st.st_mode) || st.st_uid != g_real_uid || (st.st_mode & S_IWUSR)) {
+    errno = saved;
+    return r;
+  }
+  mode_t mode = st.st_mode & 07777;
+  if ((p == nullptr ? fchmod(fd, mode | S_IWUSR) : __nrp_fchmodat(AT_FDCWD, p, mode | S_IWUSR)) != 0) {
+    errno = saved;
+    return r;
+  }
+  r = set();
+  int e = errno;
+  if (p == nullptr) {
+    fchmod(fd, mode);
+  } else {
+    __nrp_fchmodat(AT_FDCWD, p, mode);
+  }
+  errno = e;
+  return r;
+}
+
 static int nr_raw_setxattr_at(int dirfd, const char* mapped, int flags, const char* name,
                               const void* value, size_t size) {
   NR_AT_PATH(p, dirfd, mapped, flags);
-  if (p == nullptr) return __nrp_fsetxattr(dirfd, name, value, size, 0);
-  return (flags & AT_SYMLINK_NOFOLLOW) ? __nrp_lsetxattr(p, name, value, size, 0)
-                                       : __nrp_setxattr(p, name, value, size, 0);
+  bool nofollow = (flags & AT_SYMLINK_NOFOLLOW) != 0;
+  return nr_set_writable([&] {
+    if (p == nullptr) return __nrp_fsetxattr(dirfd, name, value, size, 0);
+    return nofollow ? __nrp_lsetxattr(p, name, value, size, 0)
+                    : __nrp_setxattr(p, name, value, size, 0);
+  }, dirfd, p, nofollow);
 }
 
 // The owner to report for a file stat() found (mapped path or fd). A file
@@ -1085,7 +1122,8 @@ extern "C" int setxattr(const char* path, const char* name, const void* value, s
   NR_MAP(p, path);
   if (nr_is_kept(name)) {
     char kept[300];
-    __nrp_setxattr(p, nr_kept_name(name, kept, sizeof(kept)), value, size, 0);
+    const char* k = nr_kept_name(name, kept, sizeof(kept));
+    nr_set_writable([&] { return __nrp_setxattr(p, k, value, size, 0); }, -1, p, false);
     return 0;
   }
   return __nrp_setxattr(p, name, value, size, flags);
@@ -1095,7 +1133,8 @@ extern "C" int lsetxattr(const char* path, const char* name, const void* value, 
   NR_MAP(p, path);
   if (nr_is_kept(name)) {
     char kept[300];  // fails on symlinks (no user xattrs): they stay unlabeled
-    __nrp_lsetxattr(p, nr_kept_name(name, kept, sizeof(kept)), value, size, 0);
+    const char* k = nr_kept_name(name, kept, sizeof(kept));
+    nr_set_writable([&] { return __nrp_lsetxattr(p, k, value, size, 0); }, -1, p, true);
     return 0;
   }
   return __nrp_lsetxattr(p, name, value, size, flags);
@@ -1104,7 +1143,8 @@ extern "C" int lsetxattr(const char* path, const char* name, const void* value, 
 extern "C" int __fsetxattr(int fd, const char* name, const void* value, size_t size, int flags) {
   if (nr_is_kept(name)) {
     char kept[300];
-    __nrp_fsetxattr(fd, nr_kept_name(name, kept, sizeof(kept)), value, size, 0);
+    const char* k = nr_kept_name(name, kept, sizeof(kept));
+    nr_set_writable([&] { return __nrp_fsetxattr(fd, k, value, size, 0); }, fd, nullptr, false);
     return 0;
   }
   return __nrp_fsetxattr(fd, name, value, size, flags);
