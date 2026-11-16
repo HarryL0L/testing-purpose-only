@@ -72,9 +72,10 @@ NZYGOTE = """#!/system/bin/sh
 # suspend service and installd.
 CLASSPATH=/system/framework/services.jar:/system/framework/napexd.jar \\
     app_process64 /system/bin nmode.ApexService </dev/null >/dev/null 2>&1 &
-# vold's stand-in (nvold, also in napexd.jar): storage is plain directories.
-CLASSPATH=/system/framework/napexd.jar app_process64 /system/bin nmode.VoldService \\
-    </dev/null >/dev/null 2>&1 &
+# Stand-ins for vold and netd (nmode.StubService, also in napexd.jar): an
+# app can't mount or configure the network; storage is plain directories.
+CLASSPATH=/system/framework/napexd.jar app_process64 /system/bin nmode.StubService \\
+    vold=android.os.IVold netd=android.net.INetd </dev/null >/dev/null 2>&1 &
 /system/bin/hw/android.system.suspend-service </dev/null >/dev/null 2>&1 &
 installd </dev/null >/dev/null 2>&1 &
 # The display (native/gfx): graphics memory (nalloc), the composer HAL
@@ -107,7 +108,7 @@ done
 mkdir -p /data/misc/keystore
 keystore2 /data/misc/keystore </dev/null >/dev/null 2>&1 &
 i=0
-for svc in apexservice vold; do
+for svc in apexservice vold netd; do
   while ! service check $svc | grep -q ': found' && [ $i -lt 300 ]; do sleep 0.2; i=$((i + 1)); done
 done
 exec nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\
