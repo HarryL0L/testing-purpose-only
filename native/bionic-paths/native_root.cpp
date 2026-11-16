@@ -444,8 +444,11 @@ extern "C" int setgroups(size_t size, const gid_t* list) {
 static constexpr char kNidsDir[] = "/dev/socket/.nids";
 
 static unsigned long long nr_start_time(pid_t pid) {
-  char path[32], buf[512];
-  snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+  char path[48], buf[512];
+  // The main thread's entry: the same start time as the process's, and qemu
+  // (local tests) fakes only a process's own /proc/<pid>/stat, without
+  // updating it after fork.
+  snprintf(path, sizeof(path), "/proc/%d/task/%d/stat", pid, pid);
   int fd = __nrp_openat(AT_FDCWD, path, O_RDONLY | O_CLOEXEC, 0);
   if (fd < 0) return 0;
   ssize_t n = read(fd, buf, sizeof(buf) - 1);
@@ -492,8 +495,7 @@ static void nr_peer_ids(pid_t pid, uid_t* uid, gid_t* gid) {
   rec[n] = '\0';
   unsigned long long start;
   unsigned u, g;
-  // Start times may differ by a few clock ticks (qemu fakes a process's view
-  // of its own /proc entry); a reused pid starts later than that.
+  // A few clock ticks of slack; a reused pid starts later than that.
   unsigned long long now_start = nr_start_time(pid);
   if (sscanf(rec, "%llu %u %u", &start, &u, &g) == 3 &&
       (start > now_start ? start - now_start : now_start - start) <= 200) {
