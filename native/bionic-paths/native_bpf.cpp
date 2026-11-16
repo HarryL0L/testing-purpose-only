@@ -109,8 +109,8 @@ Layout layout_of(uint32_t type) {
 // ------------------------------------------------------------ object files
 
 struct Mapped {
-  dev_t dev = 0;
-  ino_t ino = 0;
+  uint64_t dev = 0;
+  uint64_t ino = 0;
   uint8_t* base = nullptr;
   size_t len = 0;
   bool writable = false;
@@ -150,7 +150,8 @@ const Mapped* object(int fd) {
     errno = EBADF;
     return nullptr;
   }
-  Mapped m{st.st_dev, st.st_ino, static_cast<uint8_t*>(p), static_cast<size_t>(st.st_size),
+  Mapped m{static_cast<uint64_t>(st.st_dev), static_cast<uint64_t>(st.st_ino),
+           static_cast<uint8_t*>(p), static_cast<size_t>(st.st_size),
            writable};
   if (header_of(m)->magic != kMagic) {
     munmap(p, st.st_size);
