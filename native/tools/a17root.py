@@ -527,7 +527,7 @@ find /system/app /system/priv-app /system_ext/app /system_ext/priv-app /product/
      /product/priv-app /vendor/app /odm/app /apex -name '*.apk' 2>/dev/null |
 xargs -P 4 -n 1 sh -c '
   o=/data/dalvik-cache/arm64/$(echo "${1#/}" | tr / @)@classes.dex
-  [ -s "$o" ] || dex2oat64 --dex-file="$1" --dex-location="$1" --oat-file="$o" \
+  [ -s "$o" ] || /apex/com.android.art/bin/dex2oat64 --dex-file="$1" --dex-location="$1" --oat-file="$o" \
       --instruction-set=arm64 --compiler-filter=verify >/dev/null 2>&1 || rm -f "$o"
 ' sh
 echo "apps verified: $(ls /data/dalvik-cache/arm64 | grep -c 'classes.dex$')"

@@ -357,16 +357,21 @@ static int nr_raw_setxattr_at(int dirfd, const char* mapped, int flags, const ch
                                        : __nrp_setxattr(p, name, value, size, 0);
 }
 
-// The owner to report for a file stat() found (mapped path or fd).
+// The owner to report for a file stat() found (mapped path or fd). A file
+// with no record (a pipe, a new file) leaves errno as it was: stat()
+// succeeded, and programs check errno after stdio's reads (toybox's grep
+// reported ENODATA at the end of an empty pipe).
 static void nr_owner_at(int dirfd, const char* mapped, int flags, uid_t* uid, gid_t* gid) {
   if (!nr_ids()) return;
+  int saved = errno;
   uint32_t own[2];
   if (nr_raw_getxattr_at(dirfd, mapped, flags, kOwnerXattr, own, sizeof(own)) == sizeof(own)) {
     *uid = own[0];
     *gid = own[1];
-    return;
+  } else {
+    nr_fake_owner(uid, gid);
   }
-  nr_fake_owner(uid, gid);
+  errno = saved;
 }
 
 // chown() in native mode: record the new owner (-1 keeps a part).
