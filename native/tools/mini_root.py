@@ -364,7 +364,9 @@ export PATH=/system/bin:/system/xbin HOME=/data/local/tmp TMPDIR=/data/local/tmp
 prog="$1"; shift
 case "$prog" in /*) ;; *) prog="/system/bin/$prog" ;; esac
 # Start it through the image's shell: its execve() runs dynamic programs through
-# the image's linker and static ones (nprops) directly.
+# the image's linker and static ones (nprops) directly. Its current directory
+# is the root's / (a directory outside the root has no path inside it).
+cd "$ANDROID_NATIVE_ROOT"
 exec "$ANDROID_NATIVE_ROOT/apex/com.android.runtime/bin/linker64" /system/bin/sh -c 'exec "$@"' sh "$prog" "$@"
 """)
     os.chmod(os.path.join(out, "run.sh"), 0o755)

@@ -60,7 +60,7 @@ public class ApexService extends IApexService.Stub {
     static ApexInfo[] load() throws Exception {
         String xml = new String(Files.readAllBytes(new File("/apex/apex-info-list.xml").toPath()));
         List<ApexInfo> infos = new ArrayList<>();
-        Matcher m = Pattern.compile("<apex-info\\b[^>]*>").matcher(xml);
+        Matcher m = Pattern.compile("<apex-info\\s[^>]*>").matcher(xml);
         while (m.find()) {
             String tag = m.group();
             String name = attr(tag, "moduleName");
@@ -75,7 +75,10 @@ public class ApexService extends IApexService.Stub {
             set(info, "isActive", true);
             set(info, "hasClassPathJars", new File("/apex/" + name + "/etc/classpaths").isDirectory());
             set(info, "activeApexChanged", false);
-            set(info, "partition", 0);  // SYSTEM
+            // ApexInfo.Partition: SYSTEM 0, SYSTEM_EXT 1, PRODUCT 2, VENDOR 3, ODM 4
+            String part = attr(tag, "partition");
+            set(info, "partition", part.equals("VENDOR") ? 3 : part.equals("ODM") ? 4
+                    : part.equals("PRODUCT") ? 2 : part.equals("SYSTEM_EXT") ? 1 : 0);
             infos.add(info);
         }
         return infos.toArray(new ApexInfo[0]);
