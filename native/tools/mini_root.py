@@ -72,6 +72,9 @@ NZYGOTE = """#!/system/bin/sh
 # suspend service and installd.
 CLASSPATH=/system/framework/services.jar:/system/framework/napexd.jar \\
     app_process64 /system/bin nmode.ApexService </dev/null >/dev/null 2>&1 &
+# vold's stand-in (nvold, also in napexd.jar): storage is plain directories.
+CLASSPATH=/system/framework/napexd.jar app_process64 /system/bin nmode.VoldService \\
+    </dev/null >/dev/null 2>&1 &
 /system/bin/hw/android.system.suspend-service </dev/null >/dev/null 2>&1 &
 installd </dev/null >/dev/null 2>&1 &
 # The display (native/gfx): graphics memory (nalloc), the composer HAL
@@ -104,7 +107,9 @@ done
 mkdir -p /data/misc/keystore
 keystore2 /data/misc/keystore </dev/null >/dev/null 2>&1 &
 i=0
-while ! service check apexservice | grep -q ': found' && [ $i -lt 100 ]; do sleep 0.2; i=$((i + 1)); done
+for svc in apexservice vold; do
+  while ! service check $svc | grep -q ': found' && [ $i -lt 300 ]; do sleep 0.2; i=$((i + 1)); done
+done
 exec nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\
     /system/bin/app_process64 -Xzygote /system/bin --zygote --start-system-server \\
     --socket-name=zygote </dev/null >/dev/null 2>&1
