@@ -263,7 +263,10 @@ static void client() {
   wait_for(fd, BR_TRANSACTION_COMPLETE, r, sizeof(r), o2.b);
   printf("client: oneway call sent\n");
 
-  cmds = wait_for(fd, BR_DEAD_BINDER, r, sizeof(r));
+  // Death notifications go to the process's looper threads, as with the driver.
+  Out loop;
+  loop.put<uint32_t>(BC_ENTER_LOOPER);
+  cmds = wait_for(fd, BR_DEAD_BINDER, r, sizeof(r), loop.b);
   for (const Cmd& c : cmds) {
     if (c.cmd == BR_DEAD_BINDER) {
       binder_uintptr_t cookie;

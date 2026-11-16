@@ -930,8 +930,13 @@ void delete_thread(Thread* th) {
 
 // ------------------------------------------------------------------- reads
 
+// binder_available_for_proc_work_ilocked(): only the thread pool's threads
+// take work for the process as a whole. Any other thread (one making a call
+// of its own) gets only replies and work sent to it: an incoming call picked
+// up there would sit unhandled behind its BR_TRANSACTION_COMPLETE.
 bool thread_wants_proc_work(Thread* th) {
-  return th->stack == nullptr && !list_has_work(th->todo);
+  return th->stack == nullptr && !list_has_work(th->todo) &&
+         (th->looper & (LOOPER_REGISTERED | LOOPER_ENTERED));
 }
 
 Thread* any_waiting_for_proc_work(Proc* proc) {
