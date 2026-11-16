@@ -118,6 +118,8 @@ done
 audioserver </dev/null >/dev/null 2>&1 &
 mkdir -p /data/misc/keystore
 keystore2 /data/misc/keystore </dev/null >/dev/null 2>&1 &
+mkdir -p /data/misc/gatekeeper
+gatekeeperd /data/misc/gatekeeper </dev/null >/dev/null 2>&1 &
 i=0
 for svc in apexservice vold netd dnsresolver; do
   while ! service check $svc | grep -q ': found' && [ $i -lt 300 ]; do sleep 0.2; i=$((i + 1)); done
