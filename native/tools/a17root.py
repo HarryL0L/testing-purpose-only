@@ -267,9 +267,21 @@ def apex_preference(name):
     return (0 if "nonsecure" in name else 1, "v4l2" in name or "remote" in name, len(name), name)
 
 
-# Vendor APEXes whose HALs native/gfx replaces (they need /dev/dri): left
-# inactive, or their VINTF fragments would conflict with native-gfx.xml.
-REPLACED_APEXES = {"com.android.hardware.graphics.composer", "com.google.cf.gralloc"}
+# Vendor APEXes to activate. system_server waits for every HAL the active
+# manifests declare, so only those whose HALs native mode runs (nzygote starts
+# them), and ones without HALs that the system needs. The rest (radio, wifi,
+# camera, ...) wait for their bridges to the host app; the composer and
+# gralloc ones are replaced by native/gfx.
+ACTIVE_VENDOR_APEXES = {
+    "com.google.cf.health", "com.android.hardware.keymint", "com.android.hardware.gatekeeper",
+    "com.android.hardware.authsecret", "com.android.hardware.power",
+    "com.android.hardware.vibrator", "com.google.cf.light", "com.android.hardware.thermal",
+    "com.android.hardware.memtrack", "com.google.cf.vulkan", "com.google.cf.input.config",
+}
+# Vendor manifest fragments of HALs native mode doesn't run yet.
+INACTIVE_VENDOR_MANIFESTS = ["android.hardware.sensors-multihal.xml", "face-default.xml",
+                             "fingerprint-default.xml", "motioncontext-service-default.xml",
+                             "mapper.minigbm.xml"]
 
 
 def write_apex_info(root):
@@ -291,9 +303,9 @@ def write_apex_info(root):
                     src, part = cand, pt
         modules.setdefault(mod, []).append((name, ver, src, part))
     for mod in sorted(modules):
-        if mod in REPLACED_APEXES:
-            continue
         name, ver, src, part = min(modules[mod], key=lambda e: apex_preference(e[0]))
+        if part == "VENDOR" and mod not in ACTIVE_VENDOR_APEXES:
+            continue
         # apexd mounts the active one at /apex/<module name>
         if name != mod:
             link = os.path.join(apex, mod)
@@ -342,10 +354,14 @@ def overlay(mini_root, root):
             os.remove(dst)
         shutil.copy2(src, dst)
         os.chmod(dst, 0o644 if rel.endswith((".jar", ".xml")) else 0o755)
-    # Our mapper and composer stand in for the image's (they need /dev/dri).
-    minigbm = os.path.join(root, "vendor", "etc", "vintf", "manifest", "mapper.minigbm.xml")
-    if os.path.exists(minigbm):
-        os.remove(minigbm)
+    # HALs native mode doesn't run (our mapper replaces minigbm's): kept, but
+    # out of the manifest directory.
+    vintf = os.path.join(root, "vendor", "etc", "vintf")
+    for f in INACTIVE_VENDOR_MANIFESTS:
+        src = os.path.join(vintf, "manifest", f)
+        if os.path.exists(src):
+            os.makedirs(os.path.join(vintf, "inactive"), exist_ok=True)
+            os.replace(src, os.path.join(vintf, "inactive", f))
     # bootstrap programs (servicemanager, ...) use the same linker and libc
     for rel, target in (("system/bin/bootstrap/linker64", "../../../apex/com.android.runtime/bin/linker64"),
                         ("system/lib64/bootstrap/libc.so", "../../../apex/com.android.runtime/lib64/bionic/libc.so"),
