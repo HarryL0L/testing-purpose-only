@@ -484,6 +484,26 @@ def init_dirs(root):
                                 n += 1
                             except OSError:
                                 pass
+    # init's bind mounts into /data_mirror (zygote opens app data through it):
+    # here they're symlinks to their sources.
+    for base in ("system/etc/init/hw", "system/etc/init"):
+        top = os.path.join(root, base)
+        for f in sorted(os.listdir(top)) if os.path.isdir(top) else []:
+            if not f.endswith(".rc"):
+                continue
+            for line in open(os.path.join(top, f), errors="replace").read().splitlines():
+                parts = line.split()
+                if (len(parts) >= 5 and parts[0] == "mount" and parts[1] == "none" and
+                        parts[4] == "bind" and parts[3].startswith("/data_mirror/") and
+                        parts[2].startswith("/") and "$" not in line):
+                    dst = os.path.join(root, parts[3].lstrip("/"))
+                    if os.path.isdir(dst) and not os.path.islink(dst) and not os.listdir(dst):
+                        os.rmdir(dst)
+                    if not os.path.lexists(dst):
+                        os.makedirs(os.path.dirname(dst), exist_ok=True)
+                        os.symlink(os.path.relpath(os.path.join(root, parts[2].lstrip("/")),
+                                                   os.path.dirname(dst)), dst)
+                        n += 1
     # User 0's storage: init links /data/user/0 to /data/data; vold (which
     # can't run in an app: it mounts) makes the rest when the user starts.
     link = os.path.join(root, "data", "user", "0")
