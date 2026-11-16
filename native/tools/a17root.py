@@ -174,11 +174,19 @@ class Unpacker:
             shutil.rmtree(out, ignore_errors=True)
             subprocess.run([os.path.join(self.mini, "run.sh"), "fsck.erofs",
                             "--extract=" + self.guest_stage + "/out", "--overwrite",
-                            "--no-preserve", guest_img], check=True)
+                            # owners, permissions and labels as in the image: libc
+                            # records what an app can't set (see native_root.cpp)
+                            "--preserve", "--xattrs", guest_img], check=True)
             if os.path.exists(dest):
                 shutil.rmtree(dest)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             os.rename(out, dest)
+            # The image's own modes now: let the app (each file's real owner)
+            # still change every directory, as root could.
+            for d, _dirs, _files in os.walk(dest):
+                m = os.lstat(d).st_mode
+                if m & 0o700 != 0o700:
+                    os.chmod(d, m | 0o700)
         else:
             ext4x.Ext4(image).extract(dest)
 

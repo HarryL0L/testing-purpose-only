@@ -35,6 +35,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
@@ -47,10 +48,13 @@
 #include <sys/stat.h>
 #include <sys/statfs.h>
 #include <sys/types.h>
+#include <sys/syscall.h>
+#include <sys/utsname.h>
 #include <sys/xattr.h>
 #include <time.h>
 #include <unistd.h>
 
+#include "native_bpf.h"
 #include "nbinder_proto.h"
 
 extern "C" {
@@ -110,6 +114,8 @@ int __nrp_setresgid(gid_t, gid_t, gid_t);
 int __nrp_setgroups(int, const gid_t*);
 int __nrp_fchown(int, uid_t, gid_t);
 int __nrp_fstat64(int, struct stat*);
+int __nrp_uname(struct utsname*);
+long __nrp_syscall(long, ...);
 int __nrp_capget(void*, void*);
 int __nrp_capset(void*, const void*);
 int __nrp_prctl(int, unsigned long, unsigned long, unsigned long, unsigned long);
@@ -176,7 +182,9 @@ static bool nr_host_path(const char* p) {
     return !nr_under(p, "/sys/fs/selinux", 15) && !nr_under(p, "/sys/kernel/tracing", 19) &&
            !nr_under(p, "/sys/kernel/debug", 17) && !nr_under(p, "/sys/fs/cgroup", 14) &&
            // the suspend service must never put the phone to sleep
-           !nr_under(p, "/sys/power", 10);
+           !nr_under(p, "/sys/power", 10) &&
+           // BPF objects are files in the root (native_bpf.cpp)
+           !nr_under(p, "/sys/fs/bpf", 11);
   }
   if (nr_under(p, "/dev", 4)) {
     // Android's property area and sockets come from the image; binderfs
@@ -294,6 +302,77 @@ static void nr_fake_owner(uid_t* uid, gid_t* gid) {
   if (*gid == g_real_gid) *gid = 0;
 }
 
+// Recorded owners and labels, as fakeroot keeps them: chown() and setting
+// security.selinux, which an app may not do, are stored in user xattrs of
+// the file instead, and stat()/getxattr() report them. Installers (a17root's
+// fsck.erofs --preserve --xattrs) record the image's own owners and labels;
+// checks like the connectivity module's on its BPF objects then pass.
+static constexpr char kOwnerXattr[] = "user.nmode.owner";  // uint32_t uid, gid
+
+// A path getxattr() can use for (dirfd, path): an fd-relative path goes
+// through /proc/self/fd. Returns nullptr when `fd` itself is meant.
+static const char* nr_at_path(int dirfd, const char* path, int flags, char* buf, size_t size) {
+  if (path == nullptr || (path[0] == '\0' && (flags & AT_EMPTY_PATH))) return nullptr;
+  if (path[0] == '/' || dirfd == AT_FDCWD) return path;
+  snprintf(buf, size, "/proc/self/fd/%d/%s", dirfd, path);
+  return buf;
+}
+
+static ssize_t nr_raw_getxattr_at(int dirfd, const char* mapped, int flags, const char* name,
+                                  void* value, size_t size) {
+  char buf[PATH_MAX + 32];
+  const char* p = nr_at_path(dirfd, mapped, flags, buf, sizeof(buf));
+  if (p == nullptr) return __nrp_fgetxattr(dirfd, name, value, size);
+  return (flags & AT_SYMLINK_NOFOLLOW) ? __nrp_lgetxattr(p, name, value, size)
+                                       : __nrp_getxattr(p, name, value, size);
+}
+
+static int nr_raw_setxattr_at(int dirfd, const char* mapped, int flags, const char* name,
+                              const void* value, size_t size) {
+  char buf[PATH_MAX + 32];
+  const char* p = nr_at_path(dirfd, mapped, flags, buf, sizeof(buf));
+  if (p == nullptr) return __nrp_fsetxattr(dirfd, name, value, size, 0);
+  return (flags & AT_SYMLINK_NOFOLLOW) ? __nrp_lsetxattr(p, name, value, size, 0)
+                                       : __nrp_setxattr(p, name, value, size, 0);
+}
+
+// The owner to report for a file stat() found (mapped path or fd).
+static void nr_owner_at(int dirfd, const char* mapped, int flags, uid_t* uid, gid_t* gid) {
+  if (!nr_ids()) return;
+  uint32_t own[2];
+  if (nr_raw_getxattr_at(dirfd, mapped, flags, kOwnerXattr, own, sizeof(own)) == sizeof(own)) {
+    *uid = own[0];
+    *gid = own[1];
+    return;
+  }
+  nr_fake_owner(uid, gid);
+}
+
+// chown() in native mode: record the new owner (-1 keeps a part).
+static int nr_chown_at(int dirfd, const char* mapped, int flags, uid_t owner, gid_t group) {
+  int saved = errno;
+  uint32_t own[2] = {0, 0};
+  if (owner == static_cast<uid_t>(-1) || group == static_cast<gid_t>(-1)) {
+    struct stat st;
+    char buf[PATH_MAX + 32];
+    const char* p = nr_at_path(dirfd, mapped, flags, buf, sizeof(buf));
+    int r = p == nullptr ? __nrp_fstat64(dirfd, &st)
+                         : __nrp_fstatat64(AT_FDCWD, p, &st, flags & AT_SYMLINK_NOFOLLOW);
+    if (r != 0) return -1;
+    uid_t u = st.st_uid;
+    gid_t g = st.st_gid;
+    nr_owner_at(dirfd, mapped, flags, &u, &g);
+    own[0] = u;
+    own[1] = g;
+  }
+  if (owner != static_cast<uid_t>(-1)) own[0] = owner;
+  if (group != static_cast<gid_t>(-1)) own[1] = group;
+  // Symlinks can't carry user xattrs: their owner isn't kept (nothing checks it).
+  nr_raw_setxattr_at(dirfd, mapped, flags, kOwnerXattr, own, sizeof(own));
+  errno = saved;
+  return 0;
+}
+
 extern "C" uid_t getuid() {
   return nr_ids() ? g_ids.r : __nrp_getuid();
 }
@@ -390,14 +469,13 @@ extern "C" int setgid(gid_t g) {
 }
 
 extern "C" int fchown(int fd, uid_t owner, gid_t group) {
-  int r = __nrp_fchown(fd, owner, group);
-  if (r == -1 && errno == EPERM && nr_ids()) return 0;  // as root would
-  return r;
+  if (nr_ids()) return nr_chown_at(fd, "", AT_EMPTY_PATH, owner, group);
+  return __nrp_fchown(fd, owner, group);
 }
 
 extern "C" int fstat(int fd, struct stat* st) {
   int r = __nrp_fstat64(fd, st);
-  if (r == 0) nr_fake_owner(&st->st_uid, &st->st_gid);
+  if (r == 0) nr_owner_at(fd, "", AT_EMPTY_PATH, &st->st_uid, &st->st_gid);
   return r;
 }
 extern "C" int fstat64(int fd, struct stat64* st) {
@@ -499,7 +577,14 @@ extern "C" int __openat(int fd, const char* path, int flags, int mode) {
     }
   }
   NR_MAP(p, path);
-  return __nrp_openat(fd, p, flags, mode);
+  int r = __nrp_openat(fd, p, flags, mode);
+  if (r == -1 && (errno == EACCES || errno == EPERM || errno == EROFS) && path != nullptr &&
+      (flags & O_ACCMODE) != O_RDONLY && nr_under(path, "/proc/sys", 9) && nr_ids()) {
+    // Kernel tunables (netbpfload enables the BPF JIT, ...): an app may not
+    // write them; the writes go nowhere, as for /proc/*/attr.
+    return __nrp_openat(AT_FDCWD, "/dev/null", flags & ~(O_CREAT | O_TRUNC | O_EXCL), 0);
+  }
+  return r;
 }
 
 // In native mode mounts never happen: they "succeed" and change nothing
@@ -539,15 +624,18 @@ extern "C" int __fchmodat(int fd, const char* path, mode_t mode) {
 
 extern "C" int fchownat(int fd, const char* path, uid_t owner, gid_t group, int flags) {
   NR_MAP(p, path);
-  int r = __nrp_fchownat(fd, p, owner, group, flags);
-  if (r == -1 && errno == EPERM && nr_ids()) return 0;  // as root would
-  return r;
+  if (nr_ids()) {
+    struct stat st;  // chown() of a missing file still fails
+    if (__nrp_fstatat64(fd, p, &st, flags) != 0) return -1;
+    return nr_chown_at(fd, p, flags, owner, group);
+  }
+  return __nrp_fchownat(fd, p, owner, group, flags);
 }
 
 extern "C" int fstatat(int fd, const char* path, struct stat* st, int flags) {
   NR_MAP(p, path);
   int r = __nrp_fstatat64(fd, p, st, flags);
-  if (r == 0) nr_fake_owner(&st->st_uid, &st->st_gid);
+  if (r == 0) nr_owner_at(fd, p, flags, &st->st_uid, &st->st_gid);
   return r;
 }
 extern "C" int fstatat64(int fd, const char* path, struct stat64* st, int flags) {
@@ -725,32 +813,28 @@ extern "C" int __getcwd(char* buf, size_t size) {
   return rc;
 }
 
-// Setting a file's SELinux label isn't allowed in an app; in native mode it
-// "succeeds" (restorecon, odrefresh committing its files, ...).
-static int nr_selinux_xattr(int r, const char* name) {
-  if (r == -1 && name != nullptr && strcmp(name, "security.selinux") == 0 && nr_ids()) return 0;
-  return r;
+// SELinux labels and other security.* / trusted.* attributes (file
+// capabilities, ...): an app may not set them, so native mode records them
+// as user.nmode.<name> (see kOwnerXattr) and reports them; a file with no
+// label reads as unlabeled (restorecon reads the old label first).
+static bool nr_is_kept(const char* name) {
+  return name != nullptr &&
+         (strncmp(name, "security.", 9) == 0 || strncmp(name, "trusted.", 8) == 0) && nr_ids();
 }
 
-extern "C" int setxattr(const char* path, const char* name, const void* value, size_t size, int flags) {
-  NR_MAP(p, path);
-  return nr_selinux_xattr(__nrp_setxattr(p, name, value, size, flags), name);
+static const char* nr_kept_name(const char* name, char* buf, size_t size) {
+  snprintf(buf, size, "user.nmode.%s", name);
+  return buf;
 }
 
-extern "C" int lsetxattr(const char* path, const char* name, const void* value, size_t size, int flags) {
-  NR_MAP(p, path);
-  return nr_selinux_xattr(__nrp_lsetxattr(p, name, value, size, flags), name);
-}
-
-extern "C" int __fsetxattr(int fd, const char* name, const void* value, size_t size, int flags) {
-  return nr_selinux_xattr(__nrp_fsetxattr(fd, name, value, size, flags), name);
-}
-
-// A file without an SELinux label (a filesystem that keeps none) reads as
-// unlabeled instead of failing: restorecon reads the old label first.
-static ssize_t nr_selinux_label(ssize_t r, const char* name, void* value, size_t size) {
-  if (r != -1 || (errno != ENODATA && errno != ENOTSUP) || name == nullptr ||
-      strcmp(name, "security.selinux") != 0 || !nr_ids()) {
+static ssize_t nr_get_kept(ssize_t (*raw)(const char*, const char*, void*, size_t), const char* p,
+                           int fd, const char* name, void* value, size_t size) {
+  char kept[300];
+  nr_kept_name(name, kept, sizeof(kept));
+  ssize_t r = p ? raw(p, kept, value, size) : __nrp_fgetxattr(fd, kept, value, size);
+  if (r >= 0 || errno == ERANGE) return r;
+  r = p ? raw(p, name, value, size) : __nrp_fgetxattr(fd, name, value, size);
+  if (r >= 0 || (errno != ENODATA && errno != ENOTSUP) || strcmp(name, "security.selinux") != 0) {
     return r;
   }
   static const char kLabel[] = "u:object_r:unlabeled:s0";
@@ -763,18 +847,50 @@ static ssize_t nr_selinux_label(ssize_t r, const char* name, void* value, size_t
   return sizeof(kLabel);
 }
 
+extern "C" int setxattr(const char* path, const char* name, const void* value, size_t size, int flags) {
+  NR_MAP(p, path);
+  if (nr_is_kept(name)) {
+    char kept[300];
+    __nrp_setxattr(p, nr_kept_name(name, kept, sizeof(kept)), value, size, 0);
+    return 0;
+  }
+  return __nrp_setxattr(p, name, value, size, flags);
+}
+
+extern "C" int lsetxattr(const char* path, const char* name, const void* value, size_t size, int flags) {
+  NR_MAP(p, path);
+  if (nr_is_kept(name)) {
+    char kept[300];  // fails on symlinks (no user xattrs): they stay unlabeled
+    __nrp_lsetxattr(p, nr_kept_name(name, kept, sizeof(kept)), value, size, 0);
+    return 0;
+  }
+  return __nrp_lsetxattr(p, name, value, size, flags);
+}
+
+extern "C" int __fsetxattr(int fd, const char* name, const void* value, size_t size, int flags) {
+  if (nr_is_kept(name)) {
+    char kept[300];
+    __nrp_fsetxattr(fd, nr_kept_name(name, kept, sizeof(kept)), value, size, 0);
+    return 0;
+  }
+  return __nrp_fsetxattr(fd, name, value, size, flags);
+}
+
 extern "C" ssize_t getxattr(const char* path, const char* name, void* value, size_t size) {
   NR_MAP(p, path);
-  return nr_selinux_label(__nrp_getxattr(p, name, value, size), name, value, size);
+  if (nr_is_kept(name)) return nr_get_kept(__nrp_getxattr, p, -1, name, value, size);
+  return __nrp_getxattr(p, name, value, size);
 }
 
 extern "C" ssize_t lgetxattr(const char* path, const char* name, void* value, size_t size) {
   NR_MAP(p, path);
-  return nr_selinux_label(__nrp_lgetxattr(p, name, value, size), name, value, size);
+  if (nr_is_kept(name)) return nr_get_kept(__nrp_lgetxattr, p, -1, name, value, size);
+  return __nrp_lgetxattr(p, name, value, size);
 }
 
 extern "C" ssize_t __fgetxattr(int fd, const char* name, void* value, size_t size) {
-  return nr_selinux_label(__nrp_fgetxattr(fd, name, value, size), name, value, size);
+  if (nr_is_kept(name)) return nr_get_kept(nullptr, nullptr, fd, name, value, size);
+  return __nrp_fgetxattr(fd, name, value, size);
 }
 
 extern "C" ssize_t listxattr(const char* path, char* list, size_t size) {
@@ -803,7 +919,7 @@ extern "C" int statx(int fd, const char* path, int flags, unsigned mask, struct 
   if (r == 0) {
     uid_t u = buf->stx_uid;
     gid_t g = buf->stx_gid;
-    nr_fake_owner(&u, &g);
+    nr_owner_at(fd, p, flags, &u, &g);
     buf->stx_uid = u;
     buf->stx_gid = g;
   }
@@ -1063,4 +1179,49 @@ static int nr_execve(const char* path, char* const* argv, char* const* envp, int
 
 extern "C" int execve(const char* path, char* const* argv, char* const* envp) {
   return nr_execve(path, argv, envp, 0);
+}
+
+// ------------------------------------------------------ bpf(2) and uname()
+//
+// bpf(2) is answered in user space (native_bpf.cpp): Android's networking
+// keeps its state in BPF maps an app may not create. bionic has no bpf()
+// function; callers use syscall(__NR_bpf, ...), so syscall() looks first.
+extern "C" long syscall(long number, ...) {
+  va_list ap;
+  va_start(ap, number);
+  long a[6];
+  for (long& v : a) v = va_arg(ap, long);
+  va_end(ap);
+  size_t rl;
+  if (number == __NR_bpf && nr_root(&rl) != nullptr) {
+    return nbpf_syscall(static_cast<int>(a[0]), reinterpret_cast<void*>(a[1]),
+                        static_cast<unsigned>(a[2]));
+  }
+  return __nrp_syscall(number, a[0], a[1], a[2], a[3], a[4], a[5]);
+}
+
+// The kernel version programs see: at least $ANDROID_NATIVE_KERNEL (say
+// 5.10.0). Android 17's BPF loader refuses older kernels, though in native
+// mode no kernel BPF is used at all; features programs probe for directly
+// (system calls, files) are still the phone's.
+static long nr_kver(const char* s) {
+  long v[3] = {0, 0, 0};
+  for (int i = 0; i < 3 && *s; i++) {
+    v[i] = strtol(s, const_cast<char**>(&s), 10);
+    if (*s == '.') s++;
+    else break;
+  }
+  return (v[0] << 20) | (v[1] << 10) | v[2];
+}
+
+extern "C" int uname(struct utsname* buf) {
+  int r = __nrp_uname(buf);
+  size_t rl;
+  if (r == 0 && nr_root(&rl) != nullptr) {
+    const char* want = getenv("ANDROID_NATIVE_KERNEL");
+    if (want != nullptr && *want && nr_kver(buf->release) < nr_kver(want)) {
+      snprintf(buf->release, sizeof(buf->release), "%s-nmode", want);
+    }
+  }
+  return r;
 }

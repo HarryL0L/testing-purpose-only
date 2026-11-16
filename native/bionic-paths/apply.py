@@ -5,8 +5,9 @@
 
 1. In libc/SYSCALLS.TXT, rename the stubs of system calls that take paths to
    __nrp_<name>, so that native_root.cpp can provide the real names.
-2. Copy native_root.cpp and native_binder.cpp (with nbinder_proto.h) to
-   libc/bionic/ and add them to libc_bionic's sources.
+2. Copy native_root.cpp, native_binder.cpp (with nbinder_proto.h) and
+   native_bpf.cpp to libc/bionic/ and add them to libc_bionic's sources;
+   syscall() becomes __nrp_syscall (native_root.cpp answers bpf(2)).
 3. Let the property readers trust files owned by the caller as well as by
    root: in an app (Termux) every file in the root belongs to the app's uid.
 
@@ -105,6 +106,7 @@ RENAMES = [
     ("getpeername", "getpeername", None),
     ("fstat64|fstat", "fstat64", "lp32"),
     ("fstat64|fstat", "fstat", "lp64"),
+    ("uname", "uname", None),
 ]
 
 # The internal name each renamed stub gets (matches native_root.cpp).
@@ -150,15 +152,30 @@ def patch_syscalls(path):
 def patch_android_bp(path):
     with open(path) as f:
         s = f.read()
-    if '"bionic/native_root.cpp"' in s:
-        return
     anchor = '        "bionic/open.cpp",\n'
     if s.count(anchor) != 1:
         sys.exit("libc/Android.bp: expected one bionic/open.cpp entry")
-    s = s.replace(anchor, anchor + '        "bionic/native_root.cpp",\n'
-                                   '        "bionic/native_binder.cpp",\n')
+    for src in ("native_bpf.cpp", "native_binder.cpp", "native_root.cpp"):
+        entry = '        "bionic/%s",\n' % src
+        if entry not in s:
+            s = s.replace(anchor, anchor + entry)
     with open(path, "w") as f:
         f.write(s)
+
+
+def patch_syscall_s(bionic):
+    """syscall() becomes __nrp_syscall: native_root.cpp's syscall() answers
+    bpf(2) (native_bpf.cpp) and passes the rest on."""
+    for arch in ("arm", "arm64", "riscv64", "x86", "x86_64"):
+        path = os.path.join(bionic, "libc", "arch-" + arch, "bionic", "syscall.S")
+        if not os.path.exists(path):
+            continue
+        with open(path) as f:
+            s = f.read()
+        s = s.replace("ENTRY(syscall)", "ENTRY(__nrp_syscall)").replace("END(syscall)",
+                                                                      "END(__nrp_syscall)")
+        with open(path, "w") as f:
+            f.write(s)
 
 
 OWNER_OLD = "(fd_stat.st_uid != 0) || (fd_stat.st_gid != 0)"
@@ -181,7 +198,8 @@ def main():
     bionic = sys.argv[1]
     here = os.path.dirname(os.path.abspath(__file__))
     patch_syscalls(os.path.join(bionic, "libc", "SYSCALLS.TXT"))
-    for f in ("native_root.cpp", "native_binder.cpp"):
+    patch_syscall_s(bionic)
+    for f in ("native_root.cpp", "native_binder.cpp", "native_bpf.cpp", "native_bpf.h"):
         shutil.copy(os.path.join(here, f), os.path.join(bionic, "libc", "bionic", f))
     shutil.copy(os.path.join(here, "..", "nbinder", "nbinder_proto.h"),
                 os.path.join(bionic, "libc", "bionic", "nbinder_proto.h"))

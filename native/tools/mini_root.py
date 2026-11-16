@@ -41,6 +41,10 @@ cd /data/local/tmp
 nlogd || exit 1
 nprops "$@" || exit 1
 nbinder -v 2> /data/local/tmp/nbinder.log || { cat /data/local/tmp/nbinder.log; exit 1; }
+# BPF objects (libc emulates bpf(2)): netbpfload pins the networking maps
+# under /sys/fs/bpf, then runs the platform's bpfloader (full root only).
+[ -x /apex/com.android.tethering/bin/netbpfload ] && \\
+    /apex/com.android.tethering/bin/netbpfload </dev/null > /data/local/tmp/bpfloader.log 2>&1
 servicemanager > /data/local/tmp/servicemanager.log 2>&1 &
 i=0
 while [ "$(getprop servicemanager.ready)" != true ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
@@ -401,6 +405,9 @@ unset LD_PRELOAD LD_LIBRARY_PATH
 # Android's own environment (Termux's PATH points at folders the image doesn't have)
 export PATH=/system/bin:/system/xbin HOME=/data/local/tmp TMPDIR=/data/local/tmp \
   ANDROID_ROOT=/system ANDROID_DATA=/data
+# The kernel version programs see, at least (libc's uname()): Android 17's
+# BPF loader wants 5.10, though BPF is emulated in libc here.
+export ANDROID_NATIVE_KERNEL=5.10.0
 # Android's boot environment in a full root (BOOTCLASSPATH, ...; a17root.py writes it)
 [ -f "$ANDROID_NATIVE_ROOT/system/etc/native-env.sh" ] && . "$ANDROID_NATIVE_ROOT/system/etc/native-env.sh"
 prog="$1"; shift
