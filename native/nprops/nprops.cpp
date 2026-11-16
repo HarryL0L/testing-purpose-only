@@ -176,6 +176,9 @@ static const std::pair<const char*, const char*> kDeviceDefaults[] = {
     {"ro.hardware.vulkan", "pastel"},
     {"ro.vulkan.apex", "com.google.cf.vulkan"},
     {"ro.opengles.version", "196610"},
+    // As apexd says once every APEX is active (they are unpacked already):
+    // libvintf reads the vendor APEXes' HAL manifests only then.
+    {"apex.all.ready", "true"},
 };
 
 static uint32_t SetProperty(const std::string& name, const std::string& value) {

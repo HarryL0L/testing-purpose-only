@@ -71,6 +71,24 @@ installd </dev/null >/dev/null 2>&1 &
 /vendor/bin/nalloc </dev/null >/dev/null 2>&1 &
 ncomposer </dev/null >/dev/null 2>&1 &
 surfaceflinger </dev/null >/dev/null 2>&1 &
+# Vendor HALs that need no hardware (the image's software ones, from its
+# APEXes), and keystore2 on top of KeyMint.
+for hal in \\
+    /apex/com.google.cf.health/bin/hw/android.hardware.health-service.cuttlefish \\
+    /apex/com.android.hardware.keymint/bin/hw/android.hardware.security.keymint-service.nonsecure \\
+    /apex/com.android.hardware.gatekeeper/bin/hw/android.hardware.gatekeeper-service.nonsecure \\
+    /apex/com.android.hardware.authsecret/bin/hw/android.hardware.authsecret-service.example \\
+    /apex/com.android.hardware.power/bin/hw/android.hardware.power-service.example \\
+    /apex/com.android.hardware.power/bin/hw/android.hardware.power.stats-service.example \\
+    /apex/com.android.hardware.vibrator/bin/hw/android.hardware.vibrator-service.example \\
+    /apex/com.google.cf.light/bin/hw/android.hardware.light-service.cuttlefish \\
+    /apex/com.android.hardware.thermal/bin/hw/android.hardware.thermal-service.example \\
+    /apex/com.android.hardware.memtrack/bin/hw/android.hardware.memtrack-service.example \\
+    ; do
+  [ -x "$hal" ] && "$hal" </dev/null >/dev/null 2>&1 &
+done
+mkdir -p /data/misc/keystore
+keystore2 /data/misc/keystore </dev/null >/dev/null 2>&1 &
 i=0
 while ! service check apexservice | grep -q ': found' && [ $i -lt 100 ]; do sleep 0.2; i=$((i + 1)); done
 exec nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\

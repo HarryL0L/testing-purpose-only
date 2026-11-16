@@ -267,6 +267,11 @@ def apex_preference(name):
     return (0 if "nonsecure" in name else 1, "v4l2" in name or "remote" in name, len(name), name)
 
 
+# Vendor APEXes whose HALs native/gfx replaces (they need /dev/dri): left
+# inactive, or their VINTF fragments would conflict with native-gfx.xml.
+REPLACED_APEXES = {"com.android.hardware.graphics.composer", "com.google.cf.gralloc"}
+
+
 def write_apex_info(root):
     lines = ['<?xml version="1.0" encoding="utf-8"?>', "<apex-info-list>"]
     apex = os.path.join(root, "apex")
@@ -286,6 +291,8 @@ def write_apex_info(root):
                     src, part = cand, pt
         modules.setdefault(mod, []).append((name, ver, src, part))
     for mod in sorted(modules):
+        if mod in REPLACED_APEXES:
+            continue
         name, ver, src, part = min(modules[mod], key=lambda e: apex_preference(e[0]))
         # apexd mounts the active one at /apex/<module name>
         if name != mod:
