@@ -44,6 +44,7 @@
 #include <stdio.h>
 #include <sys/eventfd.h>
 #include <sys/inotify.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
@@ -650,6 +651,77 @@ static bool nr_proc_attr(const char* p) {
   return a != nullptr && strchr(a + 6, '/') == nullptr;
 }
 
+// /proc/<pid>/status shows a process's real uid and gid (the app's).
+// ActivityManager checks a process is alive and still the one it started
+// by its uid there (Process.getUidForPid), so the Uid:/Gid: lines report
+// the virtual ids: the caller's own, or another process's recorded ones.
+static bool nr_proc_status_pid(const char* p, pid_t* pid) {
+  if (strncmp(p, "/proc/", 6) != 0) return false;
+  p += 6;
+  if (strncmp(p, "self/", 5) == 0 || strncmp(p, "thread-self/", 12) == 0) {
+    *pid = getpid();
+    p = strchr(p, '/');
+  } else {
+    char* end;
+    long v = strtol(p, &end, 10);
+    if (end == p || *end != '/' || v <= 0) return false;
+    *pid = static_cast<pid_t>(v);
+    p = end;
+  }
+  if (strncmp(p, "/task/", 6) == 0) {  // a thread's: the process's ids
+    char* end;
+    strtol(p + 6, &end, 10);
+    if (end == p + 6 || *end != '/') return false;
+    p = end;
+  }
+  return strcmp(p, "/status") == 0;
+}
+
+static int nr_open_proc_status(int fd, pid_t pid) {
+  constexpr size_t kMax = 8192;
+  char* buf = static_cast<char*>(malloc(kMax));
+  if (buf == nullptr) return fd;
+  size_t len = 0;
+  ssize_t n;
+  while (len < kMax - 1 && (n = read(fd, buf + len, kMax - 1 - len)) > 0) len += n;
+  buf[len] = '\0';
+  unsigned ids[2][4];
+  if (pid == getpid()) {
+    const unsigned u[4] = {g_ids.r, g_ids.e, g_ids.s, g_ids.e};
+    const unsigned g[4] = {g_ids.gr, g_ids.ge, g_ids.gs, g_ids.ge};
+    memcpy(ids[0], u, sizeof(u));
+    memcpy(ids[1], g, sizeof(g));
+  } else {
+    uid_t u;
+    gid_t g;
+    nr_peer_ids(pid, &u, &g);
+    for (int i = 0; i < 4; i++) ids[0][i] = u, ids[1][i] = g;
+  }
+  int out = memfd_create("status", MFD_CLOEXEC);
+  if (out < 0) {
+    free(buf);
+    lseek(fd, 0, SEEK_SET);
+    return fd;
+  }
+  for (char* line = buf; *line != '\0';) {
+    char* nl = strchr(line, '\n');
+    size_t ll = nl ? static_cast<size_t>(nl - line + 1) : strlen(line);
+    int which = strncmp(line, "Uid:", 4) == 0 ? 0 : strncmp(line, "Gid:", 4) == 0 ? 1 : -1;
+    if (which >= 0) {
+      char rep[96];
+      int rl = snprintf(rep, sizeof(rep), "%s\t%u\t%u\t%u\t%u\n", which ? "Gid:" : "Uid:",
+                        ids[which][0], ids[which][1], ids[which][2], ids[which][3]);
+      if (write(out, rep, static_cast<size_t>(rl)) < 0) {}
+    } else if (write(out, line, ll) < 0) {
+    }
+    line += ll;
+  }
+  free(buf);
+  lseek(out, 0, SEEK_SET);
+  close(fd);
+  return out;
+}
+
 // Declares `var`: `path` mapped under the root. The buffer is sized to the
 // path (bionic limits stack frames to 2 KiB, so no PATH_MAX arrays).
 #define NR_MAP(var, path)                                                 \
@@ -673,6 +745,14 @@ extern "C" int __openat(int fd, const char* path, int flags, int mode) {
   }
   NR_MAP(p, path);
   int r = __nrp_openat(fd, p, flags, mode);
+  pid_t status_pid;
+  if (r >= 0 && path != nullptr && (flags & O_ACCMODE) == O_RDONLY &&
+      nr_proc_status_pid(path, &status_pid) && nr_ids()) {
+    int saved = errno;
+    r = nr_open_proc_status(r, status_pid);
+    errno = saved;
+    return r;
+  }
   if (r == -1 && (errno == EACCES || errno == EPERM || errno == EROFS) && path != nullptr &&
       (flags & O_ACCMODE) != O_RDONLY && nr_under(path, "/proc/sys", 9) && nr_ids()) {
     // Kernel tunables (netbpfload enables the BPF JIT, ...): an app may not
