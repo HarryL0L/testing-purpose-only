@@ -104,6 +104,7 @@ RENAMES = [
     ("__fgetxattr", "fgetxattr", None),
     ("getsockname", "getsockname", None),
     ("getsockopt", "getsockopt", None),
+    ("__socket", "socket", None),
     ("getpeername", "getpeername", None),
     ("fstat64|fstat", "fstat64", "lp32"),
     ("fstat64|fstat", "fstat", "lp64"),

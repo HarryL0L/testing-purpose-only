@@ -98,6 +98,7 @@ int __nrp_bind(int, const struct sockaddr*, socklen_t);
 int __nrp_connect(int, const struct sockaddr*, socklen_t);
 int __nrp_getsockname(int, struct sockaddr*, socklen_t*);
 int __nrp_getsockopt(int, int, int, void*, socklen_t*);
+int __nrp_socket(int, int, int);
 int __nrp_getpeername(int, struct sockaddr*, socklen_t*);
 int __nrp_ioctl(int, int, void*);
 uid_t __nrp_getuid();
@@ -1100,6 +1101,18 @@ static void nr_unmap_sockaddr(struct sockaddr* addr, socklen_t user_len, socklen
   if (m == n) return;
   if (m < avail) un->sun_path[m] = '\0';
   *len = static_cast<socklen_t>(kPathOff + m + 1);
+}
+
+// PF_KEY sockets: the connectivity module opens and closes one only to make
+// the kernel wait for RCU readers of BPF maps (BpfUtils' synchronizeKernelRCU).
+// With BPF emulated there are none, and an app can't open one: any socket
+// does for that.
+extern "C" int __socket(int domain, int type, int protocol) {
+  int fd = __nrp_socket(domain, type, protocol);
+  if (fd < 0 && domain == AF_KEY && nr_ids()) {
+    fd = __nrp_socket(AF_UNIX, SOCK_DGRAM | (type & SOCK_CLOEXEC), 0);
+  }
+  return fd;
 }
 
 extern "C" int getsockopt(int fd, int level, int name, void* value, socklen_t* len) {
