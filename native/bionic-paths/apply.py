@@ -196,6 +196,25 @@ def patch_owner_check(path):
         f.write(s.replace(OWNER_OLD, OWNER_NEW))
 
 
+DEBUGGERD_OLD = "  if (si_val == kDebuggerdFallbackSivalUintptrRequestDump || no_new_privs) {"
+DEBUGGERD_NEW = ("  // native mode: no crash_dump (an app can't ptrace) - dump in-process\n"
+                 "  if (si_val == kDebuggerdFallbackSivalUintptrRequestDump || no_new_privs ||\n"
+                 "      getenv(\"ANDROID_NATIVE_ROOT\") != nullptr) {")
+
+
+def patch_debuggerd(path):
+    """In native mode, crash reports and stack dumps use debuggerd's in-process
+    fallback: crash_dump would have to ptrace, which an app may not."""
+    with open(path) as f:
+        s = f.read()
+    if "native mode: no crash_dump" in s:
+        return
+    if s.count(DEBUGGERD_OLD) != 1:
+        sys.exit("%s: expected one fallback-handler check" % path)
+    with open(path, "w") as f:
+        f.write(s.replace(DEBUGGERD_OLD, DEBUGGERD_NEW))
+
+
 def main():
     bionic = sys.argv[1]
     here = os.path.dirname(os.path.abspath(__file__))
@@ -210,6 +229,8 @@ def main():
     patch_owner_check(os.path.join(os.path.dirname(os.path.abspath(bionic)), "system", "core",
                                    "property_service", "libpropertyinfoparser",
                                    "property_info_parser.cpp"))
+    patch_debuggerd(os.path.join(os.path.dirname(os.path.abspath(bionic)), "system", "core",
+                                 "debuggerd", "handler", "debuggerd_handler.cpp"))
     print("bionic: path prefixing applied")
 
 
