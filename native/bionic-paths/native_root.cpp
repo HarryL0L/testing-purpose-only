@@ -1153,7 +1153,7 @@ extern "C" int __socket(int domain, int type, int protocol) {
 extern "C" int getsockopt(int fd, int level, int name, void* value, socklen_t* len) {
   int r = __nrp_getsockopt(fd, level, name, value, len);
   if (r == 0 && level == SOL_SOCKET && name == SO_PEERCRED && value != nullptr && len != nullptr &&
-      *len >= sizeof(struct ucred) && nr_ids()) {
+      static_cast<size_t>(*len) >= sizeof(struct ucred) && nr_ids()) {
     auto* cred = static_cast<struct ucred*>(value);
     nr_peer_ids(cred->pid, &cred->uid, &cred->gid);
   }
