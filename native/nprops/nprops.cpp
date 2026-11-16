@@ -28,6 +28,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -143,6 +144,22 @@ static void DeriveProperties(std::map<std::string, std::string>* props) {
       }
     }
     if (!found) (*props)[key] = strcmp(suffix, "32") == 0 ? "" : "arm64-v8a";
+  }
+  // ro.vendor.api_level (init's property_initialize_ro_vendor_api_level): the
+  // board's API level, capped by the product's first one (SDK 35 and later
+  // count as YYYYMM vendor API levels: 35 -> 202404, 36 -> 202504, ...).
+  if (get("ro.vendor.api_level").empty()) {
+    auto num = [&](const char* k, long def) {
+      std::string v = get(k);
+      return v.empty() ? def : strtol(v.c_str(), nullptr, 10);
+    };
+    constexpr long kMax = 1000000;
+    long vendor = num("ro.board.first_api_level", kMax);
+    if (vendor != kMax) vendor = num("ro.board.api_level", vendor);
+    long first = num("ro.product.first_api_level", num("ro.build.version.sdk", 10000));
+    long first_vendor = first >= 35 && first < 10000 ? 202404 + (first - 35) * 100 : first;
+    long level = std::min(first_vendor, vendor);
+    if (level < kMax) (*props)["ro.vendor.api_level"] = std::to_string(level);
   }
 }
 
