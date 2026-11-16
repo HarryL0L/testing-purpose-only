@@ -379,6 +379,12 @@ WITH_PROPS = ("nprops -f >/dev/null 2>&1 & p=$!; i=0; "
               "while [ \"$(getprop native.nprops.ready 2>/dev/null)\" != 1 ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i + 1)); done; ")
 
 
+USER0_DIRS = ["data/data", "data/user_de/0", "data/misc_de/0", "data/misc_ce/0",
+              "data/system_de/0", "data/system_ce/0", "data/vendor_de/0", "data/vendor_ce/0",
+              "data/media/0", "data/misc/user/0", "data/misc/profiles/cur/0",
+              "data/misc/profiles/ref", "data/app", "data/user_de", "data/user"]
+
+
 def init_dirs(root):
     """Create the directories init's .rc files make at boot (mkdir lines)."""
     n = 0
@@ -403,6 +409,17 @@ def init_dirs(root):
                                 n += 1
                             except OSError:
                                 pass
+    # User 0's storage: init links /data/user/0 to /data/data; vold (which
+    # can't run in an app: it mounts) makes the rest when the user starts.
+    link = os.path.join(root, "data", "user", "0")
+    if not os.path.lexists(link):
+        os.makedirs(os.path.dirname(link), exist_ok=True)
+        os.symlink("../data", link)
+    for d in USER0_DIRS:
+        target = os.path.join(root, d)
+        if not os.path.lexists(target):
+            os.makedirs(target, exist_ok=True)
+            n += 1
     return n
 
 
