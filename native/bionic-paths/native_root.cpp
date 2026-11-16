@@ -691,6 +691,16 @@ extern "C" int umount2(const char* target, int flags) {
   return __nrp_umount2(target, flags);
 }
 
+// The partitions a device mounts read-only.
+static bool nr_read_only(const char* p) {
+  static const char* const kReadOnly[] = {"/system", "/system_ext", "/product", "/vendor",
+                                          "/odm", "/apex"};
+  for (const char* d : kReadOnly) {
+    if (nr_under(p, d, strlen(d))) return true;
+  }
+  return false;
+}
+
 extern "C" int __faccessat(int fd, const char* path, int mode) {
   size_t rl;
   if (path != nullptr && path[0] == '/' && nr_root(&rl) != nullptr) {
@@ -705,7 +715,14 @@ extern "C" int __faccessat(int fd, const char* path, int mode) {
     }
   }
   NR_MAP(p, path);
-  return __nrp_faccessat(fd, p, mode);
+  int r = __nrp_faccessat(fd, p, mode);
+  if (r == 0 && (mode & W_OK) && path != nullptr && nr_read_only(path) && nr_ids()) {
+    // The image's partitions are read-only mounts on a device; ART refuses
+    // to load app code from files it could write ("Writable dex file").
+    errno = EROFS;
+    return -1;
+  }
+  return r;
 }
 
 extern "C" int __fchmodat(int fd, const char* path, mode_t mode) {
