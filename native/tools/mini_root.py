@@ -118,6 +118,9 @@ done
 audioserver </dev/null >/dev/null 2>&1 &
 mkdir -p /data/misc/keystore
 keystore2 /data/misc/keystore </dev/null >/dev/null 2>&1 &
+# idmap2d (overlays): init starts it on request (ctl.start); here it just runs
+mkdir -p /data/resource-cache
+idmap2d </dev/null >/dev/null 2>&1 &
 mkdir -p /data/misc/gatekeeper
 gatekeeperd /data/misc/gatekeeper </dev/null >/dev/null 2>&1 &
 i=0
