@@ -183,7 +183,8 @@ uint32_t next_id() {
 
 // A new, unpinned object with `data_size` bytes of data: returns its fd.
 int create(const nbpf_header& h, uint64_t data_size) {
-  mkdir(kBpfDir, 01777);
+  // bpffs's root, as the kernel mounts it: sticky and open to all
+  if (mkdir(kBpfDir, 01777) == 0) chmod(kBpfDir, 01777);
   mkdir(kObjDir, 0700);
   int fd = open(kObjDir, O_TMPFILE | O_RDWR | O_CLOEXEC, 0600);
   if (fd < 0) {

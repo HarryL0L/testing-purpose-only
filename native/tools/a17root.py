@@ -26,6 +26,7 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import erofsmeta  # noqa: E402
 import ext4x  # noqa: E402
 
 EROFS_MAGIC = 0xE0F5E1E2
@@ -174,13 +175,15 @@ class Unpacker:
             shutil.rmtree(out, ignore_errors=True)
             subprocess.run([os.path.join(self.mini, "run.sh"), "fsck.erofs",
                             "--extract=" + self.guest_stage + "/out", "--overwrite",
-                            # owners, permissions and labels as in the image: libc
-                            # records what an app can't set (see native_root.cpp)
-                            "--preserve", "--xattrs", guest_img], check=True)
+                            # exact permissions (setuid, ...); owners and labels
+                            # are recorded below (an app can't set them)
+                            "--preserve-perms", guest_img], check=True)
             if os.path.exists(dest):
                 shutil.rmtree(dest)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             os.rename(out, dest)
+            # The image's owners and SELinux labels, kept as libc reports them
+            erofsmeta.record(image, dest)
             # The image's own modes now: let the app (each file's real owner)
             # still change every directory, as root could.
             for d, _dirs, _files in os.walk(dest):

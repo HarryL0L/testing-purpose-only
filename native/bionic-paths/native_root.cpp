@@ -835,8 +835,24 @@ static const char* nr_kept_name(const char* name, char* buf, size_t size) {
   return buf;
 }
 
+// The label the kernel's policy gives BPF filesystem entries by path
+// (genfscon bpf /net_shared u:object_r:fs_bpf_net_shared:s0, ...), for
+// native_bpf.cpp's objects: fs_bpf, or fs_bpf_<first directory>.
+static bool nr_bpf_label(const char* path, char* out, size_t size) {
+  if (path == nullptr || !nr_under(path, "/sys/fs/bpf", 11)) return false;
+  const char* sub = path[11] == '/' ? path + 12 : "";
+  size_t n = strcspn(sub, "/");
+  if (n == 0 || sub[0] == '.') {
+    snprintf(out, size, "u:object_r:fs_bpf:s0");
+  } else {
+    snprintf(out, size, "u:object_r:fs_bpf_%.*s:s0", static_cast<int>(n), sub);
+  }
+  return true;
+}
+
 static ssize_t nr_get_kept(ssize_t (*raw)(const char*, const char*, void*, size_t), const char* p,
-                           int fd, const char* name, void* value, size_t size) {
+                           int fd, const char* name, void* value, size_t size,
+                           const char* orig = nullptr) {
   char kept[300];
   nr_kept_name(name, kept, sizeof(kept));
   ssize_t r = p ? raw(p, kept, value, size) : __nrp_fgetxattr(fd, kept, value, size);
@@ -845,14 +861,16 @@ static ssize_t nr_get_kept(ssize_t (*raw)(const char*, const char*, void*, size_
   if (r >= 0 || (errno != ENODATA && errno != ENOTSUP) || strcmp(name, "security.selinux") != 0) {
     return r;
   }
-  static const char kLabel[] = "u:object_r:unlabeled:s0";
-  if (size == 0) return sizeof(kLabel);
-  if (size < sizeof(kLabel)) {
+  char label[96] = "u:object_r:unlabeled:s0";
+  nr_bpf_label(orig, label, sizeof(label));
+  size_t len = strlen(label) + 1;
+  if (size == 0) return static_cast<ssize_t>(len);
+  if (size < len) {
     errno = ERANGE;
     return -1;
   }
-  memcpy(value, kLabel, sizeof(kLabel));
-  return sizeof(kLabel);
+  memcpy(value, label, len);
+  return static_cast<ssize_t>(len);
 }
 
 extern "C" int setxattr(const char* path, const char* name, const void* value, size_t size, int flags) {
@@ -886,13 +904,13 @@ extern "C" int __fsetxattr(int fd, const char* name, const void* value, size_t s
 
 extern "C" ssize_t getxattr(const char* path, const char* name, void* value, size_t size) {
   NR_MAP(p, path);
-  if (nr_is_kept(name)) return nr_get_kept(__nrp_getxattr, p, -1, name, value, size);
+  if (nr_is_kept(name)) return nr_get_kept(__nrp_getxattr, p, -1, name, value, size, path);
   return __nrp_getxattr(p, name, value, size);
 }
 
 extern "C" ssize_t lgetxattr(const char* path, const char* name, void* value, size_t size) {
   NR_MAP(p, path);
-  if (nr_is_kept(name)) return nr_get_kept(__nrp_lgetxattr, p, -1, name, value, size);
+  if (nr_is_kept(name)) return nr_get_kept(__nrp_lgetxattr, p, -1, name, value, size, path);
   return __nrp_lgetxattr(p, name, value, size);
 }
 
