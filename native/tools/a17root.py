@@ -271,13 +271,16 @@ def write_apex_info(root):
         m = apex_manifest(mp)
         mod = m.get(1, name.encode()).decode()
         ver = m.get(2, 0) if isinstance(m.get(2, 0), int) else 0
-        src = "/system/apex/%s.apex" % name
-        if not os.path.exists(os.path.join(root, src.lstrip("/"))):
-            src = "/system/apex/%s.capex" % name
+        src, part = "/system/apex/%s.capex" % name, "SYSTEM"
+        for d, pt in (("system", "SYSTEM"), ("vendor", "VENDOR")):
+            for ext in (".apex", ".capex"):
+                cand = "/%s/apex/%s%s" % (d, name, ext)
+                if os.path.exists(os.path.join(root, cand.lstrip("/"))):
+                    src, part = cand, pt
         lines.append('    <apex-info moduleName="%s" modulePath="%s" preinstalledModulePath="%s" '
                      'versionCode="%d" versionName="" isFactory="true" isActive="true" '
-                     'lastUpdateMillis="0" provideSharedApexLibs="false" partition="SYSTEM"/>'
-                     % (mod, src, src, ver))
+                     'lastUpdateMillis="0" provideSharedApexLibs="false" partition="%s"/>'
+                     % (mod, src, src, ver, part))
     lines.append("</apex-info-list>")
     with open(os.path.join(apex, "apex-info-list.xml"), "w") as f:
         f.write("\n".join(lines) + "\n")
