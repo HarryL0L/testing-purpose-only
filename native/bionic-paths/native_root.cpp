@@ -310,7 +310,13 @@ static void nr_fake_owner(uid_t* uid, gid_t* gid) {
 static constexpr char kOwnerXattr[] = "user.nmode.owner";  // uint32_t uid, gid
 
 // A path getxattr() can use for (dirfd, path): an fd-relative path goes
-// through /proc/self/fd. Returns nullptr when `fd` itself is meant.
+// through /proc/self/fd (NR_AT_PATH sizes its buffer on the stack). nullptr
+// means `dirfd` itself.
+static size_t nr_at_size(int dirfd, const char* path) {
+  if (path == nullptr || path[0] == '\0' || path[0] == '/' || dirfd == AT_FDCWD) return 1;
+  return strlen(path) + 32;
+}
+
 static const char* nr_at_path(int dirfd, const char* path, int flags, char* buf, size_t size) {
   if (path == nullptr || (path[0] == '\0' && (flags & AT_EMPTY_PATH))) return nullptr;
   if (path[0] == '/' || dirfd == AT_FDCWD) return path;
@@ -318,10 +324,14 @@ static const char* nr_at_path(int dirfd, const char* path, int flags, char* buf,
   return buf;
 }
 
+#define NR_AT_PATH(var, dirfd, path, flags)                                 \
+  size_t var##_size = nr_at_size(dirfd, path);                              \
+  char* var##_buf = static_cast<char*>(alloca(var##_size));                 \
+  const char* var = nr_at_path(dirfd, path, flags, var##_buf, var##_size)
+
 static ssize_t nr_raw_getxattr_at(int dirfd, const char* mapped, int flags, const char* name,
                                   void* value, size_t size) {
-  char buf[PATH_MAX + 32];
-  const char* p = nr_at_path(dirfd, mapped, flags, buf, sizeof(buf));
+  NR_AT_PATH(p, dirfd, mapped, flags);
   if (p == nullptr) return __nrp_fgetxattr(dirfd, name, value, size);
   return (flags & AT_SYMLINK_NOFOLLOW) ? __nrp_lgetxattr(p, name, value, size)
                                        : __nrp_getxattr(p, name, value, size);
@@ -329,8 +339,7 @@ static ssize_t nr_raw_getxattr_at(int dirfd, const char* mapped, int flags, cons
 
 static int nr_raw_setxattr_at(int dirfd, const char* mapped, int flags, const char* name,
                               const void* value, size_t size) {
-  char buf[PATH_MAX + 32];
-  const char* p = nr_at_path(dirfd, mapped, flags, buf, sizeof(buf));
+  NR_AT_PATH(p, dirfd, mapped, flags);
   if (p == nullptr) return __nrp_fsetxattr(dirfd, name, value, size, 0);
   return (flags & AT_SYMLINK_NOFOLLOW) ? __nrp_lsetxattr(p, name, value, size, 0)
                                        : __nrp_setxattr(p, name, value, size, 0);
@@ -354,8 +363,7 @@ static int nr_chown_at(int dirfd, const char* mapped, int flags, uid_t owner, gi
   uint32_t own[2] = {0, 0};
   if (owner == static_cast<uid_t>(-1) || group == static_cast<gid_t>(-1)) {
     struct stat st;
-    char buf[PATH_MAX + 32];
-    const char* p = nr_at_path(dirfd, mapped, flags, buf, sizeof(buf));
+    NR_AT_PATH(p, dirfd, mapped, flags);
     int r = p == nullptr ? __nrp_fstat64(dirfd, &st)
                          : __nrp_fstatat64(AT_FDCWD, p, &st, flags & AT_SYMLINK_NOFOLLOW);
     if (r != 0) return -1;
