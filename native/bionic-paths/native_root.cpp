@@ -491,7 +491,11 @@ static void nr_peer_ids(pid_t pid, uid_t* uid, gid_t* gid) {
   rec[n] = '\0';
   unsigned long long start;
   unsigned u, g;
-  if (sscanf(rec, "%llu %u %u", &start, &u, &g) == 3 && start == nr_start_time(pid)) {
+  // Start times may differ by a few clock ticks (qemu fakes a process's view
+  // of its own /proc entry); a reused pid starts later than that.
+  unsigned long long now_start = nr_start_time(pid);
+  if (sscanf(rec, "%llu %u %u", &start, &u, &g) == 3 &&
+      (start > now_start ? start - now_start : now_start - start) <= 200) {
     *uid = u;
     *gid = g;
   }
