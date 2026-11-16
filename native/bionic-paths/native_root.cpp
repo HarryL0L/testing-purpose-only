@@ -784,7 +784,20 @@ extern "C" int symlinkat(const char* target, int fd, const char* path) {
   // An absolute target is resolved by the kernel, so it must point under the root too.
   NR_MAP(t, target);
   NR_MAP(p, path);
-  return __nrp_symlinkat(t, fd, p);
+  int r = __nrp_symlinkat(t, fd, p);
+  if (r == -1 && errno == EEXIST && nr_ids()) {
+    // Mounts are no-ops here, so links zygote makes in what would be a
+    // fresh tmpfs (app data isolation: /data/user/0 -> /data/data) are
+    // already there: the same link is no error.
+    struct stat a, b;
+    if (__nrp_fstatat64(fd, p, &a, 0) == 0 && __nrp_fstatat64(fd, t, &b, 0) == 0 &&
+        a.st_dev == b.st_dev && a.st_ino == b.st_ino) {
+      struct stat l;
+      if (__nrp_fstatat64(fd, p, &l, AT_SYMLINK_NOFOLLOW) == 0 && S_ISLNK(l.st_mode)) return 0;
+    }
+    errno = EEXIST;
+  }
+  return r;
 }
 
 extern "C" int unlinkat(int fd, const char* path, int flags) {
