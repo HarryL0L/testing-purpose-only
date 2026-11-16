@@ -342,7 +342,8 @@ def write_apex_info(root):
         mod = m.get(1, name.encode()).decode()
         ver = m.get(2, 0) if isinstance(m.get(2, 0), int) else 0
         src, part = "/system/apex/%s.capex" % name, "SYSTEM"
-        for d, pt in (("system", "SYSTEM"), ("vendor", "VENDOR"), ("odm", "ODM")):
+        for d, pt in (("system", "SYSTEM"), ("system_ext", "SYSTEM_EXT"), ("product", "PRODUCT"),
+                      ("vendor", "VENDOR"), ("odm", "ODM")):
             for ext in (".apex", ".capex"):
                 cand = "/%s/apex/%s%s" % (d, name, ext)
                 if os.path.exists(os.path.join(root, cand.lstrip("/"))):
@@ -461,7 +462,8 @@ USER0_DIRS = ["data/data", "data/user_de/0", "data/misc_de/0", "data/misc_ce/0",
 def init_dirs(root):
     """Create the directories init's .rc files make at boot (mkdir lines)."""
     n = 0
-    for base in ("system/etc/init", "system_ext/etc/init", "vendor/etc/init"):
+    for base in ("system/etc/init", "system_ext/etc/init", "product/etc/init", "vendor/etc/init",
+                 "odm/etc/init"):
         top = os.path.join(root, base)
         for d, _dirs, files in os.walk(top):
             for f in files:
@@ -511,14 +513,16 @@ def main():
     os.makedirs(out, exist_ok=True)
     u = Unpacker(mini)
 
-    log("system, vendor and odm partitions from", os.path.basename(img_zip))
-    imgs = {p: u.image_path(p + ".img") for p in ("system_a", "vendor_a", "odm_a")}
+    log("partitions from", os.path.basename(img_zip))
+    imgs = {p: u.image_path(p + ".img")
+            for p in ("system_a", "system_ext_a", "product_a", "vendor_a", "odm_a")}
     got = extract_partitions(img_zip, imgs)
     u.unpack(imgs["system_a"], root)
     os.remove(imgs["system_a"])
-    # vendor and odm go where the system image only has mount points (its
-    # /odm holds links into /vendor/odm, for devices without odm)
-    for p, dest in (("vendor_a", "vendor"), ("odm_a", "odm")):
+    # the others go where the system image only has mount points (its /odm
+    # holds links into /vendor/odm, for devices without odm)
+    for p, dest in (("system_ext_a", "system_ext"), ("product_a", "product"),
+                    ("vendor_a", "vendor"), ("odm_a", "odm")):
         if p in got:
             target = os.path.join(root, dest)
             if os.path.isdir(target) and not os.path.islink(target):
@@ -527,7 +531,7 @@ def main():
             os.remove(imgs[p])
 
     names = []
-    for part in ("system", "vendor", "odm"):
+    for part in ("system", "system_ext", "product", "vendor", "odm"):
         apex_dir = os.path.join(root, part, "apex")
         if os.path.isdir(apex_dir):
             names += sorted(os.path.join(apex_dir, f) for f in os.listdir(apex_dir)
