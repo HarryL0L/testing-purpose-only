@@ -437,7 +437,7 @@ def overlay(mini_root, root):
     sel = os.path.join(root, "sys", "fs", "selinux")
     shutil.rmtree(sel, ignore_errors=True)
     shutil.copytree(os.path.join(mini_root, "sys", "fs", "selinux"), sel)
-    for d in ("dev/socket", "data/local/tmp", "data/system/environ", "data/dalvik-cache/arm64",
+    for d in ("dev/socket", "dev/input", "data/local/tmp", "data/system/environ", "data/dalvik-cache/arm64",
               "data/misc/apexdata/com.android.art", "data/misc/odrefresh", "tmp", "linkerconfig",
               # cgroups (cgroups.json), as plain folders: libc maps them here
               "sys/fs/cgroup/system", "sys/fs/cgroup/apps", "dev/blkio", "dev/cpuctl",

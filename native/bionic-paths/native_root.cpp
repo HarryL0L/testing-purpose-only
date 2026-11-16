@@ -194,7 +194,10 @@ static bool nr_host_path(const char* p) {
     // Android's property area and sockets come from the image; binderfs
     // (driver feature files) isn't the phone's either.
     // /dev/kmsg is a file in the root (android::base's KernelLogger writes there).
+    // /dev/input: the root's own (input reaches Android through the viewer;
+    // the phone's devices aren't the app's to read).
     return !nr_under(p, "/dev/__properties__", 19) && !nr_under(p, "/dev/socket", 11) &&
+           !nr_under(p, "/dev/input", 10) &&
            !nr_under(p, "/dev/binderfs", 13) && strcmp(p, "/dev/kmsg") != 0 &&
            !nr_under(p, "/dev/blkio", 10) && !nr_under(p, "/dev/cpuctl", 11) &&
            !nr_under(p, "/dev/cpuset", 11) && !nr_under(p, "/dev/stune", 10) &&
@@ -1156,9 +1159,25 @@ extern "C" int statx(int fd, const char* path, int flags, unsigned mask, struct 
   return r;
 }
 
+// Watching a phone directory an app may not watch (InputFlinger's EventHub
+// watches /dev for new devices, and aborts if it can't) watches the root's
+// directory of the same name instead.
 extern "C" int inotify_add_watch(int fd, const char* path, uint32_t mask) {
   NR_MAP(p, path);
-  return __nrp_inotify_add_watch(fd, p, mask);
+  int r = __nrp_inotify_add_watch(fd, p, mask);
+  size_t rl;
+  const char* root;
+  if (r == -1 && (errno == EACCES || errno == EPERM) && path != nullptr && nr_host_path(path) &&
+      path[0] == '/' && nr_ids() && (root = nr_root(&rl)) != nullptr) {
+    size_t n = rl + strlen(path) + 1;
+    char* in_root = static_cast<char*>(alloca(n));
+    memcpy(in_root, root, rl);
+    memcpy(in_root + rl, path, n - rl);
+    int saved = errno;
+    r = __nrp_inotify_add_watch(fd, in_root, mask);
+    if (r == -1) errno = saved;
+  }
+  return r;
 }
 
 // ---- Unix domain sockets ----
