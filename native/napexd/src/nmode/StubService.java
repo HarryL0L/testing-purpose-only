@@ -3,6 +3,7 @@
  *
  *   vold   (android.os.IVold)          mounts, encrypts, checkpoints storage
  *   netd   (android.net.INetd)         firewall, routes, interfaces (needs root)
+ *   dnsresolver (android.net.IDnsResolver)  netd's resolver configuration
  *
  * system_server still calls them all through boot. Each stand-in accepts
  * every call as done, with nothing to report: the reply carries no exception
