@@ -117,35 +117,55 @@ def lp_extents(meta, name):
     raise KeyError("no partition %s in super.img" % name)
 
 
-def extract_partition(img_zip, name, out_path):
-    """Stream partition `name` out of super.img in the zip, without a copy of super."""
+def extract_partitions(img_zip, wanted):
+    """Stream partitions {name: out_path} out of super.img in the zip, in one
+    pass and without a copy of super. Partitions super lacks are skipped;
+    returns the names extracted."""
     with zipfile.ZipFile(img_zip) as z, z.open("super.img") as f:
         meta = bytearray()
-        layout = None  # [(super offset, length, partition offset)]
-        with open(out_path, "wb") as out:
-            total = 0
+        layouts = None  # name -> [(super offset, length, partition offset)]
+        outs = {name: open(path, "wb") for name, path in wanted.items()}
+        totals = {}
+        try:
             for off, data, n in Stream(f).chunks():
-                if layout is None:
+                if layouts is None:
                     if off < (1 << 20):
                         part = (data if data is not None else b"\0" * min(n, (1 << 20) - off))
                         meta[off:off + len(part)] = part[:(1 << 20) - off]
                     if off + n >= (1 << 20):
-                        pos, layout = 0, []
-                        for soff, length in lp_extents(bytes(meta), name):
-                            layout.append((soff, length, pos))
-                            pos += length
-                        total = pos
-                if layout is None or data is None:
+                        layouts = {}
+                        for name in wanted:
+                            try:
+                                extents = lp_extents(bytes(meta), name)
+                            except KeyError:
+                                continue
+                            pos, layout = 0, []
+                            for soff, length in extents:
+                                layout.append((soff, length, pos))
+                                pos += length
+                            layouts[name] = layout
+                            totals[name] = pos
+                if layouts is None or data is None:
                     continue
-                for soff, length, ppos in layout:
-                    if soff is None:
-                        continue
-                    lo, hi = max(off, soff), min(off + n, soff + length)
-                    if lo < hi:
-                        out.seek(ppos + lo - soff)
-                        out.write(data[lo - off:hi - off])
-            out.truncate(total)
-    log("%s: %d MB" % (name, total >> 20))
+                for name, layout in layouts.items():
+                    for soff, length, ppos in layout:
+                        if soff is None:
+                            continue
+                        lo, hi = max(off, soff), min(off + n, soff + length)
+                        if lo < hi:
+                            outs[name].seek(ppos + lo - soff)
+                            outs[name].write(data[lo - off:hi - off])
+        finally:
+            for name, out in outs.items():
+                if name in totals:
+                    out.truncate(totals[name])
+                out.close()
+    for name in wanted:
+        if name in totals:
+            log("%s: %d MB" % (name, totals[name] >> 20))
+        else:
+            os.remove(wanted[name])
+    return set(totals)
 
 
 # ---------------------------------------------------------------- unpacking
@@ -320,7 +340,7 @@ def write_apex_info(root):
         mod = m.get(1, name.encode()).decode()
         ver = m.get(2, 0) if isinstance(m.get(2, 0), int) else 0
         src, part = "/system/apex/%s.capex" % name, "SYSTEM"
-        for d, pt in (("system", "SYSTEM"), ("vendor", "VENDOR")):
+        for d, pt in (("system", "SYSTEM"), ("vendor", "VENDOR"), ("odm", "ODM")):
             for ext in (".apex", ".capex"):
                 cand = "/%s/apex/%s%s" % (d, name, ext)
                 if os.path.exists(os.path.join(root, cand.lstrip("/"))):
@@ -328,7 +348,7 @@ def write_apex_info(root):
         modules.setdefault(mod, []).append((name, ver, src, part))
     for mod in sorted(modules):
         name, ver, src, part = min(modules[mod], key=lambda e: apex_preference(e[0]))
-        if part == "VENDOR" and mod not in ACTIVE_VENDOR_APEXES:
+        if part in ("VENDOR", "ODM") and mod not in ACTIVE_VENDOR_APEXES:
             name = None
         for other in modules[mod]:
             if other[0] != name:
@@ -485,20 +505,23 @@ def main():
     os.makedirs(out, exist_ok=True)
     u = Unpacker(mini)
 
-    log("system partition from", os.path.basename(img_zip))
-    sysimg = u.image_path("system_a.img")
-    extract_partition(img_zip, "system_a", sysimg)
-    u.unpack(sysimg, root)
-    os.remove(sysimg)
-
-    log("vendor partition")
-    vendimg = u.image_path("vendor_a.img")
-    extract_partition(img_zip, "vendor_a", vendimg)
-    u.unpack(vendimg, os.path.join(root, "vendor"))
-    os.remove(vendimg)
+    log("system, vendor and odm partitions from", os.path.basename(img_zip))
+    imgs = {p: u.image_path(p + ".img") for p in ("system_a", "vendor_a", "odm_a")}
+    got = extract_partitions(img_zip, imgs)
+    u.unpack(imgs["system_a"], root)
+    os.remove(imgs["system_a"])
+    # vendor and odm go where the system image only has mount points (its
+    # /odm holds links into /vendor/odm, for devices without odm)
+    for p, dest in (("vendor_a", "vendor"), ("odm_a", "odm")):
+        if p in got:
+            target = os.path.join(root, dest)
+            if os.path.isdir(target) and not os.path.islink(target):
+                shutil.rmtree(target)
+            u.unpack(imgs[p], target)
+            os.remove(imgs[p])
 
     names = []
-    for part in ("system", "vendor"):
+    for part in ("system", "vendor", "odm"):
         apex_dir = os.path.join(root, part, "apex")
         if os.path.isdir(apex_dir):
             names += sorted(os.path.join(apex_dir, f) for f in os.listdir(apex_dir)
