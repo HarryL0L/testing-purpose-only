@@ -586,12 +586,44 @@ void enqueue_error(Thread* th, uint32_t cmd) {
   enqueue(th->todo, w);
 }
 
+// A thread's transaction stack mixes calls it made (linked by from_parent)
+// and calls it is serving (linked by to_parent).
+Transaction* stack_next(Thread* th, Transaction* t) {
+  return t->from == th ? t->from_parent : t->to_parent;
+}
+
+// Take `t` out of th's stack wherever it is (normally the top). Returns
+// whether it was there.
+bool stack_unlink(Thread* th, Transaction* t) {
+  if (th->stack == t) {
+    th->stack = stack_next(th, t);
+    return true;
+  }
+  for (Transaction* cur = th->stack; cur; cur = stack_next(th, cur)) {
+    Transaction* next = stack_next(th, cur);
+    if (next == t) {
+      Transaction* after = stack_next(th, t);
+      if (cur->from == th) {
+        cur->from_parent = after;
+      } else {
+        cur->to_parent = after;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 // binder_send_failed_reply()
 void send_failed_reply(Transaction* t, uint32_t error) {
   while (t) {
     Thread* target = t->from;
     if (target && !target->dead) {
-      if (target->stack == t) target->stack = t->from_parent;
+      if (target->stack != t) {
+        nb_log("proc %d thread %d: failed call %llu was not the top of its stack",
+               target->proc->pid, target->tid, static_cast<unsigned long long>(t->debug_id));
+      }
+      stack_unlink(target, t);
       enqueue_error(target, error);
       transaction_free(t);
       return;
@@ -750,6 +782,18 @@ void do_transaction(Thread* th, const struct binder_transaction_data& tr, const 
 
   if (reply) {
     in_reply_to = th->stack;
+    // Calls this thread made that are still on its stack above the call it
+    // serves were given up on (an error answered them): their callee's late
+    // reply must not reach this thread, which no longer waits for it.
+    while (in_reply_to && in_reply_to->to_thread != th && in_reply_to->from == th) {
+      nb_log("proc %d thread %d: dropping abandoned call %llu from its stack", proc->pid,
+             th->tid, static_cast<unsigned long long>(in_reply_to->debug_id));
+      Transaction* abandoned = in_reply_to;
+      in_reply_to = abandoned->from_parent;
+      th->stack = in_reply_to;
+      abandoned->from = nullptr;  // its reply now goes nowhere (BR_DEAD_REPLY to the callee)
+      abandoned->from_parent = nullptr;
+    }
     if (in_reply_to == nullptr || in_reply_to->to_thread != th) {
       nb_log("proc %d thread %d: reply with no transaction to reply to", proc->pid, th->tid);
       enqueue_error(th, BR_FAILED_REPLY);
@@ -764,7 +808,9 @@ void do_transaction(Thread* th, const struct binder_transaction_data& tr, const 
       return;
     }
     if (target_thread->stack != in_reply_to) {
-      nb_log("proc %d: reply target has a different transaction stack", proc->pid);
+      nb_log("proc %d: reply target %d/%d has a different transaction stack (call %llu)",
+             proc->pid, target_thread->proc->pid, target_thread->tid,
+             static_cast<unsigned long long>(in_reply_to->debug_id));
       enqueue_error(th, BR_TRANSACTION_COMPLETE);
       send_failed_reply(in_reply_to, BR_FAILED_REPLY);
       return;
@@ -859,6 +905,9 @@ void do_transaction(Thread* th, const struct binder_transaction_data& tr, const 
   }
 
   if (error) {
+    nb_log("proc %d thread %d: %s to proc %d failed (%s)", proc->pid, th->tid,
+           reply ? "reply" : "call", target_proc->pid,
+           error == BR_DEAD_REPLY ? "dead" : "objects or buffer space");
     if (in_reply_to) {
       enqueue_error(th, BR_TRANSACTION_COMPLETE);
       send_failed_reply(in_reply_to, error);
@@ -1708,7 +1757,18 @@ int main(int argc, char** argv) {
     return 1;
   }
   signal(SIGPIPE, SIG_IGN);
+#ifdef NB_STANDALONE
+  // Built with a plain libc (the NDK's): no path prefixing, so put the
+  // socket under the root here, where native mode's libc looks for it.
+  static std::string rooted;
+  if (!own_socket) {
+    rooted = std::string(getenv("ANDROID_NATIVE_ROOT")) + path;
+    path = rooted.c_str();
+    mkdir((std::string(getenv("ANDROID_NATIVE_ROOT")) + "/dev/socket").c_str(), 0755);
+  }
+#else
   mkdir("/dev/socket", 0755);
+#endif
   int lfd = listen_on(path);
   if (lfd == -1) return 1;
   g_epoll = epoll_create1(EPOLL_CLOEXEC);

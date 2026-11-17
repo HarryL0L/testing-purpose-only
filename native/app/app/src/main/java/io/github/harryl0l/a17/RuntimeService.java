@@ -43,10 +43,36 @@ public final class RuntimeService extends Service {
         startForeground(1, n);
         if (!Native.running()) {
             String dir = MainActivity.Paths.a17(this).getAbsolutePath();
-            new Thread(() -> Native.start(dir, new String[] {"ro.input.video_enabled=false"}),
+            new Thread(() -> {
+                installUpdates(dir);
+                Native.start(dir, new String[] {"ro.input.video_enabled=false"});
+            },
                     "a17-start").start();
         }
         return START_STICKY;
+    }
+
+    /**
+     * Programs of native mode that ship with the app, newer than the imported
+     * root's: copied over the root's copy before each start.
+     */
+    private void installUpdates(String dir) {
+        String[][] files = {{"nbinder", "root/system/bin/nbinder"}};
+        for (String[] f : files) {
+            java.io.File dst = new java.io.File(dir, f[1]);
+            java.io.File tmp = new java.io.File(dir, f[1] + ".new");
+            try (java.io.InputStream in = getAssets().open(f[0]);
+                 java.io.OutputStream out = new java.io.FileOutputStream(tmp)) {
+                byte[] buf = new byte[1 << 16];
+                for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            } catch (java.io.IOException e) {
+                android.util.Log.e("a17", "can't install " + f[0], e);
+                tmp.delete();
+                continue;
+            }
+            tmp.setExecutable(true, false);
+            if (!tmp.renameTo(dst)) android.util.Log.e("a17", "can't replace " + dst);
+        }
     }
 
     @Override
