@@ -15,9 +15,11 @@
 #include <android/binder_process.h>
 #include <android/log.h>
 #include <fcntl.h>
+#include <linux/dma-buf.h>
 #include <poll.h>
 #include <string.h>
 #include <sys/eventfd.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/system_properties.h>
 #include <time.h>
@@ -143,7 +145,13 @@ class Display {
     size_t bytes = (size_t)stride * m.h.height * 4;
     if (m.h.real_format != 1 && m.h.real_format != 2 && m.h.real_format != 5) return;
     if (!Ensure(m.h.width, m.h.height, stride, m.h.real_format, bytes)) return;
+    // A dma-buf (ION) the GPU drew into: read it through a cache sync. A
+    // memfd refuses the ioctl and needs none.
+    struct dma_buf_sync sync = {DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ};
+    ioctl(m.fd, DMA_BUF_IOCTL_SYNC, &sync);
     memcpy(fb_ + sizeof(nfb_header), m.base, std::min(bytes, m.len));
+    sync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ;
+    ioctl(m.fd, DMA_BUF_IOCTL_SYNC, &sync);
     auto* hdr = reinterpret_cast<nfb_header*>(fb_);
     __atomic_add_fetch(&hdr->frame, 1, __ATOMIC_RELEASE);
     frames_++;

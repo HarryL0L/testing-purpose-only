@@ -11,8 +11,10 @@
 #include <aidl/android/hardware/graphics/common/Interlaced.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/dma-buf.h>
 #include <poll.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -47,6 +49,15 @@ const nmem_ints* Ints(const native_handle_t* nh) {
     return nullptr;
   auto* h = reinterpret_cast<const nmem_ints*>(&nh->data[1]);
   return h->magic == NMEM_MAGIC ? h : nullptr;
+}
+
+// CPU access to a dma-buf (ION, cached) begins and ends with a cache sync, so
+// the CPU sees what the GPU drew and the GPU what the CPU wrote. A memfd
+// takes no such ioctl (ENOTTY), and needs none.
+void SyncCpuAccess(buffer_handle_t buffer, uint64_t flags) {
+  struct dma_buf_sync sync = {flags};
+  while (ioctl(buffer->data[0], DMA_BUF_IOCTL_SYNC, &sync) < 0 && errno == EINTR) {
+  }
 }
 
 void WaitFence(int fd) {
@@ -172,10 +183,13 @@ class NativeMapper final : public vendor::mapper::IMapperV5Impl {
         if (acquireFence >= 0) close(acquireFence);
         return AIMAPPER_ERROR_BAD_VALUE;
       }
-      (void)cpuUsage;
       b->locks++;
     }
     WaitFence(acquireFence);
+    uint64_t rw = 0;
+    if (cpuUsage & 0x0f) rw |= DMA_BUF_SYNC_READ;    // CPU_READ_*
+    if (cpuUsage & 0xf0) rw |= DMA_BUF_SYNC_WRITE;   // CPU_WRITE_*
+    SyncCpuAccess(buffer, DMA_BUF_SYNC_START | (rw ? rw : DMA_BUF_SYNC_RW));
     *outData = b->base;
     return AIMAPPER_ERROR_NONE;
   }
@@ -186,6 +200,7 @@ class NativeMapper final : public vendor::mapper::IMapperV5Impl {
     if (!b) return AIMAPPER_ERROR_BAD_BUFFER;
     if (b->locks == 0) return AIMAPPER_ERROR_BAD_BUFFER;
     b->locks--;
+    SyncCpuAccess(buffer, DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW);
     *releaseFence = -1;
     return AIMAPPER_ERROR_NONE;
   }
