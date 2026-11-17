@@ -88,6 +88,7 @@ public class VoldService extends StubService {
                 Os.socketpair(OsConstants.AF_UNIX, OsConstants.SOCK_SEQPACKET, 0, ours, theirs);
                 mKeep.add(ours);
                 fuseInit(ours);
+                keepBlocking(theirs);
                 d.writeInterfaceToken(MOUNT_CALLBACK);
                 d.writeRawFileDescriptor(theirs);
                 d.writeString(PATH);
@@ -123,7 +124,9 @@ public class VoldService extends StubService {
             try {
                 log("FUSE_INIT sent: " + Os.write(fd, b.array(), 0, 104) + " bytes");
                 int n;
+                int seen = 0;
                 while ((n = Os.read(fd, buf, 0, buf.length)) > 0) {
+                    if (replied[0] && seen++ < 20) log("FUSE: " + n + " more bytes from MediaProvider");
                     if (!replied[0]) {
                         replied[0] = true;
                         java.nio.ByteBuffer r = java.nio.ByteBuffer.wrap(buf, 0, n).order(java.nio.ByteOrder.LITTLE_ENDIAN);
@@ -148,6 +151,35 @@ public class VoldService extends StubService {
         }, "fuse-watch");
         w.setDaemon(true);
         w.start();
+    }
+
+    // MediaProvider's FUSE threads read its end blocking, as /dev/fuse is:
+    // libfuse ends the session when a read fails, and EAGAIN from an empty
+    // non-blocking socket is such a failure (right after FUSE_INIT). Something
+    // on the way to it marks the socket (one open file, whoever holds it)
+    // non-blocking; this end is the same file, so it is cleared from here
+    // while the mount is being set up.
+    private static void keepBlocking(FileDescriptor fd) {
+        Thread t = new Thread(() -> {
+            long end = System.currentTimeMillis() + 30000;
+            int was = -1;
+            while (System.currentTimeMillis() < end) {
+                try {
+                    int fl = Os.fcntlInt(fd, OsConstants.F_GETFL, 0);
+                    if (fl != was) log("FUSE socket flags 0x" + Integer.toHexString(fl));
+                    was = fl;
+                    if ((fl & OsConstants.O_NONBLOCK) != 0) {
+                        Os.fcntlInt(fd, OsConstants.F_SETFL, fl & ~OsConstants.O_NONBLOCK);
+                    }
+                    Thread.sleep(1);
+                } catch (Exception e) {
+                    log("FUSE socket flags: " + e);
+                    return;
+                }
+            }
+        }, "fuse-blocking");
+        t.setDaemon(true);
+        t.start();
     }
 
     // MediaProvider's Java threads with their native frames, as an ANR saves them.

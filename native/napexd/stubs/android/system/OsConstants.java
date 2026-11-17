@@ -1,1 +1,1 @@
-package android.system; public final class OsConstants { public static int AF_UNIX; public static int SOCK_SEQPACKET; }
+package android.system; public final class OsConstants { public static int AF_UNIX; public static int SOCK_SEQPACKET; public static int SOCK_STREAM; public static int F_GETFL; public static int F_SETFL; public static int O_NONBLOCK; }
