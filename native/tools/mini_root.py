@@ -136,6 +136,10 @@ mkdir -p /data/resource-cache
 idmap2d </dev/null >/dev/null 2>&1 &
 mkdir -p /data/misc/gatekeeper
 gatekeeperd /data/misc/gatekeeper </dev/null >/dev/null 2>&1 &
+# ninput: the viewer's touches and keys, injected once system_server's input
+# service is up (abstract socket "ninput"; napexd.jar)
+CLASSPATH=/system/framework/napexd.jar app_process /system/bin nmode.NInput \\
+    </dev/null >/dev/null 2>&1 &
 i=0
 for svc in apexservice vold netd dnsresolver; do
   while ! service check $svc | grep -q ': found' && [ $i -lt 300 ]; do sleep 0.2; i=$((i + 1)); done
