@@ -23,6 +23,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -293,10 +294,49 @@ pid_t Spawn(const std::string& dir, const std::vector<std::string>& args, const 
   _exit(127);
 }
 
+// Remove everything under `path` (not `path` itself). Directories and files
+// may have modes that refuse their owner (BPF pins: ----rw----, sticky
+// directories); the app owns them all, so it gives itself the bits first.
+// Returns how many entries couldn't be removed.
+int ClearDir(const std::string& path, FILE* log) {
+  int failed = 0;
+  chmod(path.c_str(), 0700 | S_ISVTX);
+  DIR* d = opendir(path.c_str());
+  if (!d) {
+    if (errno != ENOENT && log) fprintf(log, "app: can't open %s: %s\n", path.c_str(), strerror(errno));
+    return errno == ENOENT ? 0 : 1;
+  }
+  while (struct dirent* e = readdir(d)) {
+    if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+    std::string p = path + "/" + e->d_name;
+    struct stat st;
+    if (lstat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+      failed += ClearDir(p, log);
+      if (rmdir(p.c_str()) != 0) {
+        failed++;
+        if (log) fprintf(log, "app: can't remove %s: %s\n", p.c_str(), strerror(errno));
+      }
+    } else if (unlink(p.c_str()) != 0) {
+      failed++;
+      if (log) fprintf(log, "app: can't remove %s: %s\n", p.c_str(), strerror(errno));
+    }
+  }
+  closedir(d);
+  return failed;
+}
+
 void Supervise(std::string dir, std::vector<std::string> props) {
   // Orphans of Android 17's daemons come here instead of going to init.
   prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
   std::string log = dir + "/nboot.log";
+  // What a reboot empties: the BPF filesystem. netbpfload aborts when it finds
+  // pins from an earlier run (an imported root brings some along), and
+  // nboot's own cleanup doesn't reach them inside the app.
+  if (FILE* f = fopen(log.c_str(), "a")) {
+    int failed = ClearDir(dir + "/root/sys/fs/bpf", f);
+    fprintf(f, "app: BPF filesystem cleared%s\n", failed ? " (with errors)" : "");
+    fclose(f);
+  }
   std::vector<std::string> boot = {"/system/bin/sh", dir + "/run.sh", "nboot"};
   boot.insert(boot.end(), props.begin(), props.end());
   pid_t b = Spawn(dir, boot, log);
