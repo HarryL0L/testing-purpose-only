@@ -72,8 +72,15 @@ public final class LogActivity extends Activity {
         for (String l : LogTail.lines(new File(root, "data/local/tmp/bpfloader.log"), 8192)) {
             sb.append(l).append('\n');
         }
-        sb.append("== kmsg (end)\n");
-        for (String l : LogTail.lines(new File(root, "dev/kmsg"), 8192)) sb.append(l).append('\n');
+        // The kernel log from boot: netbpfload and init-style programs write
+        // there (servicemanager's SELinux noise left out).
+        sb.append("== kmsg (start)\n");
+        int kept = 0;
+        for (String l : LogTail.lines(new File(root, "dev/kmsg"), 4 << 20)) {
+            if (l.contains("Unknown class") || l.contains("servicemanager: Caller")) continue;
+            sb.append(l).append('\n');
+            if (++kept >= 300) break;
+        }
         sb.append("== /sys/fs/bpf\n");
         listPins(new File(root, "sys/fs/bpf"), "", sb, new int[] {0});
         sb.append("== log.txt (").append(problemsOnly ? "problems" : "end").append(")\n");
