@@ -110,25 +110,97 @@ public class VoldService extends StubService {
     // The kernel's first FUSE request, which a FUSE server waits for before it
     // counts as started (MediaProvider waits for that): FUSE_INIT, protocol
     // 7.31, no features asked. Its reply, and anything after, is read and
-    // dropped, on a thread of its own.
+    // dropped, on a thread of its own. If no reply comes in 4 s (MediaProvider
+    // gives up at 5), its threads' stacks are saved to show where it is stuck.
     private static void fuseInit(FileDescriptor fd) {
         java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(104).order(java.nio.ByteOrder.LITTLE_ENDIAN);
         b.putInt(104).putInt(26).putLong(1).putLong(0);  // fuse_in_header: len, FUSE_INIT, unique, nodeid
         b.putInt(0).putInt(0).putInt(0).putInt(0);       // uid, gid, pid, extlen+padding
         b.putInt(7).putInt(31).putInt(128 * 1024).putInt(0);  // fuse_init_in: major, minor, max_readahead, flags
+        final boolean[] replied = {false};
         Thread t = new Thread(() -> {
             byte[] buf = new byte[256 * 1024];
             try {
-                Os.write(fd, b.array(), 0, 104);
-                while (Os.read(fd, buf, 0, buf.length) > 0) {
-                    // dropped
+                log("FUSE_INIT sent: " + Os.write(fd, b.array(), 0, 104) + " bytes");
+                int n;
+                while ((n = Os.read(fd, buf, 0, buf.length)) > 0) {
+                    if (!replied[0]) {
+                        replied[0] = true;
+                        java.nio.ByteBuffer r = java.nio.ByteBuffer.wrap(buf, 0, n).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+                        log("FUSE_INIT reply: " + n + " bytes, error " + (n >= 8 ? r.getInt(4) : 0)
+                                + (n >= 24 ? ", protocol " + r.getInt(16) + "." + r.getInt(20) : ""));
+                    }
                 }
+                log("FUSE stand-in: MediaProvider closed its end");
             } catch (Exception e) {
                 log("FUSE stand-in: " + e);
             }
         }, "fuse-init");
         t.setDaemon(true);
         t.start();
+        Thread w = new Thread(() -> {
+            try {
+                Thread.sleep(4000);
+            } catch (InterruptedException e) {
+                return;
+            }
+            if (!replied[0]) dumpMediaProvider();
+        }, "fuse-watch");
+        w.setDaemon(true);
+        w.start();
+    }
+
+    // MediaProvider's Java threads with their native frames, as an ANR saves them.
+    private static void dumpMediaProvider() {
+        int pid = -1;
+        java.io.File[] procs = new java.io.File("/proc").listFiles();
+        if (procs != null) {
+            for (java.io.File p : procs) {
+                try {
+                    // Its name, or the end of it (a thread name's 15 characters)
+                    // where the command line is still the launcher's.
+                    String c = new String(java.nio.file.Files.readAllBytes(new java.io.File(p, "cmdline").toPath()));
+                    String comm = new String(java.nio.file.Files.readAllBytes(new java.io.File(p, "comm").toPath())).trim();
+                    if (c.startsWith("com.android.providers.media.module") || comm.equals("rs.media.module")) {
+                        pid = Integer.parseInt(p.getName());
+                        break;
+                    }
+                } catch (Exception e) {
+                    // not a process, or gone
+                }
+            }
+        }
+        log("FUSE_INIT: no reply in 4 s; MediaProvider is pid " + pid);
+        if (pid < 0) return;
+        // Each thread's name and what it waits on in the kernel: a FUSE
+        // worker reading the socket waits for packets; one stuck elsewhere
+        // shows where.
+        java.io.File[] tasks = new java.io.File("/proc/" + pid + "/task").listFiles();
+        StringBuilder sb = new StringBuilder("MediaProvider threads:");
+        if (tasks != null) {
+            for (java.io.File t : tasks) {
+                sb.append("\n  ").append(t.getName()).append(' ')
+                        .append(read(new java.io.File(t, "comm"))).append(' ')
+                        .append(read(new java.io.File(t, "wchan")));
+            }
+        }
+        log(sb.toString());
+        try {
+            Object ok = Class.forName("android.os.Debug")
+                    .getMethod("dumpJavaBacktraceToFileTimeout", int.class, String.class, int.class)
+                    .invoke(null, pid, "/data/local/tmp/fuse-stacks.txt", 20);
+            log("MediaProvider stacks saved: " + ok);
+        } catch (Throwable e) {
+            log("MediaProvider stacks: " + e);
+        }
+    }
+
+    private static String read(java.io.File f) {
+        try {
+            return new String(java.nio.file.Files.readAllBytes(f.toPath())).trim();
+        } catch (Exception e) {
+            return "?";
+        }
     }
 
     // A oneway IVoldListener call; arguments are Strings or Integers, in order.

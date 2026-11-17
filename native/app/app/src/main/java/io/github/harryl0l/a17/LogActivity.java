@@ -89,9 +89,23 @@ public final class LogActivity extends Activity {
         sb.append("== watchdog stacks\n");
         appendStuckThreads(new File(root, "data/anr"), sb);
         sb.append("== vold.log (end)\n");
-        for (String l : LogTail.lines(new File(root, "data/local/tmp/vold.log"), 4096)) {
+        for (String l : LogTail.lines(new File(root, "data/local/tmp/vold.log"), 8192)) {
             sb.append(l).append('\n');
         }
+        // Shared storage: MediaProvider's FUSE thread, if it never answered
+        // the stand-in's FUSE_INIT (saved by the vold stand-in), and the
+        // storage lines of the log at every level.
+        sb.append("== FUSE stacks\n");
+        appendFuseThreads(new File(root, "data/local/tmp/fuse-stacks.txt"), sb);
+        sb.append("== storage lines\n");
+        List<String> st = new java.util.ArrayList<>();
+        for (String l : LogTail.lines(LogTail.file(this), 8 << 20)) {
+            if (l.contains("FuseDaemon") || l.contains("fuse") || l.contains("FUSE")
+                    || l.contains("ExternalStorageService") || l.contains("StorageSession")) {
+                if (!l.contains("\tat ")) st.add(l);
+            }
+        }
+        for (String l : st.subList(Math.max(0, st.size() - 60), st.size())) sb.append(l).append('\n');
         sb.append("== kmsg (start)\n");
         int kept = 0;
         for (String l : LogTail.lines(new File(root, "dev/kmsg"), 4 << 20)) {
@@ -139,6 +153,28 @@ public final class LogActivity extends Activity {
                     || b.contains("Blocked") || b.startsWith("\"main\"");
             if (!stuck || b.startsWith("----")) continue;
             if (total + b.length() > 60000) break;
+            sb.append(b).append('\n');
+            total += b.length();
+        }
+    }
+
+    // The threads of a MediaProvider stack dump that serve FUSE.
+    private static void appendFuseThreads(File f, StringBuilder sb) {
+        if (!f.exists()) {
+            sb.append("(none)\n");
+            return;
+        }
+        StringBuilder block = new StringBuilder();
+        int total = 0;
+        for (String l : LogTail.lines(f, 4 << 20)) {
+            if (!l.isEmpty()) {
+                block.append(l).append('\n');
+                continue;
+            }
+            String b = block.toString();
+            block.setLength(0);
+            if (!(b.contains("Fuse") || b.contains("fuse") || b.startsWith("\"main\""))) continue;
+            if (total + b.length() > 30000) break;
             sb.append(b).append('\n');
             total += b.length();
         }
