@@ -57,7 +57,11 @@ public final class RuntimeService extends Service {
      * root's: copied over the root's copy before each start.
      */
     private void installUpdates(String dir) {
-        String[][] files = {{"nbinder", "root/system/bin/nbinder"}};
+        String[][] files = {
+            {"nbinder", "root/system/bin/nbinder"},
+            // vold's stand-in (shared storage) and the codec store's (napexd)
+            {"napexd.jar", "root/system/framework/napexd.jar"},
+        };
         for (String[] f : files) {
             java.io.File dst = new java.io.File(dir, f[1]);
             java.io.File tmp = new java.io.File(dir, f[1] + ".new");

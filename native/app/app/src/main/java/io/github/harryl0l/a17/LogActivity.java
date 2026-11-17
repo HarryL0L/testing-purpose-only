@@ -88,6 +88,10 @@ public final class LogActivity extends Activity {
         // here before killing it: the threads stuck in binder or on a lock.
         sb.append("== watchdog stacks\n");
         appendStuckThreads(new File(root, "data/anr"), sb);
+        sb.append("== vold.log (end)\n");
+        for (String l : LogTail.lines(new File(root, "data/local/tmp/vold.log"), 4096)) {
+            sb.append(l).append('\n');
+        }
         sb.append("== kmsg (start)\n");
         int kept = 0;
         for (String l : LogTail.lines(new File(root, "dev/kmsg"), 4 << 20)) {
