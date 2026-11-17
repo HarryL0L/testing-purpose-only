@@ -333,7 +333,9 @@ void Supervise(std::string dir, std::vector<std::string> props) {
   // pins from an earlier run (an imported root brings some along), and
   // nboot's own cleanup doesn't reach them inside the app.
   if (FILE* f = fopen(log.c_str(), "a")) {
-    int failed = ClearDir(dir + "/root/sys/fs/bpf", f);
+    std::string bpf = dir + "/root/sys/fs/bpf";
+    int failed = ClearDir(bpf, f);
+    chmod(bpf.c_str(), 01777);  // bpffs's root mode (ClatCoordinator checks it)
     fprintf(f, "app: BPF filesystem cleared%s\n", failed ? " (with errors)" : "");
     fclose(f);
   }
