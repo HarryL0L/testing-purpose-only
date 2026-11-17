@@ -146,3 +146,14 @@ copied where SELinux forbids hard links, owner bits added for a moment
 where owner/label records and pins need them, the image's labels for files
 without a record, and nstart.py as the parent of every process (realme
 kills orphaned processes).
+
+GPU (phone): PanVK (Mesa's Vulkan driver for Mali on the kbase kernel
+driver) works as the image's Vulkan driver: copied into the root as
+/apex/com.google.cf.vulkan/lib64/hw/vulkan.panvk.so and selected with
+ro.hardware.vulkan=panvk (in /data/local/native.prop to keep it), ANGLE
+runs OpenGL ES on it and SurfaceFlinger and apps render on the Mali-G77
+(the launcher draws in 2 s instead of minutes). Graphics buffers come from
+ION's ion_mm_heap (nalloc; MediaTek's 4.19 ION, legacy allocation
+interface): kbase refused buffers from the system heap.
+native/gfx/nvkprobe checks a Vulkan driver inside the root,
+native/gfx/nionprobe what ION offers an app.
