@@ -118,6 +118,11 @@ void ViewerLoop(ANativeWindow* win) {
   EGLContext ctx = eglCreateContext(dpy, cfg, EGL_NO_CONTEXT, ctx_attrs);
   EGLSurface surf = eglCreateWindowSurface(dpy, cfg, win, nullptr);
   eglMakeCurrent(dpy, surf, surf, ctx);
+  // Don't wait for this phone's vsync in eglSwapBuffers: the composer waits
+  // for each frame's ack, so a blocking swap held Android 17's SurfaceFlinger
+  // up to a whole frame and halved its frame rate. Android's queue still
+  // shows whole frames (no tearing), dropping a stale one if two arrive.
+  eglSwapInterval(dpy, 0);
   auto create_image = reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(eglGetProcAddress("eglCreateImageKHR"));
   auto destroy_image = reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
   auto target_tex = reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(

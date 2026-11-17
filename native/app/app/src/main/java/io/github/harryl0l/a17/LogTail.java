@@ -40,7 +40,7 @@ final class LogTail {
         if (line.contains("Fence: merge")) return false;
         return line.contains(" E ") || line.contains(" F ") || line.contains("FATAL")
                 || line.contains("Runtime aborting") || line.contains("exited due to signal")
-                || line.contains("CANNOT LINK");
+                || line.contains("CANNOT LINK") || line.contains("Watchdog") || line.contains("WATCHDOG");
     }
 
     private LogTail() {}

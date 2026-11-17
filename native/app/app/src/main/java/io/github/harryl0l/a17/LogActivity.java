@@ -75,10 +75,19 @@ public final class LogActivity extends Activity {
         // The kernel log from boot: netbpfload and init-style programs write
         // there (servicemanager's SELinux noise left out).
         // The binder stand-in's own complaints (bad replies, full buffers).
-        sb.append("== nbinder.log (end)\n");
-        for (String l : LogTail.lines(new File(root, "data/local/tmp/nbinder.log"), 16384)) {
-            sb.append(l).append('\n');
+        // Its routine lines (nodes made and freed) bury the few that matter:
+        // those are picked out of the whole file.
+        sb.append("== nbinder.log (problems)\n");
+        List<String> nb = new java.util.ArrayList<>();
+        for (String l : LogTail.lines(new File(root, "data/local/tmp/nbinder.log"), 16 << 20)) {
+            if (l.contains("freed") || l.contains("new node") || l.contains("released")) continue;
+            nb.add(l);
         }
+        for (String l : nb.subList(Math.max(0, nb.size() - 80), nb.size())) sb.append(l).append('\n');
+        // When system_server hangs its watchdog dumps every thread's stack
+        // here before killing it: the threads stuck in binder or on a lock.
+        sb.append("== watchdog stacks\n");
+        appendStuckThreads(new File(root, "data/anr"), sb);
         sb.append("== kmsg (start)\n");
         int kept = 0;
         for (String l : LogTail.lines(new File(root, "dev/kmsg"), 4 << 20)) {
@@ -99,6 +108,36 @@ public final class LogActivity extends Activity {
             sb.append(l).append('\n');
         }
         return sb.toString();
+    }
+
+    // The newest stack dump in /data/anr: the threads blocked on a lock or
+    // waiting in a binder call (the cause of a watchdog kill).
+    private static void appendStuckThreads(File dir, StringBuilder sb) {
+        File[] files = dir.listFiles();
+        if (files == null || files.length == 0) {
+            sb.append("(none)\n");
+            return;
+        }
+        File newest = files[0];
+        for (File f : files) if (f.lastModified() > newest.lastModified()) newest = f;
+        sb.append(newest.getName()).append('\n');
+        StringBuilder block = new StringBuilder();
+        int total = 0;
+        for (String l : LogTail.lines(newest, 8 << 20)) {
+            if (!l.isEmpty()) {
+                block.append(l).append('\n');
+                continue;
+            }
+            String b = block.toString();
+            block.setLength(0);
+            boolean stuck = b.contains("state=S") && (b.contains("IPCThreadState::transact")
+                    || b.contains("BinderProxy.transact")) || b.contains("waiting to lock")
+                    || b.contains("Blocked") || b.startsWith("\"main\"");
+            if (!stuck || b.startsWith("----")) continue;
+            if (total + b.length() > 60000) break;
+            sb.append(b).append('\n');
+            total += b.length();
+        }
     }
 
     private static void listPins(File dir, String prefix, StringBuilder sb, int[] count) {
