@@ -80,6 +80,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         logButton.setVisibility(View.VISIBLE);
         StringBuilder sb = new StringBuilder("Starting Android 17…\n\n");
         List<String> lines = LogTail.lines(LogTail.file(this), 16 << 10);
+        lines.removeIf(l -> l.contains("Fence: merge"));
         for (int i = Math.max(0, lines.size() - 14); i < lines.size(); i++) {
             String l = lines.get(i);
             sb.append(l.length() > 120 ? l.substring(0, 120) : l).append('\n');

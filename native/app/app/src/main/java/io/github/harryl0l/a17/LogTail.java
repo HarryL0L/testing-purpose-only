@@ -36,6 +36,8 @@ final class LogTail {
 
     /** Errors, crashes and Android's own fatal messages. */
     static boolean problem(String line) {
+        // SurfaceFlinger's fence merges (libc doesn't emulate them yet): noise
+        if (line.contains("Fence: merge")) return false;
         return line.contains(" E ") || line.contains(" F ") || line.contains("FATAL")
                 || line.contains("Runtime aborting") || line.contains("exited due to signal")
                 || line.contains("CANNOT LINK");

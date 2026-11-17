@@ -69,17 +69,30 @@ public final class LogActivity extends Activity {
         return sb.toString();
     }
 
+    // Reading megabytes of log: off the UI thread (it froze the app).
     private void load() {
-        text.setText(collect(problemsOnly ? 4 << 20 : 256 << 10));
-        scroll.post(() -> scroll.fullScroll(ScrollView.FOCUS_DOWN));
+        text.setText("Loading…");
+        boolean p = problemsOnly;
+        new Thread(() -> {
+            String log = collect(p ? 4 << 20 : 256 << 10);
+            if (log.length() > 200_000) log = log.substring(log.length() - 200_000);
+            String shown = log;
+            runOnUiThread(() -> {
+                text.setText(shown);
+                scroll.post(() -> scroll.fullScroll(ScrollView.FOCUS_DOWN));
+            });
+        }, "log-load").start();
     }
 
     private void share() {
-        String log = collect(problemsOnly ? 4 << 20 : 512 << 10);
-        if (log.length() > 400_000) log = log.substring(log.length() - 400_000);
-        Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain")
-                .putExtra(Intent.EXTRA_SUBJECT, "Android 17 log")
-                .putExtra(Intent.EXTRA_TEXT, log);
-        startActivity(Intent.createChooser(send, "Share the log"));
+        boolean p = problemsOnly;
+        new Thread(() -> {
+            String log = collect(p ? 4 << 20 : 512 << 10);
+            if (log.length() > 400_000) log = log.substring(log.length() - 400_000);
+            Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "Android 17 log")
+                    .putExtra(Intent.EXTRA_TEXT, log);
+            runOnUiThread(() -> startActivity(Intent.createChooser(send, "Share the log")));
+        }, "log-share").start();
     }
 }
