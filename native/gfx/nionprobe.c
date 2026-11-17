@@ -41,6 +41,26 @@ struct ion_heap_query {
 #define ION_IOC_ALLOC _IOWR('I', 0, struct ion_allocation_data)
 #define ION_IOC_HEAP_QUERY _IOWR('I', 8, struct ion_heap_query)
 
+// The interface before 4.12, which vendor kernels (MediaTek's 4.19) keep for
+// allocations: a handle first, then a dma-buf fd for it (ION_IOC_SHARE).
+struct ion_allocation_data_legacy {
+  size_t len;
+  size_t align;
+  unsigned int heap_id_mask;
+  unsigned int flags;
+  int handle;
+};
+struct ion_fd_data {
+  int handle;
+  int fd;
+};
+struct ion_handle_data {
+  int handle;
+};
+#define ION_IOC_ALLOC_LEGACY _IOWR('I', 0, struct ion_allocation_data_legacy)
+#define ION_IOC_FREE_LEGACY _IOWR('I', 1, struct ion_handle_data)
+#define ION_IOC_SHARE_LEGACY _IOWR('I', 4, struct ion_fd_data)
+
 static const char* type_name(uint32_t t) {
   switch (t) {
     case 0: return "system";
@@ -54,23 +74,44 @@ static const char* type_name(uint32_t t) {
 
 static void try_alloc(int ion, uint32_t heap_id, const char* name) {
   struct ion_allocation_data a = {1 << 20, 1u << heap_id, 0, 0, 0};
-  if (ioctl(ion, ION_IOC_ALLOC, &a) != 0) {
-    printf("  FAIL alloc 1 MiB from heap %u (%s): %s\n", heap_id, name, strerror(errno));
-    return;
+  int fd = -1;
+  const char* how = "4.12+ interface";
+  if (ioctl(ion, ION_IOC_ALLOC, &a) == 0) {
+    fd = (int)a.fd;
+  } else {
+    int e = errno;
+    struct ion_allocation_data_legacy l = {1 << 20, 4096, 1u << heap_id, 0, 0};
+    if (ioctl(ion, ION_IOC_ALLOC_LEGACY, &l) != 0) {
+      printf("  FAIL alloc 1 MiB from heap %u (%s): %s; legacy interface: %s\n", heap_id, name,
+             strerror(e), strerror(errno));
+      return;
+    }
+    struct ion_fd_data share = {l.handle, -1};
+    int sr = ioctl(ion, ION_IOC_SHARE_LEGACY, &share);
+    int se = errno;
+    struct ion_handle_data h = {l.handle};
+    ioctl(ion, ION_IOC_FREE_LEGACY, &h);  // the dma-buf keeps the memory
+    if (sr != 0) {
+      printf("  FAIL heap %u (%s): legacy alloc ok, share: %s\n", heap_id, name, strerror(se));
+      return;
+    }
+    fd = share.fd;
+    how = "legacy interface";
   }
-  int fd = (int)a.fd;
-  unsigned char* p = mmap(NULL, a.len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  printf("  ok   heap %u (%s): allocated with the %s (dma-buf fd %d)\n", heap_id, name, how, fd);
+  size_t len = 1 << 20;
+  unsigned char* p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (p == MAP_FAILED) {
     printf("  FAIL heap %u (%s): allocated (fd %d) but mmap: %s\n", heap_id, name, fd,
            strerror(errno));
     close(fd);
     return;
   }
-  memset(p, 0x5a, a.len);
-  int good = p[0] == 0x5a && p[a.len - 1] == 0x5a;
-  munmap(p, a.len);
+  memset(p, 0x5a, len);
+  int good = p[0] == 0x5a && p[len - 1] == 0x5a;
+  munmap(p, len);
   close(fd);
-  printf("  %s heap %u (%s): 1 MiB allocated, mapped, %s\n", good ? "ok  " : "FAIL", heap_id, name,
+  printf("  %s heap %u (%s): 1 MiB mapped, %s\n", good ? "ok  " : "FAIL", heap_id, name,
          good ? "holds data" : "data didn't stick");
 }
 
