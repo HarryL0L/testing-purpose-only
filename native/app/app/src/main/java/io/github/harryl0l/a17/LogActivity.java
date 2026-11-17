@@ -74,6 +74,11 @@ public final class LogActivity extends Activity {
         }
         // The kernel log from boot: netbpfload and init-style programs write
         // there (servicemanager's SELinux noise left out).
+        // The binder stand-in's own complaints (bad replies, full buffers).
+        sb.append("== nbinder.log (end)\n");
+        for (String l : LogTail.lines(new File(root, "data/local/tmp/nbinder.log"), 16384)) {
+            sb.append(l).append('\n');
+        }
         sb.append("== kmsg (start)\n");
         int kept = 0;
         for (String l : LogTail.lines(new File(root, "dev/kmsg"), 4 << 20)) {
