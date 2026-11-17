@@ -10,7 +10,10 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import java.io.File;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Android 17's log, all or problems only, with a Share button. */
 public final class LogActivity extends Activity {
@@ -62,11 +65,42 @@ public final class LogActivity extends Activity {
         List<String> boot = LogTail.lines(LogTail.bootLog(this), 4096);
         sb.append("== nboot.log (end)\n");
         for (String l : boot) if (!l.contains("ctl.interface_start")) sb.append(l).append('\n');
+        // The BPF loader's own output and the pins it made: system_server
+        // stops at once when a networking map is missing.
+        File root = new File(MainActivity.Paths.a17(this), "root");
+        sb.append("== bpfloader.log (end)\n");
+        for (String l : LogTail.lines(new File(root, "data/local/tmp/bpfloader.log"), 8192)) {
+            sb.append(l).append('\n');
+        }
+        sb.append("== kmsg (end)\n");
+        for (String l : LogTail.lines(new File(root, "dev/kmsg"), 8192)) sb.append(l).append('\n');
+        sb.append("== /sys/fs/bpf\n");
+        listPins(new File(root, "sys/fs/bpf"), "", sb, new int[] {0});
         sb.append("== log.txt (").append(problemsOnly ? "problems" : "end").append(")\n");
+        // The same error repeated (a stack trace per retry): shown twice at most.
+        Map<String, Integer> seen = new HashMap<>();
         for (String l : LogTail.lines(LogTail.file(this), bytes)) {
-            if (!problemsOnly || LogTail.problem(l)) sb.append(l).append('\n');
+            if (problemsOnly && !LogTail.problem(l)) continue;
+            String key = l.length() > 33 ? l.substring(33) : l;
+            int n = seen.merge(key, 1, Integer::sum);
+            if (problemsOnly && n > 2) continue;
+            sb.append(l).append('\n');
         }
         return sb.toString();
+    }
+
+    private static void listPins(File dir, String prefix, StringBuilder sb, int[] count) {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            sb.append(prefix.isEmpty() ? "(missing)\n" : "");
+            return;
+        }
+        for (File f : files) {
+            if (count[0]++ > 300) return;
+            sb.append(prefix).append(f.getName()).append(f.isDirectory() ? "/" : "")
+                    .append(f.isDirectory() ? "" : " " + f.length()).append('\n');
+            if (f.isDirectory()) listPins(f, prefix + f.getName() + "/", sb, count);
+        }
     }
 
     // Reading megabytes of log: off the UI thread (it froze the app).
