@@ -11,9 +11,11 @@
 #include <android/binder_process.h>
 #include <android/log.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/system_properties.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -85,22 +87,48 @@ constexpr uint32_t kIonFlagCached = 1;  // CPU access goes through the cache (th
 
 int g_ion = -2;  // -2: not opened yet, -1: none
 uint32_t g_ion_heap_mask;
+uint32_t g_ion_flags = kIonFlagCached;
 
+// The heap: native.ion.heap (a name or an id) if set; otherwise MediaTek's
+// multimedia heap (ion_mm_heap, which its gralloc uses for graphics: Mali's
+// kbase didn't import system-heap buffers there), then the system heap.
+// native.ion.cached=0 asks for uncached buffers. native.ion.heap=none: memfd.
 void OpenIon() {
+  char want[PROP_VALUE_MAX] = {}, cached[PROP_VALUE_MAX] = {};
+  __system_property_get("native.ion.heap", want);
+  __system_property_get("native.ion.cached", cached);
+  if (strcmp(want, "none") == 0) {
+    g_ion = -1;
+    return;
+  }
+  if (strcmp(cached, "0") == 0) g_ion_flags = 0;
   g_ion = open("/dev/ion", O_RDONLY | O_CLOEXEC);
   if (g_ion < 0) return;
   g_ion_heap_mask = 1u << 0;  // the system heap's usual id
   IonHeapQuery q{};
   IonHeapData heaps[32] = {};
+  int system_id = -1, mm_id = -1, wanted_id = -1;
   if (ioctl(g_ion, ION_IOC_HEAP_QUERY, &q) == 0 && q.cnt > 0) {
     q.cnt = q.cnt > 32 ? 32 : q.cnt;
     q.heaps = reinterpret_cast<uintptr_t>(heaps);
     if (ioctl(g_ion, ION_IOC_HEAP_QUERY, &q) == 0) {
       for (uint32_t i = 0; i < q.cnt; i++) {
-        if (heaps[i].type == kIonHeapTypeSystem) g_ion_heap_mask = 1u << heaps[i].heap_id;
+        int id = static_cast<int>(heaps[i].heap_id);
+        if (heaps[i].type == kIonHeapTypeSystem) system_id = id;
+        if (strcmp(heaps[i].name, "ion_mm_heap") == 0) mm_id = id;
+        if (want[0] && strcmp(heaps[i].name, want) == 0) wanted_id = id;
       }
     }
   }
+  if (want[0] && wanted_id < 0) {
+    char* end;
+    long id = strtol(want, &end, 10);
+    if (*end == '\0' && id >= 0 && id < 32) wanted_id = static_cast<int>(id);
+  }
+  int id = wanted_id >= 0 ? wanted_id : mm_id >= 0 ? mm_id : system_id >= 0 ? system_id : 0;
+  g_ion_heap_mask = 1u << id;
+  __android_log_print(ANDROID_LOG_INFO, "nalloc", "buffers from ION heap %d (%s)", id,
+                      g_ion_flags ? "cached" : "uncached");
 }
 
 // A dma-buf of `size` bytes from ION's system heap, or -1.
@@ -109,9 +137,9 @@ int IonAlloc(uint64_t size) {
   std::call_once(once, OpenIon);
   if (g_ion < 0) return -1;
   size = (size + 4095) & ~4095ull;
-  IonAllocData a{size, g_ion_heap_mask, kIonFlagCached, 0, 0};
+  IonAllocData a{size, g_ion_heap_mask, g_ion_flags, 0, 0};
   if (ioctl(g_ion, ION_IOC_ALLOC, &a) == 0) return static_cast<int>(a.fd);
-  IonAllocDataLegacy l{static_cast<size_t>(size), 4096, g_ion_heap_mask, kIonFlagCached, 0};
+  IonAllocDataLegacy l{static_cast<size_t>(size), 4096, g_ion_heap_mask, g_ion_flags, 0};
   if (ioctl(g_ion, ION_IOC_ALLOC_LEGACY, &l) != 0) {
     LOGE("ION alloc %llu: %s", (unsigned long long)size, strerror(errno));
     return -1;
