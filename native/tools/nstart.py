@@ -2,6 +2,7 @@
 """Start native-mode Android 17 and stay the parent of all its processes.
 
     python3 nstart.py A17_DIR [NAME=VALUE...]
+    python3 nstart.py --stop A17_DIR
 
 A17_DIR is a17root.py's output (root/ and run.sh); NAME=VALUE are extra
 properties for nboot. Runs nboot (logging, properties, binder,
@@ -10,17 +11,50 @@ and waits. nboot's daemons put themselves in the background, which leaves
 them orphans on a device without a parent to adopt them, and some phones
 (realme) kill orphaned processes of apps. This process takes them in instead
 (PR_SET_CHILD_SUBREAPER), as init does on a device. Its own output and
-nboot's go to A17_DIR/nboot.log. Stop everything with: pkill -f a17/root
+nboot's go to A17_DIR/nboot.log. --stop ends every process running from
+A17_DIR's root (they show as /system/bin/linker64 ..., so pkill -f misses them).
 """
 import ctypes
 import os
+import signal
 import subprocess
 import sys
+import time
 
 PR_SET_CHILD_SUBREAPER = 36
 
 
+def stop(a17):
+    """SIGKILL every process whose executable is under A17_DIR (and nstart)."""
+    root = os.path.realpath(os.path.join(a17, "root")) + "/"
+    me = os.getpid()
+    for _ in range(3):  # parents may restart children: a few rounds
+        killed = 0
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit() or int(pid) == me:
+                continue
+            try:
+                exe = os.readlink("/proc/%s/exe" % pid)
+                cmd = open("/proc/%s/cmdline" % pid, "rb").read()
+            except OSError:
+                continue
+            if exe.startswith(root) or b"nstart.py\0" + os.fsencode(a17) in cmd or \
+                    (b"nstart.py" in cmd and os.fsencode(os.path.basename(a17)) in cmd):
+                try:
+                    os.kill(int(pid), signal.SIGKILL)
+                    killed += 1
+                except OSError:
+                    pass
+        print("nstart: stopped %d processes" % killed, flush=True)
+        if not killed:
+            break
+        time.sleep(1)
+
+
 def main():
+    if len(sys.argv) >= 3 and sys.argv[1] == "--stop":
+        stop(os.path.abspath(sys.argv[2]))
+        return
     if len(sys.argv) < 2:
         sys.exit(__doc__)
     a17 = os.path.abspath(sys.argv[1])
