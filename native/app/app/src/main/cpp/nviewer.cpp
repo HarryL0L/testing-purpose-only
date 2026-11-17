@@ -276,7 +276,8 @@ std::atomic<bool> g_running{false};
 pid_t Spawn(const std::string& dir, const std::vector<std::string>& args, const std::string& log) {
   pid_t pid = fork();
   if (pid != 0) return pid;
-  setsid();
+  // No setsid(): nzygote execs into zygote, which starts with setpgid(0, 0),
+  // and a session leader may not do that (EPERM: zygote aborted at once).
   int fd = open(log.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
   int null = open("/dev/null", O_RDONLY);
   dup2(null, 0);
