@@ -2,7 +2,10 @@
  * ncomposer: android.hardware.graphics.composer3.IComposer/default (V5) of
  * native mode. One display; every layer is client-composited (SurfaceFlinger
  * draws the whole screen into its client target with RenderEngine), and each
- * presented frame is copied into the frame file NFB_PATH for a viewer:
+ * presented frame goes to the viewer app over the abstract seqpacket socket
+ * "ndisplay" (see nviewer.h: the client target's dma-buf, sent once per
+ * buffer, then frame records naming it), and, while no viewer is connected,
+ * into the frame file NFB_PATH (for screenshots, nfb2png.py):
  *
  *   [nfb_header: 64 bytes][pixels: stride * height * 4, RGBA_8888]
  *
@@ -17,21 +20,26 @@
 #include <fcntl.h>
 #include <linux/dma-buf.h>
 #include <poll.h>
+#include <stddef.h>
 #include <string.h>
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/system_properties.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
 #include <atomic>
 #include <condition_variable>
 #include <map>
+#include <set>
 #include <mutex>
 #include <thread>
 
 #include "nmem.h"
+#include "nviewer.h"
 
 using namespace aidl::android::hardware::graphics::composer3;
 using aidl::android::hardware::common::NativeHandle;
@@ -127,6 +135,106 @@ std::shared_ptr<Mapped> Import(const NativeHandle& nh) {
   return m;
 }
 
+// The viewer app: one client at a time on "ndisplay" (a new one replaces
+// the old). Each presented frame is offered to it, and the composer waits
+// (briefly) for the viewer to be done with the buffer before SurfaceFlinger
+// may draw into it again.
+class Viewer {
+ public:
+  void Start(int32_t w, int32_t h, int32_t dpi, int32_t fps) {
+    hello_ = {NVIEWER_HELLO, NVIEWER_VERSION, (uint32_t)w, (uint32_t)h, (uint32_t)dpi,
+              (uint32_t)fps};
+    std::thread([this] { Listen(); }).detach();
+  }
+
+  bool connected() {
+    std::lock_guard<std::mutex> g(mu_);
+    return fd_ >= 0;
+  }
+
+  // Sends one frame; true if the viewer took it.
+  bool Offer(const Mapped& m, uint32_t frame) {
+    std::lock_guard<std::mutex> g(mu_);
+    if (fd_ < 0) return false;
+    uint64_t id = nmem_u64(m.h.id_lo, m.h.id_hi);
+    nviewer_frame f = {NVIEWER_FRAME, frame, id, m.h.width, m.h.height, m.h.stride,
+                       (uint32_t)m.h.real_format, 0};
+    bool first = sent_.insert(id).second;
+    f.has_fd = first ? 1 : 0;
+    struct iovec iov = {&f, sizeof(f)};
+    struct msghdr msg = {};
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    alignas(struct cmsghdr) char control[CMSG_SPACE(sizeof(int))];
+    if (first) {
+      msg.msg_control = control;
+      msg.msg_controllen = sizeof(control);
+      struct cmsghdr* c = CMSG_FIRSTHDR(&msg);
+      c->cmsg_level = SOL_SOCKET;
+      c->cmsg_type = SCM_RIGHTS;
+      c->cmsg_len = CMSG_LEN(sizeof(int));
+      memcpy(CMSG_DATA(c), &m.fd, sizeof(int));
+    }
+    if (sendmsg(fd_, &msg, MSG_NOSIGNAL) != (ssize_t)sizeof(f)) {
+      DropLocked();
+      return false;
+    }
+    // Wait for the viewer to be done with this frame (it has drawn it).
+    struct pollfd p = {fd_, POLLIN, 0};
+    while (poll(&p, 1, 100) > 0) {
+      nviewer_ack a;
+      ssize_t n = recv(fd_, &a, sizeof(a), MSG_DONTWAIT);
+      if (n <= 0) {
+        if (n < 0 && (errno == EAGAIN || errno == EINTR)) continue;
+        DropLocked();
+        return false;
+      }
+      if (n == sizeof(a) && a.magic == NVIEWER_ACK && a.frame == frame) break;
+    }
+    return true;
+  }
+
+ private:
+  void Listen() {
+    int s = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+    struct sockaddr_un addr = {};
+    addr.sun_family = AF_UNIX;
+    memcpy(addr.sun_path + 1, NVIEWER_SOCKET, strlen(NVIEWER_SOCKET));  // abstract
+    socklen_t len = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(NVIEWER_SOCKET);
+    if (s < 0 || bind(s, reinterpret_cast<struct sockaddr*>(&addr), len) != 0 || listen(s, 2) != 0) {
+      LOGE("viewer socket: %s", strerror(errno));
+      return;
+    }
+    LOG("waiting for a viewer on @%s", NVIEWER_SOCKET);
+    while (true) {
+      int c = accept4(s, nullptr, nullptr, SOCK_CLOEXEC);
+      if (c < 0) continue;
+      if (send(c, &hello_, sizeof(hello_), MSG_NOSIGNAL) != (ssize_t)sizeof(hello_)) {
+        close(c);
+        continue;
+      }
+      std::lock_guard<std::mutex> g(mu_);
+      DropLocked();
+      fd_ = c;
+      LOG("viewer connected");
+    }
+  }
+
+  void DropLocked() {
+    if (fd_ >= 0) {
+      close(fd_);
+      LOG("viewer gone");
+    }
+    fd_ = -1;
+    sent_.clear();
+  }
+
+  std::mutex mu_;
+  int fd_ = -1;
+  std::set<uint64_t> sent_;  // buffers whose fd this viewer has
+  nviewer_hello hello_ = {};
+};
+
 class Display {
  public:
   Display() {
@@ -135,12 +243,17 @@ class Display {
     dpi = Prop("native.display.dpi", 420);
     fps = Prop("native.display.fps", 60);
     period = 1000000000 / fps;
+    viewer_.Start(width, height, dpi, fps);
   }
 
   int32_t width, height, dpi, fps, period;
 
-  // Copies the client target into the frame file.
+  // Hands the client target to the viewer, or copies it into the frame file.
   void Present(const Mapped& m) {
+    if (m.h.real_format != 1 && m.h.real_format != 2 && m.h.real_format != 5) return;
+    frames_++;
+    if (frames_ == 1 || frames_ % 600 == 0) LOG("presented frame %u", frames_);
+    if (viewer_.Offer(m, frames_)) return;
     uint32_t stride = m.h.stride;
     size_t bytes = (size_t)stride * m.h.height * 4;
     if (m.h.real_format != 1 && m.h.real_format != 2 && m.h.real_format != 5) return;
@@ -154,8 +267,6 @@ class Display {
     ioctl(m.fd, DMA_BUF_IOCTL_SYNC, &sync);
     auto* hdr = reinterpret_cast<nfb_header*>(fb_);
     __atomic_add_fetch(&hdr->frame, 1, __ATOMIC_RELEASE);
-    frames_++;
-    if (frames_ == 1 || frames_ % 600 == 0) LOG("presented frame %u", frames_);
   }
 
  private:
@@ -187,6 +298,7 @@ class Display {
   uint8_t* fb_ = nullptr;
   size_t fb_len_ = 0;
   uint32_t frames_ = 0;
+  Viewer viewer_;
 };
 
 class Client : public BnComposerClient {
