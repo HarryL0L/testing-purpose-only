@@ -88,6 +88,28 @@ public final class LogActivity extends Activity {
         // here before killing it: the threads stuck in binder or on a lock.
         sb.append("== watchdog stacks\n");
         appendStuckThreads(new File(root, "data/anr"), sb);
+        sb.append("== kmsg (start)\n");
+        int kept = 0;
+        for (String l : LogTail.lines(new File(root, "dev/kmsg"), 4 << 20)) {
+            if (l.contains("Unknown class") || l.contains("servicemanager: Caller")) continue;
+            sb.append(l).append('\n');
+            if (++kept >= 300) break;
+        }
+        sb.append("== /sys/fs/bpf\n");
+        listPins(new File(root, "sys/fs/bpf"), "", sb, new int[] {0});
+        sb.append("== log.txt (").append(problemsOnly ? "problems" : "end").append(")\n");
+        // The same error repeated (a stack trace per retry): shown twice at most.
+        Map<String, Integer> seen = new HashMap<>();
+        for (String l : LogTail.lines(LogTail.file(this), bytes)) {
+            if (problemsOnly && !LogTail.problem(l)) continue;
+            // The Vulkan driver's buffer tracing: thousands of lines, never the problem.
+            if (problemsOnly && l.contains("PANVKANB")) continue;
+            String key = l.length() > 33 ? l.substring(33) : l;
+            int n = seen.merge(key, 1, Integer::sum);
+            if (problemsOnly && n > 2) continue;
+            sb.append(l).append('\n');
+        }
+        // Shared storage last: a paste of the end of this screen carries it.
         sb.append("== vold.log (end)\n");
         for (String l : LogTail.lines(new File(root, "data/local/tmp/vold.log"), 8192)) {
             sb.append(l).append('\n');
@@ -106,25 +128,6 @@ public final class LogActivity extends Activity {
             }
         }
         for (String l : st.subList(Math.max(0, st.size() - 60), st.size())) sb.append(l).append('\n');
-        sb.append("== kmsg (start)\n");
-        int kept = 0;
-        for (String l : LogTail.lines(new File(root, "dev/kmsg"), 4 << 20)) {
-            if (l.contains("Unknown class") || l.contains("servicemanager: Caller")) continue;
-            sb.append(l).append('\n');
-            if (++kept >= 300) break;
-        }
-        sb.append("== /sys/fs/bpf\n");
-        listPins(new File(root, "sys/fs/bpf"), "", sb, new int[] {0});
-        sb.append("== log.txt (").append(problemsOnly ? "problems" : "end").append(")\n");
-        // The same error repeated (a stack trace per retry): shown twice at most.
-        Map<String, Integer> seen = new HashMap<>();
-        for (String l : LogTail.lines(LogTail.file(this), bytes)) {
-            if (problemsOnly && !LogTail.problem(l)) continue;
-            String key = l.length() > 33 ? l.substring(33) : l;
-            int n = seen.merge(key, 1, Integer::sum);
-            if (problemsOnly && n > 2) continue;
-            sb.append(l).append('\n');
-        }
         return sb.toString();
     }
 
