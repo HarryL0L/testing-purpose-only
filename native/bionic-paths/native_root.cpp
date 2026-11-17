@@ -1103,9 +1103,17 @@ static ssize_t nr_get_kept(ssize_t (*raw)(const char*, const char*, void*, size_
   nr_kept_name(name, kept, sizeof(kept));
   ssize_t r = p ? raw(p, kept, value, size) : __nrp_fgetxattr(fd, kept, value, size);
   if (r >= 0 || errno == ERANGE) return r;
-  r = p ? raw(p, name, value, size) : __nrp_fgetxattr(fd, name, value, size);
-  if (r >= 0 || (errno != ENODATA && errno != ENOTSUP) || strcmp(name, "security.selinux") != 0) {
-    return r;
+  // A file in the root without a recorded label: the phone's own label
+  // (app_data_file, the app's) means nothing to the image; it gets the
+  // label the image's policy would give (genfscon for bpffs), as where the
+  // phone has no SELinux at all.
+  bool synthesize = strcmp(name, "security.selinux") == 0 && orig != nullptr &&
+                    orig[0] == '/' && !nr_host_path(orig) && nr_ids();
+  if (!synthesize) {
+    r = p ? raw(p, name, value, size) : __nrp_fgetxattr(fd, name, value, size);
+    if (r >= 0 || (errno != ENODATA && errno != ENOTSUP) || strcmp(name, "security.selinux") != 0) {
+      return r;
+    }
   }
   char label[96] = "u:object_r:unlabeled:s0";
   nr_bpf_label(orig, label, sizeof(label));
