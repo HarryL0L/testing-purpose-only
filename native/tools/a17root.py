@@ -17,6 +17,7 @@ fsck.erofs, run from MINI_DIR. Then, as init and apexd would at boot:
 apex-info-list.xml, the linker configuration (linkerconfig) and the class
 paths (derive_classpath), all run from the new root itself.
 """
+import gzip
 import os
 import shutil
 import struct
@@ -447,6 +448,25 @@ def overlay(mini_root, root):
     bpf = os.path.join(root, "sys", "fs", "bpf")
     os.makedirs(bpf, exist_ok=True)
     os.chmod(bpf, 0o1777)
+    # The kernel configuration libc gives where the phone's /proc/config.gz
+    # can't be read (system_server checks CONFIG_VMAP_STACK)
+    os.makedirs(os.path.join(root, "proc"), exist_ok=True)
+    with gzip.open(os.path.join(root, "proc", "config.gz"), "wb") as f:
+        f.write(KERNEL_CONFIG.encode())
+
+
+KERNEL_CONFIG = """CONFIG_64BIT=y
+CONFIG_ARM64=y
+CONFIG_MMU=y
+CONFIG_VMAP_STACK=y
+CONFIG_ANDROID_BINDER_IPC=y
+CONFIG_ANDROID_BINDERFS=y
+CONFIG_BPF_SYSCALL=y
+CONFIG_BPF_JIT=y
+CONFIG_PSI=y
+CONFIG_MEMCG=y
+CONFIG_UPROBES=y
+"""
 
 
 # Start nprops for one command, and wait until its properties are there.

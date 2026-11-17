@@ -802,6 +802,23 @@ extern "C" int __openat(int fd, const char* path, int flags, int mode) {
     errno = saved;
     return r;
   }
+  if (r == -1 && (errno == EACCES || errno == EPERM || errno == ENOENT) && path != nullptr &&
+      strcmp(path, "/proc/config.gz") == 0 && nr_ids()) {
+    // The kernel's build configuration: an app may not read the phone's
+    // (Debug.isVmapStack aborts system_server without it). The root's
+    // stand-in instead (a17root.py writes it).
+    size_t rl;
+    const char* root = nr_root(&rl);
+    if (root != nullptr && rl + sizeof("/proc/config.gz") <= PATH_MAX) {
+      char* alt = static_cast<char*>(alloca(rl + sizeof("/proc/config.gz")));
+      memcpy(alt, root, rl);
+      memcpy(alt + rl, "/proc/config.gz", sizeof("/proc/config.gz"));
+      int saved = errno;
+      r = __nrp_openat(AT_FDCWD, alt, flags, mode);
+      if (r == -1) errno = saved;
+    }
+    return r;
+  }
   if (r == -1 && (errno == EACCES || errno == EPERM || errno == EROFS) && path != nullptr &&
       (flags & O_ACCMODE) != O_RDONLY && nr_under(path, "/proc/sys", 9) && nr_ids()) {
     // Kernel tunables (netbpfload enables the BPF JIT, ...): an app may not
