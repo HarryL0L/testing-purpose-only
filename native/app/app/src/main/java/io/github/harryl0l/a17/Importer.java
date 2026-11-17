@@ -18,9 +18,11 @@ final class Importer {
             + "To move the one you set up in Termux into it, keep this screen open and run "
             + "in Termux:\n\n"
             + "cd ~/android && python3 a17-mini/nstart.py --stop a17 && "
-            + "tar -c --xattrs --xattrs-include='user.*' a17 | "
-            + "curl -sS -T - telnet://127.0.0.1:" + PORT + "\n\n"
-            + "It takes a few minutes (about 3 GB). Android 17 starts when it's done.";
+            + "(tar -c --xattrs --xattrs-include='user.*' a17 | python3 -c \"import socket,sys,shutil; "
+            + "s=socket.create_connection(('127.0.0.1'," + PORT + ")); "
+            + "shutil.copyfileobj(sys.stdin.buffer, s.makefile('wb'), 1<<20)\" &)\n\n"
+            + "then come back here. It takes a few minutes (about 3 GB); Android 17 "
+            + "starts when it's done.";
 
     static void start(Context c, Consumer<String> status) {
         String dir = c.getFilesDir().getAbsolutePath();

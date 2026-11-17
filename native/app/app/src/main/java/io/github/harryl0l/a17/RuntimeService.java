@@ -34,6 +34,9 @@ public final class RuntimeService extends Service {
                 .setContentTitle("Android 17 is running")
                 .setSmallIcon(android.R.drawable.stat_sys_upload_done)
                 .setContentIntent(open)
+                .addAction(new Notification.Action.Builder(null, "Log",
+                        PendingIntent.getActivity(this, 2, new Intent(this, LogActivity.class),
+                                PendingIntent.FLAG_IMMUTABLE)).build())
                 .addAction(new Notification.Action.Builder(null, "Stop", stop).build())
                 .setOngoing(true)
                 .build();

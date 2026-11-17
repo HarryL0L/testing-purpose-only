@@ -13,9 +13,12 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.view.Gravity;
+import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 import java.io.File;
+import java.util.List;
 
 /**
  * Android 17's screen, full screen, with touch and keys going back to it.
@@ -24,6 +27,7 @@ import java.io.File;
 public final class MainActivity extends Activity implements SurfaceHolder.Callback {
     private SurfaceView surface;
     private TextView status;
+    private Button logButton;
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     @Override
@@ -35,9 +39,15 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         status = new TextView(this);
         status.setTextColor(Color.WHITE);
         status.setPadding(48, 96, 48, 48);
-        status.setTextSize(15);
+        status.setTextSize(11);
         root.addView(surface);
         root.addView(status);
+        logButton = new Button(this);
+        logButton.setText("Log");
+        logButton.setOnClickListener(v -> startActivity(new Intent(this, LogActivity.class)));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
+        lp.setMargins(0, 0, 48, 96);
+        root.addView(logButton, lp);
         setContentView(root);
         surface.getHolder().addCallback(this);
         hideSystemBars();
@@ -58,13 +68,24 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         ui.postDelayed(this::checkConnected, 1000);
     }
 
+    // Until Android 17's screen arrives: the end of its log, live.
     private void checkConnected() {
         if (Native.displaySize() != null) {
             status.setText("");
             status.setVisibility(View.GONE);
-        } else {
-            ui.postDelayed(this::checkConnected, 1000);
+            logButton.setVisibility(View.GONE);
+            return;
         }
+        status.setVisibility(View.VISIBLE);
+        logButton.setVisibility(View.VISIBLE);
+        StringBuilder sb = new StringBuilder("Starting Android 17…\n\n");
+        List<String> lines = LogTail.lines(LogTail.file(this), 16 << 10);
+        for (int i = Math.max(0, lines.size() - 14); i < lines.size(); i++) {
+            String l = lines.get(i);
+            sb.append(l.length() > 120 ? l.substring(0, 120) : l).append('\n');
+        }
+        status.setText(sb);
+        ui.postDelayed(this::checkConnected, 1000);
     }
 
     private void hideSystemBars() {
