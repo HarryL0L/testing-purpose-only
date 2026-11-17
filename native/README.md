@@ -135,3 +135,14 @@ daemons (audioserver, keystore2, gatekeeperd, idmap2d, tombstoned),
 SO_PEERCRED and /proc/<pid>/status reporting the virtual ids, and a
 dex2oat verify pass over the apps (their prebuilt odex files don't match
 the concurrent-copying boot image odrefresh builds).
+
+Phone (RMX3031, Android 13, kernel 4.19, unrooted, in Termux): the same
+boot reaches the home screen natively, "Boot is finished" after 15 s
+(python3 a17-mini/nstart.py a17; the lock screen is turned off with
+./run.sh locksettings set-disabled true). Running as an app, not root,
+needed: Unix-socket stand-ins for vsock and uevent sockets, the root's
+/dev/input and kernel config, plain clocks for the alarm clocks, BPF pins
+copied where SELinux forbids hard links, owner bits added for a moment
+where owner/label records and pins need them, the image's labels for files
+without a record, and nstart.py as the parent of every process (realme
+kills orphaned processes).
