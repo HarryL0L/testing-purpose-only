@@ -432,7 +432,7 @@ export PATH=/system/bin:/system/xbin HOME=/data/local/tmp TMPDIR=/data/local/tmp
   ANDROID_ROOT=/system ANDROID_DATA=/data
 # The kernel version programs see, at least (libc's uname()): Android 17's
 # BPF loader wants 5.10, though BPF is emulated in libc here.
-export ANDROID_NATIVE_KERNEL=5.10.0
+export ANDROID_NATIVE_KERNEL=5.10.240
 # Android's boot environment in a full root (BOOTCLASSPATH, ...; a17root.py writes it)
 [ -f "$ANDROID_NATIVE_ROOT/system/etc/native-env.sh" ] && . "$ANDROID_NATIVE_ROOT/system/etc/native-env.sh"
 prog="$1"; shift

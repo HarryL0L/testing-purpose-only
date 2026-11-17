@@ -21,6 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/file.h>
 #include <sys/mman.h>
@@ -533,6 +534,37 @@ int other_create(Kind kind, uint32_t type, const char* name, uint32_t insns) {
   return create(h, 0);
 }
 
+// Pinning where hard links aren't allowed (an app under SELinux on the
+// phone may not link files): the object's contents go to a new file at the
+// pin path, and `fd` is switched over to it, so the pin is the object from
+// here on. bpfloader pins each object right after creating it, before anyone
+// else has it.
+static int pin_by_copy(int fd, const char* path) {
+  struct stat st;
+  if (fstat(fd, &st) != 0) return -1;
+  int out = open(path, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+  if (out < 0) return -1;
+  constexpr size_t kChunk = 65536;
+  char* buf = static_cast<char*>(malloc(kChunk));
+  bool ok = buf != nullptr;
+  for (off_t off = 0; ok && off < st.st_size;) {
+    ssize_t n = pread(fd, buf, kChunk, off);
+    ok = n > 0 && pwrite(out, buf, static_cast<size_t>(n), off) == n;
+    off += n > 0 ? n : 0;
+  }
+  free(buf);
+  int fdflags = fcntl(fd, F_GETFD);
+  if (!ok || dup3(out, fd, (fdflags & FD_CLOEXEC) ? O_CLOEXEC : 0) != fd) {
+    int e = errno ? errno : EIO;
+    close(out);
+    unlink(path);
+    errno = e;
+    return -1;
+  }
+  close(out);
+  return 0;
+}
+
 int obj_pin(const bpf_attr& a) {
   if (!object(a.bpf_fd)) return -1;
   const char* path = reinterpret_cast<const char*>(static_cast<uintptr_t>(a.pathname));
@@ -540,8 +572,7 @@ int obj_pin(const bpf_attr& a) {
   snprintf(self, sizeof(self), "/proc/self/fd/%d", a.bpf_fd);
   if (linkat(AT_FDCWD, self, AT_FDCWD, path, AT_SYMLINK_FOLLOW) == 0) return 0;
   if (errno == EEXIST) return -1;
-  // A named object (no O_TMPFILE) links the same way; if linking isn't
-  // possible at all, copy: the pinned file then is the object from here on.
+  if (errno == EACCES || errno == EPERM) return pin_by_copy(a.bpf_fd, path);
   return -1;
 }
 
