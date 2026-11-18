@@ -46,7 +46,7 @@ final class CutoutOverlay {
             byte[] b = read(c.getAssets().open("cutout.apk"));
             replace(b, repeat('X', SPEC_LEN), spec);
             replace(b, repeat('Y', RECT_LEN), rect);
-            // status_bar_height_portrait: as tall as the phone's own, at least
+            // status_bar_height_default (SystemBarUtils.getStatusBarHeight): as tall as the phone's own, at least
             // the cutout (a dimension in px: the value << 8).
             int px = Math.max(statusBar, hole.bottom);
             replaceDimen(b, 1234, px);
