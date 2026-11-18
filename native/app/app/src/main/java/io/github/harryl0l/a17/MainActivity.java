@@ -33,6 +33,12 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
+        // The whole screen, the notch's strip included (black: the notch is there).
+        android.view.WindowManager.LayoutParams wlp = getWindow().getAttributes();
+        wlp.layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+        getWindow().setAttributes(wlp);
+        int[] screen = Paths.saveScreen(this);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
         surface = new SurfaceView(this);
@@ -40,7 +46,11 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         status.setTextColor(Color.WHITE);
         status.setPadding(48, 96, 48, 48);
         status.setTextSize(11);
-        root.addView(surface);
+        // Android 17's display is the screen below the notch, at full size.
+        FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(-1, -1);
+        slp.topMargin = screen[3];
+        slp.bottomMargin = screen[4];
+        root.addView(surface, slp);
         root.addView(status);
         logButton = new Button(this);
         logButton.setText("Log");
@@ -109,7 +119,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         float vw = surface.getWidth(), vh = surface.getHeight();
         float scale = Math.min(vw / d[0], vh / d[1]);
         float ox = (vw - d[0] * scale) / 2, oy = (vh - d[1] * scale) / 2;
-        int x = Math.round((e.getX() - ox) / scale), y = Math.round((e.getY() - oy) / scale);
+        float ex = e.getX() - surface.getLeft(), ey = e.getY() - surface.getTop();
+        int x = Math.round((ex - ox) / scale), y = Math.round((ey - oy) / scale);
         int kind;
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN: kind = 0; break;
@@ -140,5 +151,34 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     static final class Paths {
         static File a17(android.content.Context c) { return new File(c.getFilesDir(), "a17"); }
         static boolean installed(android.content.Context c) { return new File(a17(c), "run.sh").exists(); }
+
+        /**
+         * The screen for Android 17's display: {width, height, dpi, top, bottom},
+         * the strips the notch (display cutout) takes at the top and bottom left
+         * out. Kept for RuntimeService, which starts Android 17 with it.
+         */
+        static int[] saveScreen(Activity a) {
+            android.view.WindowMetrics m = a.getWindowManager().getMaximumWindowMetrics();
+            android.graphics.Rect b = m.getBounds();
+            android.graphics.Insets cut =
+                    m.getWindowInsets().getInsets(WindowInsets.Type.displayCutout());
+            int w = b.width() & ~1, h = (b.height() - cut.top - cut.bottom) & ~1;
+            int dpi = a.getResources().getDisplayMetrics().densityDpi;
+            a.getSharedPreferences("screen", MODE_PRIVATE).edit()
+                    .putInt("w", w).putInt("h", h).putInt("dpi", dpi).apply();
+            return new int[] {w, h, dpi, cut.top, cut.bottom};
+        }
+
+        /** Android 17's display properties from saveScreen, or none (its defaults). */
+        static List<String> screenProps(android.content.Context c) {
+            android.content.SharedPreferences p = c.getSharedPreferences("screen", MODE_PRIVATE);
+            List<String> props = new java.util.ArrayList<>();
+            if (p.getInt("w", 0) > 0) {
+                props.add("native.display.width=" + p.getInt("w", 0));
+                props.add("native.display.height=" + p.getInt("h", 0));
+                props.add("native.display.dpi=" + p.getInt("dpi", 0));
+            }
+            return props;
+        }
     }
 }

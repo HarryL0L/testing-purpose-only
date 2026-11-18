@@ -61,9 +61,11 @@ public final class RuntimeService extends Service {
             new Thread(() -> {
                 installUpdates(dir);
                 patchNzygote(dir);
-                Native.start(dir, new String[] {"ro.input.video_enabled=false",
-                        // the phone's time zone (the clock is the phone's already)
-                        "persist.sys.timezone=" + java.util.TimeZone.getDefault().getID()});
+                java.util.List<String> props = MainActivity.Paths.screenProps(this);
+                props.add("ro.input.video_enabled=false");
+                // the phone's time zone (the clock is the phone's already)
+                props.add("persist.sys.timezone=" + java.util.TimeZone.getDefault().getID());
+                Native.start(dir, props.toArray(new String[0]));
             },
                     "a17-start").start();
         }
