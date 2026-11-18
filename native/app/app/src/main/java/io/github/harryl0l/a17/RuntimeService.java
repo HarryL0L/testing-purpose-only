@@ -61,6 +61,7 @@ public final class RuntimeService extends Service {
             new Thread(() -> {
                 installUpdates(dir);
                 patchNzygote(dir);
+                linkSharedStorage(dir);
                 java.util.List<String> props = MainActivity.Paths.screenProps(this);
                 props.add("ro.input.video_enabled=false");
                 // the phone's time zone (the clock is the phone's already)
@@ -101,6 +102,51 @@ public final class RuntimeService extends Service {
             }
             tmp.setExecutable(true, false);
             if (!tmp.renameTo(dst)) android.util.Log.e("a17", "can't replace " + dst);
+        }
+    }
+
+    /**
+     * On a phone /storage/emulated/0 is /data/media/0 (through MediaProvider's
+     * FUSE): one set of files. Older roots made it a folder of its own, so
+     * Files saw one and MediaProvider (and imports) the other. Move what the
+     * folder holds into /data/media/0 and make it a link there.
+     */
+    private static void linkSharedStorage(String dir) {
+        java.io.File media = new java.io.File(dir, "root/data/media/0");
+        java.io.File user = new java.io.File(dir, "root/storage/emulated/0");
+        try {
+            java.nio.file.Path up = user.toPath();
+            if (java.nio.file.Files.isSymbolicLink(up)) return;
+            media.mkdirs();
+            if (user.isDirectory()) {
+                java.io.File[] items = user.listFiles();
+                if (items != null) {
+                    for (java.io.File item : items) {
+                        java.io.File to = new java.io.File(media, item.getName());
+                        if (!to.exists()) {
+                            item.renameTo(to);
+                        } else if (item.isDirectory() && to.isDirectory()) {
+                            java.io.File[] inner = item.listFiles();
+                            if (inner != null) {
+                                for (java.io.File i : inner) {
+                                    java.io.File t = new java.io.File(to, i.getName());
+                                    if (!t.exists()) i.renameTo(t);
+                                }
+                            }
+                        }
+                    }
+                }
+                // what both had stays, under a name of its own
+                java.io.File rest = new java.io.File(media, ".old-storage-emulated-0");
+                if (!user.delete() && !user.renameTo(rest)) {
+                    android.util.Log.e("a17", "can't replace " + user);
+                    return;
+                }
+            }
+            user.getParentFile().mkdirs();
+            java.nio.file.Files.createSymbolicLink(up, java.nio.file.Paths.get("../../data/media/0"));
+        } catch (Exception e) {
+            android.util.Log.e("a17", "shared storage link", e);
         }
     }
 
