@@ -2,7 +2,7 @@ package io.github.harryl0l.a17;
 
 import android.view.Surface;
 
-/** The app's native half (libnviewer.so): display, input, processes, import. */
+/** The app's native half (libnviewer.so): display, input, processes, import, setup. */
 final class Native {
     static { System.loadLibrary("nviewer"); }
 
@@ -20,6 +20,12 @@ final class Native {
     static native boolean start(String a17Dir, String[] props);
     static native int stop(String a17Dir);
     static native boolean running();
+    /**
+     * One program from a root (argv: /system/bin/sh, dir/run.sh, ...), output
+     * appended to logPath; returns its exit status (128 + signal if killed, -1
+     * if it couldn't start). Blocks: not on the UI thread.
+     */
+    static native int run(String dir, String[] argv, String logPath);
 
     // Import: a tar stream (Termux: tar --xattrs ... a17) read from fd into dir.
     static native String untar(int fd, String dir);

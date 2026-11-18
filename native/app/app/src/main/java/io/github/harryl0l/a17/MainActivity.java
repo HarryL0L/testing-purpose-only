@@ -22,12 +22,15 @@ import java.util.List;
 
 /**
  * Android 17's screen, full screen, with touch and keys going back to it.
- * Without an installed root it shows how to import one from Termux.
+ * Without an installed root it offers to set one up (SetupService) or to
+ * import one from Termux.
  */
 public final class MainActivity extends Activity implements SurfaceHolder.Callback {
     private SurfaceView surface;
     private TextView status;
     private Button logButton;
+    private Button installButton;
+    private String importStatus;  // the Termux import's progress, once one has begun
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     @Override
@@ -56,6 +59,16 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
         lp.setMargins(0, 0, 48, 96);
         root.addView(logButton, lp);
+        installButton = new Button(this);
+        installButton.setText("Install Android 17");
+        installButton.setVisibility(View.GONE);
+        installButton.setOnClickListener(v -> {
+            installButton.setVisibility(View.GONE);
+            startForegroundService(new Intent(this, SetupService.class));
+        });
+        FrameLayout.LayoutParams ip = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
+        ip.setMargins(48, 0, 0, 96);
+        root.addView(installButton, ip);
         setContentView(root);
         surface.getHolder().addCallback(this);
         hideSystemBars();
@@ -103,15 +116,39 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private void begin() {
-        if (!Paths.installed(this)) {
-            status.setText(Importer.INSTRUCTIONS);
-            Importer.start(this, msg -> ui.post(() -> {
-                status.setText(msg);
-                if (Paths.installed(this)) startRuntime();
-            }));
+        if (!Paths.installed(this) || SetupService.running) {
+            Importer.start(this, msg -> ui.post(() -> importStatus = msg));
+            checkSetup();
         } else {
             startRuntime();
         }
+    }
+
+    // Until Android 17 is installed: the setup's progress, or how to get it.
+    private void checkSetup() {
+        boolean setup = SetupService.running;
+        if (!setup && Paths.installed(this)) {
+            installButton.setVisibility(View.GONE);
+            startRuntime();
+            return;
+        }
+        // An import from Termux under way rules out a setup (a failed one doesn't).
+        boolean importing = importStatus != null && importStatus.startsWith("Import")
+                && !importStatus.startsWith("Import failed");
+        installButton.setVisibility(setup || importing ? View.GONE : View.VISIBLE);
+        String err = SetupService.error;
+        if (setup) {
+            status.setText("Setting up Android 17…\n\n" + SetupService.status + "\n\nThis takes half an "
+                    + "hour or more. The app may be left meanwhile: the setup carries on (see its "
+                    + "notification), and Android 17 starts when it's done.");
+        } else if (err != null) {
+            status.setText("Setup failed: " + err + "\n\n" + Importer.INSTRUCTIONS);
+        } else if (importStatus != null) {
+            status.setText(importStatus);
+        } else {
+            status.setText(Importer.INSTRUCTIONS);
+        }
+        ui.postDelayed(this::checkSetup, 1000);
     }
 
     private void startRuntime() {
@@ -139,6 +176,12 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         }
         status.setText(sb);
         ui.postDelayed(this::checkConnected, 1000);
+    }
+
+    @Override
+    protected void onDestroy() {
+        ui.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
 
     private void hideSystemBars() {

@@ -40,5 +40,6 @@
             </intent-filter>
         </activity>
         <service android:name=".RuntimeService" android:exported="false" />
+        <service android:name=".SetupService" android:exported="false" />
     </application>
 </manifest>

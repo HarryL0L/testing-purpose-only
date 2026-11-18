@@ -66,6 +66,12 @@ public final class LogActivity extends Activity {
         for (String l : LogTail.lines(new File(MainActivity.Paths.a17(this), "screen.txt"), 1024)) {
             sb.append("== screen: ").append(l).append('\n');
         }
+        // The app's own setup (SetupService), while there is one to show
+        File setup = SetupService.logFile(this);
+        if (setup.exists()) {
+            sb.append("== a17-setup.log (end)\n");
+            for (String l : LogTail.lines(setup, 16384)) sb.append(l).append('\n');
+        }
         List<String> boot = LogTail.lines(LogTail.bootLog(this), 4096);
         sb.append("== nboot.log (end)\n");
         for (String l : boot) if (!l.contains("ctl.interface_start")) sb.append(l).append('\n');

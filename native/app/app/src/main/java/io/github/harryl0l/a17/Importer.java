@@ -15,7 +15,9 @@ final class Importer {
     static final int PORT = 17017;
     static final String INSTRUCTIONS =
             "Android 17 isn't installed in this app yet.\n\n"
-            + "To move the one you set up in Termux into it, keep this screen open and run "
+            + "Tap Install Android 17: the app downloads it (1.1 GB) and sets it up by itself. "
+            + "That needs about 6 GB of free storage and takes half an hour or more.\n\n"
+            + "Or, to move one you set up in Termux into the app, keep this screen open and run "
             + "in Termux:\n\n"
             + "cd ~/android && python3 a17-mini/nstart.py --stop a17 && "
             + "(tar -c --xattrs --xattrs-include='user.*' a17 | python3 -c \"import socket,sys,shutil; "

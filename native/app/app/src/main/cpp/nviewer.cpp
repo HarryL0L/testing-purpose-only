@@ -8,6 +8,8 @@
 //   start    Android 17's processes from the app's files: run.sh nboot, then
 //            run.sh nzygote; this process adopts their orphans (some phones
 //            kill apps' orphaned processes) and reaps them, as init would
+//   run      one program from a root (setup: fsck.erofs, linkerconfig, ...),
+//            waited for, its output appended to a log
 //   untar    a root streamed from Termux (tar --xattrs), keeping the owner and
 //            label records native mode's libc keeps in user.nmode.* xattrs
 #include <EGL/egl.h>
@@ -653,6 +655,33 @@ JNI(jint, stop)(JNIEnv* env, jclass, jstring jdir) {
 }
 
 JNI(jboolean, running)(JNIEnv*, jclass) { return g_running ? JNI_TRUE : JNI_FALSE; }
+
+// Setup runs while Android 17 doesn't, so no Supervise() loop (waitpid(-1))
+// can take this child's status.
+JNI(jint, run)(JNIEnv* env, jclass, jstring jdir, jobjectArray jargv, jstring jlog) {
+  const char* d = env->GetStringUTFChars(jdir, nullptr);
+  std::string dir = d;
+  env->ReleaseStringUTFChars(jdir, d);
+  const char* l = env->GetStringUTFChars(jlog, nullptr);
+  std::string log = l;
+  env->ReleaseStringUTFChars(jlog, l);
+  std::vector<std::string> args;
+  for (jsize i = 0; i < env->GetArrayLength(jargv); i++) {
+    auto s = static_cast<jstring>(env->GetObjectArrayElement(jargv, i));
+    const char* c = env->GetStringUTFChars(s, nullptr);
+    args.emplace_back(c);
+    env->ReleaseStringUTFChars(s, c);
+    env->DeleteLocalRef(s);
+  }
+  if (args.empty()) return -1;
+  pid_t pid = Spawn(dir, args, log);
+  if (pid < 0) return -1;
+  int st;
+  while (waitpid(pid, &st, 0) < 0) {
+    if (errno != EINTR) return -1;
+  }
+  return WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st);
+}
 
 JNI(jstring, untar)(JNIEnv* env, jclass, jint fd, jstring jdir) {
   const char* d = env->GetStringUTFChars(jdir, nullptr);
