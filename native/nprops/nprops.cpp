@@ -370,10 +370,21 @@ static const std::pair<const char*, const char*> kNativeOverrides[] = {
     {"ro.audio.ihaladaptervendorextension_enabled", "false"},
 };
 
+// sys.powerctl ("shutdown,...", "reboot,..."): init would power off or
+// restart the device; here the host app does it for Android 17 (it watches
+// this file).
+static void PowerCtl(const std::string& value) {
+  int fd = open("/data/local/tmp/npowerctl", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+  if (fd < 0) return;
+  (void)!write(fd, value.data(), value.size());
+  close(fd);
+}
+
 static uint32_t SetProperty(const std::string& name, const std::string& value) {
   if (name.empty() || name.find_first_of(" \t\n=") != std::string::npos) {
     return PROP_ERROR_INVALID_NAME;
   }
+  if (name == "sys.powerctl") PowerCtl(value);
   if (StartsWith(name, "ctl.")) {
     Control(name, value);
     return PROP_SUCCESS;

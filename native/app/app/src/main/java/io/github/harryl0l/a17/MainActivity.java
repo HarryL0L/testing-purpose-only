@@ -36,6 +36,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
+        registerReceiver(powerOff, new android.content.IntentFilter(RuntimeService.ACTION_POWER_OFF),
+                android.content.Context.RECEIVER_NOT_EXPORTED);
         // The whole screen, the notch's strip included (black: the notch is there).
         android.view.WindowManager.LayoutParams wlp = getWindow().getAttributes();
         wlp.layoutInDisplayCutoutMode =
@@ -178,8 +180,17 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         ui.postDelayed(this::checkConnected, 1000);
     }
 
+    // Android 17's "Power off": RuntimeService stopped it; close the screen too.
+    private final android.content.BroadcastReceiver powerOff = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context c, Intent i) { finishAndRemoveTask(); }
+    };
+
     @Override
     protected void onDestroy() {
+        try {
+            unregisterReceiver(powerOff);
+        } catch (IllegalArgumentException ignored) {
+        }
         ui.removeCallbacksAndMessages(null);
         super.onDestroy();
     }

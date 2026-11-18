@@ -68,17 +68,7 @@ public final class RuntimeService extends Service {
         }
         if (!Native.running()) {
             String dir = a17;
-            new Thread(() -> {
-                installUpdates(dir);
-                patchNzygote(dir);
-                linkSharedStorage(dir);
-                java.util.List<String> props = MainActivity.Paths.screenProps(this);
-                props.add("ro.input.video_enabled=false");
-                // the phone's time zone (the clock is the phone's already)
-                props.add("persist.sys.timezone=" + java.util.TimeZone.getDefault().getID());
-                Native.start(dir, props.toArray(new String[0]));
-            },
-                    "a17-start").start();
+            new Thread(() -> startAndroid(dir), "a17-start").start();
         }
         return START_STICKY;
     }
@@ -274,8 +264,104 @@ public final class RuntimeService extends Service {
         }
     }
 
+    static final String ACTION_POWER_OFF = "io.github.harryl0l.a17.POWER_OFF";
+    private volatile boolean watching;
+
+    private void startAndroid(String dir) {
+        installUpdates(dir);
+        patchNzygote(dir);
+        linkSharedStorage(dir);
+        repairAppDataOwners(dir);
+        new java.io.File(dir, POWERCTL).delete();
+        java.util.List<String> props = MainActivity.Paths.screenProps(this);
+        props.add("ro.input.video_enabled=false");
+        // the phone's time zone (the clock is the phone's already)
+        props.add("persist.sys.timezone=" + java.util.TimeZone.getDefault().getID());
+        // Zygote hides other apps' data by mounting a tmpfs over /data/data
+        // and recreating the app's own directory, as root, in it. Mounts do
+        // nothing in an app, so that marked every started app's real data
+        // directory root-owned; at the next boot installd refused it and
+        // PackageManager "recovered" by wiping the app's data.
+        props.add("persist.zygote.app_data_isolation=false");
+        props.add("persist.zygote.vold_app_data_isolation=false");
+        Native.start(dir, props.toArray(new String[0]));
+        if (!watching) {
+            watching = true;
+            new Thread(() -> watchPower(dir), "a17-power").start();
+        }
+    }
+
+    // Android 17's power menu: "Power off" and "Restart" end in sys.powerctl,
+    // which nprops writes to this file (init would act on it).
+    private static final String POWERCTL = "root/data/local/tmp/npowerctl";
+
+    private void watchPower(String dir) {
+        java.io.File f = new java.io.File(dir, POWERCTL);
+        while (watching) {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                return;
+            }
+            if (!f.exists()) continue;
+            String v;
+            try {
+                v = new String(java.nio.file.Files.readAllBytes(f.toPath())).trim();
+            } catch (java.io.IOException e) {
+                v = "";
+            }
+            f.delete();
+            android.util.Log.i("a17", "sys.powerctl=" + v);
+            Native.stop(dir);
+            if (v.startsWith("reboot")) {
+                startAndroid(dir);
+            } else {
+                watching = false;
+                sendBroadcast(new Intent(ACTION_POWER_OFF).setPackage(getPackageName()));
+                stopForeground(STOP_FOREGROUND_REMOVE);
+                stopSelf();
+            }
+        }
+    }
+
+    /**
+     * App data directories marked root-owned by zygote's data isolation (see
+     * startAndroid) get their app's owner back, from their cache directory
+     * (which keeps it), before installd checks them.
+     */
+    private static void repairAppDataOwners(String dir) {
+        for (String base : new String[] {"root/data/data", "root/data/user_de/0"}) {
+            java.io.File[] pkgs = new java.io.File(dir, base).listFiles();
+            if (pkgs == null) continue;
+            for (java.io.File p : pkgs) {
+                try {
+                    int[] own = owner(p.getPath());
+                    if (own == null || own[0] != 0 || own[1] != 0) continue;
+                    int[] cache = owner(p.getPath() + "/cache");
+                    if (cache == null || cache[0] % 100000 < 10000) continue;
+                    java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(8)
+                            .order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(cache[0]).putInt(cache[0]);
+                    android.system.Os.setxattr(p.getPath(), OWNER_XATTR, b.array(), 0);
+                } catch (Exception e) {
+                    // a symlink, or no record: leave it
+                }
+            }
+        }
+    }
+
+    // native mode's libc keeps file owners here (uint32 uid, gid)
+    private static final String OWNER_XATTR = "user.nmode.owner";
+
+    private static int[] owner(String path) throws android.system.ErrnoException {
+        byte[] v = android.system.Os.getxattr(path, OWNER_XATTR);
+        if (v.length != 8) return null;
+        java.nio.ByteBuffer b = java.nio.ByteBuffer.wrap(v).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        return new int[] {b.getInt(), b.getInt()};
+    }
+
     @Override
     public void onDestroy() {
+        watching = false;
         if (battery != null) unregisterReceiver(battery);
         if (network != null) {
             getSystemService(android.net.ConnectivityManager.class).unregisterNetworkCallback(network);
