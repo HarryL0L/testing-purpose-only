@@ -83,6 +83,8 @@ public final class RuntimeService extends Service {
             // the composer HAL (it resends the last frame to a viewer that
             // reconnects, e.g. after the app was in the background)
             {"ncomposer", "root/system/bin/ncomposer"},
+            // the property service (it reports sys.powerctl: Power off, Restart)
+            {"nprops", "root/system/bin/nprops"},
             // our bionic (one build: libc, libdl, libm and the linker together)
             {"libc.so", "root/apex/com.android.runtime/lib64/bionic/libc.so"},
             {"libdl.so", "root/apex/com.android.runtime/lib64/bionic/libdl.so"},
