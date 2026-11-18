@@ -67,7 +67,7 @@ public final class ImportActivity extends Activity {
     }
 
     private void copy(List<Uri> uris) {
-        File dir = new File(MainActivity.Paths.a17(this), "root/data/media/0/Download");
+        File dir = new File(MainActivity.Paths.a17(this), "root/storage/emulated/0/Download");
         if (!MainActivity.Paths.installed(this)) {
             Toast.makeText(this, "Android 17 isn't installed yet", Toast.LENGTH_LONG).show();
             finish();

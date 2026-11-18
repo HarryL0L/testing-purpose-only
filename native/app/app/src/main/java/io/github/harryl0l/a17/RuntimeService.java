@@ -107,46 +107,59 @@ public final class RuntimeService extends Service {
 
     /**
      * On a phone /storage/emulated/0 is /data/media/0 (through MediaProvider's
-     * FUSE): one set of files. Older roots made it a folder of its own, so
-     * Files saw one and MediaProvider (and imports) the other. Move what the
-     * folder holds into /data/media/0 and make it a link there.
+     * FUSE): one set of files. Older roots made them two folders, so Files saw
+     * one and MediaProvider (and imports) the other. The real folder is
+     * /storage/emulated/0 (apps resolve paths and expect them there; the
+     * storage provider refuses anything else) and /data/media/0 links to it.
      */
     private static void linkSharedStorage(String dir) {
         java.io.File media = new java.io.File(dir, "root/data/media/0");
         java.io.File user = new java.io.File(dir, "root/storage/emulated/0");
+        java.nio.file.Path mp = media.toPath(), up = user.toPath();
         try {
-            java.nio.file.Path up = user.toPath();
-            if (java.nio.file.Files.isSymbolicLink(up)) return;
-            media.mkdirs();
-            if (user.isDirectory()) {
-                java.io.File[] items = user.listFiles();
-                if (items != null) {
-                    for (java.io.File item : items) {
-                        java.io.File to = new java.io.File(media, item.getName());
-                        if (!to.exists()) {
-                            item.renameTo(to);
-                        } else if (item.isDirectory() && to.isDirectory()) {
-                            java.io.File[] inner = item.listFiles();
-                            if (inner != null) {
-                                for (java.io.File i : inner) {
-                                    java.io.File t = new java.io.File(to, i.getName());
-                                    if (!t.exists()) i.renameTo(t);
-                                }
-                            }
-                        }
-                    }
+            if (java.nio.file.Files.isSymbolicLink(mp)) return;  // done already
+            if (java.nio.file.Files.isSymbolicLink(up)) {
+                // v0.27 linked the other way round: swap
+                java.nio.file.Files.delete(up);
+                if (media.isDirectory() && !media.renameTo(user)) {
+                    android.util.Log.e("a17", "can't move " + media);
+                    return;
                 }
-                // what both had stays, under a name of its own
-                java.io.File rest = new java.io.File(media, ".old-storage-emulated-0");
-                if (!user.delete() && !user.renameTo(rest)) {
-                    android.util.Log.e("a17", "can't replace " + user);
+            } else if (media.isDirectory()) {
+                user.mkdirs();
+                mergeInto(media, user);
+                java.io.File rest = new java.io.File(user, ".old-data-media-0");
+                if (!media.delete() && !media.renameTo(rest)) {
+                    android.util.Log.e("a17", "can't replace " + media);
                     return;
                 }
             }
-            user.getParentFile().mkdirs();
-            java.nio.file.Files.createSymbolicLink(up, java.nio.file.Paths.get("../../data/media/0"));
+            user.mkdirs();
+            media.getParentFile().mkdirs();
+            java.nio.file.Files.createSymbolicLink(mp, java.nio.file.Paths.get("../../storage/emulated/0"));
         } catch (Exception e) {
             android.util.Log.e("a17", "shared storage link", e);
+        }
+    }
+
+    // Moves what `from` holds into `to`, one level of folders deep; what both
+    // have stays in `from`.
+    private static void mergeInto(java.io.File from, java.io.File to) {
+        java.io.File[] items = from.listFiles();
+        if (items == null) return;
+        for (java.io.File item : items) {
+            java.io.File t = new java.io.File(to, item.getName());
+            if (!t.exists()) {
+                item.renameTo(t);
+            } else if (item.isDirectory() && t.isDirectory()) {
+                java.io.File[] inner = item.listFiles();
+                if (inner != null) {
+                    for (java.io.File i : inner) {
+                        java.io.File ti = new java.io.File(t, i.getName());
+                        if (!ti.exists()) i.renameTo(ti);
+                    }
+                }
+            }
         }
     }
 
