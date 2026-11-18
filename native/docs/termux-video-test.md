@@ -43,9 +43,14 @@ machine only has qemu and SwiftShader, where the video player never starts.
 
 ## Test
 
-1. Make a test clip, or use any small H.264 MP4, in
-   `~/android/a17/root/storage/emulated/0/Movies/test.mp4`. If ffmpeg is
-   available: an 8 s 320x240 testsrc2 with a 440 Hz AAC tone.
+1. Put a test clip in `~/android/a17/root/storage/emulated/0/Movies/test.mp4`.
+   - Never use the user's own photos or videos.
+   - Don't read `/sdcard` or the phone's shared storage.
+   - Don't install packages (`pkg` writes outside `~/android`).
+   - If ffmpeg is already installed, make an 8 s 320x240 testsrc2 with a
+     440 Hz AAC tone.
+   - Otherwise download a small public H.264 sample clip with curl, into
+     `~/android` only.
 2. Play it:
 
    ```
