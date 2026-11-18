@@ -86,6 +86,10 @@ CLASSPATH=/system/framework/services.jar:/system/framework/napexd.jar \\
     app_process64 /system/bin nmode.ApexService </dev/null >/dev/null 2>&1 &
 # Stand-ins for vold and netd (nmode.StubService, also in napexd.jar): an
 # app can't mount or configure the network; storage is plain directories.
+# fwmarkd and dnsproxyd: netd's sockets every app's connect() and
+# getaddrinfo() use (nmode.NetService)
+CLASSPATH=/system/framework/napexd.jar app_process64 /system/bin nmode.NetService \\
+    </dev/null >/dev/null 2>&1 &
 CLASSPATH=/system/framework/napexd.jar app_process64 /system/bin nmode.StubService \\
     vold=android.os.IVold netd=android.net.INetd dnsresolver=android.net.IDnsResolver \\
     </dev/null >/dev/null 2>&1 &

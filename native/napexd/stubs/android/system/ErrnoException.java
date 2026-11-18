@@ -1,1 +1,1 @@
-package android.system; public final class ErrnoException extends Exception {}
+package android.system; public final class ErrnoException extends Exception { public int errno; }

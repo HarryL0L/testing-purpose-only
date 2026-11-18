@@ -56,6 +56,16 @@ public final class RuntimeService extends Service {
             Intent sticky = registerReceiver(battery, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
             if (sticky != null) writeBattery(a17, sticky);
         }
+        if (network == null) {
+            // The phone's DNS servers for Android 17's name lookups (napexd's
+            // nmode.NetService answers getaddrinfo with them)
+            android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
+            network = new android.net.ConnectivityManager.NetworkCallback() {
+                @Override public void onLinkPropertiesChanged(android.net.Network n,
+                        android.net.LinkProperties lp) { writeDns(a17, lp); }
+            };
+            cm.registerDefaultNetworkCallback(network);
+        }
         if (!Native.running()) {
             String dir = a17;
             new Thread(() -> {
@@ -170,6 +180,15 @@ public final class RuntimeService extends Service {
 
     private BroadcastReceiver battery;
 
+    private android.net.ConnectivityManager.NetworkCallback network;
+
+    private static final String STUBS = "CLASSPATH=/system/framework/napexd.jar app_process64 /system/bin nmode.StubService";
+    private static final String NET_SERVICE =
+            "# fwmarkd and dnsproxyd: netd's sockets every app's connect() and\n"
+            + "# getaddrinfo() use (nmode.NetService, napexd.jar)\n"
+            + "CLASSPATH=/system/framework/napexd.jar app_process64 /system/bin nmode.NetService \\\n"
+            + "    </dev/null >/dev/null 2>&1 &\n";
+
     private static final String MEDIA_SERVICES =
             "# media.player, media.metrics, media.camera (mediaextractor's seccomp\n"
             + "# filter has no room for our binder, like mediaswcodec's)\n"
@@ -181,6 +200,19 @@ public final class RuntimeService extends Service {
      * The phone's battery for Android 17's battery HAL (napexd's nmode.Health),
      * in BatteryManager's own numbers.
      */
+    private static void writeDns(String dir, android.net.LinkProperties lp) {
+        StringBuilder sb = new StringBuilder();
+        for (java.net.InetAddress a : lp.getDnsServers()) sb.append(a.getHostAddress()).append('\n');
+        java.io.File f = new java.io.File(dir, "root/data/local/tmp/ndns");
+        java.io.File tmp = new java.io.File(dir, "root/data/local/tmp/ndns.new");
+        try {
+            java.nio.file.Files.write(tmp.toPath(), sb.toString().getBytes());
+            tmp.renameTo(f);
+        } catch (java.io.IOException e) {
+            android.util.Log.e("a17", "can't write DNS servers", e);
+        }
+    }
+
     private void writeBattery(String dir, Intent i) {
         BatteryManager bm = getSystemService(BatteryManager.class);
         int scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
@@ -223,6 +255,7 @@ public final class RuntimeService extends Service {
             String s = new String(java.nio.file.Files.readAllBytes(f.toPath()));
             String t = s.replace(line, "");
             if (!t.contains("mediaserver </dev/null")) t = t.replace(audio, media);
+            if (!t.contains("nmode.NetService")) t = t.replace(STUBS, NET_SERVICE + STUBS);
             if (t.equals(s)) return;
             java.nio.file.Files.write(f.toPath(), t.getBytes());
         } catch (java.io.IOException e) {
@@ -233,6 +266,10 @@ public final class RuntimeService extends Service {
     @Override
     public void onDestroy() {
         if (battery != null) unregisterReceiver(battery);
+        if (network != null) {
+            getSystemService(android.net.ConnectivityManager.class).unregisterNetworkCallback(network);
+            network = null;
+        }
         Native.stop(MainActivity.Paths.a17(this).getAbsolutePath());
         super.onDestroy();
     }
