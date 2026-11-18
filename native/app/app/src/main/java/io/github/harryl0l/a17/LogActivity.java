@@ -138,6 +138,21 @@ public final class LogActivity extends Activity {
             }
         }
         for (String l : st.subList(Math.max(0, st.size() - 60), st.size())) sb.append(l).append('\n');
+        // Last, so the end of a paste carries it: why apps stopped (crashes,
+        // native aborts, ANRs, process deaths) and browser (Gecko) lines.
+        sb.append("== app crashes\n");
+        List<String> cr = new java.util.ArrayList<>();
+        for (String l : LogTail.lines(LogTail.file(this), 16 << 20)) {
+            if (l.contains("PANVKANB") || l.contains("Fence: merge")) continue;
+            if (l.contains("AndroidRuntime") || l.contains("FATAL") || l.contains(" F DEBUG")
+                    || l.contains(" F libc") || l.contains("has died") || l.contains("ANR in")
+                    || l.contains("Gecko") || l.contains("mozilla") || l.contains("crash_dump")
+                    || l.contains("Fatal signal") || l.contains("SIGSYS") || l.contains("seccomp")
+                    || (l.length() > 31 && l.charAt(31) == 'F')) {
+                cr.add(l);
+            }
+        }
+        for (String l : cr.subList(Math.max(0, cr.size() - 200), cr.size())) sb.append(l).append('\n');
         return sb.toString();
     }
 
