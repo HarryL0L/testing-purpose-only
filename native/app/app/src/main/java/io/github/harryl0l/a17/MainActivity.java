@@ -66,18 +66,23 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
                 if (r - l <= 0 || b - t <= 0) return;
                 root.removeOnLayoutChangeListener(this);
-                int top = 0, bottom = 0;
+                // The whole window is Android 17's display; a camera cutout at
+                // the top goes to it as its own (CutoutOverlay), so its status bar
+                // keeps clear of the hole as on a phone.
+                android.graphics.Rect hole = null;
                 WindowInsets in = root.getRootWindowInsets();
                 if (in != null && in.getDisplayCutout() != null) {
-                    top = in.getDisplayCutout().getSafeInsetTop();
-                    bottom = in.getDisplayCutout().getSafeInsetBottom();
+                    hole = in.getDisplayCutout().getBoundingRectTop();
                 }
-                Paths.saveScreen(MainActivity.this, r - l, b - t - top - bottom);
-                FrameLayout.LayoutParams slp = (FrameLayout.LayoutParams) surface.getLayoutParams();
-                slp.topMargin = top;
-                slp.bottomMargin = bottom;
-                surface.setLayoutParams(slp);
-                begin();
+                Paths.saveScreen(MainActivity.this, r - l, b - t);
+                final android.graphics.Rect cutout = hole;
+                File a17 = Paths.a17(MainActivity.this);
+                new Thread(() -> {
+                    if (Paths.installed(MainActivity.this)) {
+                        CutoutOverlay.write(MainActivity.this, a17, cutout);
+                    }
+                    ui.post(MainActivity.this::begin);
+                }, "a17-cutout").start();
             }
         });
     }

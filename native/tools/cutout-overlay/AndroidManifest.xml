@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="io.github.harryl0l.a17.cutout">
+    <overlay android:targetPackage="android" android:isStatic="true" android:priority="1" />
+    <application android:hasCode="false" />
+</manifest>
