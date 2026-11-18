@@ -192,9 +192,15 @@ public final class RuntimeService extends Service {
             + "CLASSPATH=/system/framework/napexd.jar app_process64 /system/bin nmode.NetService \\\n"
             + "    </dev/null >/dev/null 2>&1 &\n";
 
+    // media.extractor and media.swcodec (their seccomp filters are skipped by
+    // libc: they allow only the binder driver's system calls)
+    private static final String EXTRACTOR =
+            "mediaextractor </dev/null >/dev/null 2>&1 &\n"
+            + "/apex/com.android.media.swcodec/bin/mediaswcodec </dev/null >/dev/null 2>&1 &\n";
+
     private static final String MEDIA_SERVICES =
-            "# media.player, media.metrics, media.camera (mediaextractor's seccomp\n"
-            + "# filter has no room for our binder, like mediaswcodec's)\n"
+            "# media.player, media.metrics, media.camera\n"
+            + EXTRACTOR
             + "mediaserver </dev/null >/dev/null 2>&1 &\n"
             + "mediametrics </dev/null >/dev/null 2>&1 &\n"
             + "cameraserver </dev/null >/dev/null 2>&1 &\n";
@@ -258,6 +264,8 @@ public final class RuntimeService extends Service {
             String s = new String(java.nio.file.Files.readAllBytes(f.toPath()));
             String t = s.replace(line, "");
             if (!t.contains("mediaserver </dev/null")) t = t.replace(audio, media);
+            if (!t.contains("mediaextractor </dev/null"))
+                t = t.replace("mediaserver </dev/null", EXTRACTOR + "mediaserver </dev/null");
             if (!t.contains("nmode.NetService")) t = t.replace(STUBS, NET_SERVICE + STUBS);
             if (t.equals(s)) return;
             java.nio.file.Files.write(f.toPath(), t.getBytes());
