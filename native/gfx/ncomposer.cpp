@@ -156,35 +156,50 @@ class Viewer {
   }
 
   // Sends one frame; true if the viewer took it.
-  bool Offer(const Mapped& m, uint32_t frame) {
+  // fence: the GPU's acquire fence for the buffer (or -1), sent along for
+  // the viewer to wait on; the caller keeps (and closes) it.
+  bool Offer(const Mapped& m, uint32_t frame, int fence = -1) {
     std::lock_guard<std::mutex> g(mu_);
     if (fd_ < 0) return false;
     uint64_t id = nmem_u64(m.h.id_lo, m.h.id_hi);
     nviewer_frame f = {NVIEWER_FRAME, frame, id, m.h.width, m.h.height, m.h.stride,
                        (uint32_t)m.h.real_format, 0};
     bool first = sent_.insert(id).second;
-    f.has_fd = first ? 1 : 0;
+    int fds[2], nfds = 0;
+    f.has_fd = 0;
+    if (first) {
+      fds[nfds++] = m.fd;
+      f.has_fd |= NVIEWER_FD_BUFFER;
+    }
+    if (fence >= 0) {
+      fds[nfds++] = fence;
+      f.has_fd |= NVIEWER_FD_FENCE;
+    }
     struct iovec iov = {&f, sizeof(f)};
     struct msghdr msg = {};
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
-    alignas(struct cmsghdr) char control[CMSG_SPACE(sizeof(int))];
-    if (first) {
+    alignas(struct cmsghdr) char control[CMSG_SPACE(2 * sizeof(int))];
+    if (nfds) {
       msg.msg_control = control;
-      msg.msg_controllen = sizeof(control);
+      msg.msg_controllen = CMSG_SPACE(nfds * sizeof(int));
       struct cmsghdr* c = CMSG_FIRSTHDR(&msg);
       c->cmsg_level = SOL_SOCKET;
       c->cmsg_type = SCM_RIGHTS;
-      c->cmsg_len = CMSG_LEN(sizeof(int));
-      memcpy(CMSG_DATA(c), &m.fd, sizeof(int));
+      c->cmsg_len = CMSG_LEN(nfds * sizeof(int));
+      memcpy(CMSG_DATA(c), fds, nfds * sizeof(int));
     }
     if (sendmsg(fd_, &msg, MSG_NOSIGNAL) != (ssize_t)sizeof(f)) {
       DropLocked();
       return false;
     }
-    // Wait for the viewer to be done with this frame (it has drawn it).
+    // Wait for the viewer to be done with the previous frame, not this one:
+    // SurfaceFlinger draws into the previous buffer next, while the viewer
+    // draws this one. Waiting for this frame cost a whole vsync of the
+    // phone's display per frame (30 fps).
+    uint32_t want = frame - 1;
     struct pollfd p = {fd_, POLLIN, 0};
-    while (poll(&p, 1, 100) > 0) {
+    while ((int32_t)(acked_ - want) < 0 && poll(&p, 1, 100) > 0) {
       nviewer_ack a;
       ssize_t n = recv(fd_, &a, sizeof(a), MSG_DONTWAIT);
       if (n <= 0) {
@@ -192,7 +207,7 @@ class Viewer {
         DropLocked();
         return false;
       }
-      if (n == sizeof(a) && a.magic == NVIEWER_ACK && a.frame == frame) break;
+      if (n == sizeof(a) && a.magic == NVIEWER_ACK && (int32_t)(a.frame - acked_) > 0) acked_ = a.frame;
     }
     return true;
   }
@@ -220,6 +235,7 @@ class Viewer {
         std::lock_guard<std::mutex> g(mu_);
         DropLocked();
         fd_ = c;
+        acked_ = 0;
         LOG("viewer connected");
       }
       // The app comes back from the background with a new surface: until
@@ -239,6 +255,7 @@ class Viewer {
 
   std::mutex mu_;
   int fd_ = -1;
+  uint32_t acked_ = 0;     // the newest frame the viewer is done with
   std::set<uint64_t> sent_;  // buffers whose fd this viewer has
   nviewer_hello hello_ = {};
   std::function<void()> on_connect_;
@@ -258,7 +275,8 @@ class Display {
   int32_t width, height, dpi, fps, period;
 
   // Hands the client target to the viewer, or copies it into the frame file.
-  void Present(const std::shared_ptr<Mapped>& target) {
+  // fence: the client target's acquire fence (owned by the caller, or -1)
+  void Present(const std::shared_ptr<Mapped>& target, int fence) {
     const Mapped& m = *target;
     if (m.h.real_format != 1 && m.h.real_format != 2 && m.h.real_format != 5) return;
     {
@@ -266,8 +284,24 @@ class Display {
       last_ = target;
     }
     frames_++;
-    if (frames_ == 1 || frames_ % 600 == 0) LOG("presented frame %u", frames_);
-    if (viewer_.Offer(m, frames_)) return;
+    int64_t now = Now();
+    if (frames_ == 1) {
+      LOG("presented frame 1");
+      fps_since_ = now;
+      fps_frames_ = frames_;
+    } else if (now - fps_since_ >= 10000000000LL) {
+      LOG("presented frame %u: %.1f fps over %.0f s (offer %.1f ms on average)", frames_,
+          (frames_ - fps_frames_) * 1e9 / (now - fps_since_), (now - fps_since_) / 1e9,
+          offer_ns_ / 1e6 / std::max<uint32_t>(1, frames_ - fps_frames_));
+      fps_since_ = now;
+      fps_frames_ = frames_;
+      offer_ns_ = 0;
+    }
+    int64_t t0 = Now();
+    bool offered = viewer_.Offer(m, frames_, fence);
+    offer_ns_ += Now() - t0;
+    if (offered) return;
+    WaitFence(fence);  // no viewer: the frame file is read right away
     uint32_t stride = m.h.stride;
     size_t bytes = (size_t)stride * m.h.height * 4;
     if (m.h.real_format != 1 && m.h.real_format != 2 && m.h.real_format != 5) return;
@@ -321,6 +355,8 @@ class Display {
 
   std::mutex last_mu_;
   std::shared_ptr<Mapped> last_;
+  int64_t fps_since_ = 0, offer_ns_ = 0;
+  uint32_t fps_frames_ = 0;
   uint8_t* fb_ = nullptr;
   size_t fb_len_ = 0;
   uint32_t frames_ = 0;
@@ -398,7 +434,10 @@ class Client : public BnComposerClient {
           if (m) slots_[b.slot] = m;
         }
         target_ = slots_.count(b.slot) ? slots_[b.slot] : nullptr;
-        WaitFence(b.fence.get());
+        // Kept for the viewer to wait on (presentDisplay): waiting here put
+        // SurfaceFlinger's GPU time into the composer's (JANK_COMPOSER).
+        if (target_fence_ >= 0) close(target_fence_);
+        target_fence_ = b.fence.get() >= 0 ? fcntl(b.fence.get(), F_DUPFD_CLOEXEC, 0) : -1;
       }
       if (c.validateDisplay || c.presentOrValidateDisplay) {
         Validate(results);
@@ -411,7 +450,9 @@ class Client : public BnComposerClient {
           if (comp != Composition::CLIENT) comp = Composition::CLIENT;
       }
       if (c.presentDisplay) {
-        if (target_) display_.Present(target_);
+        if (target_) display_.Present(target_, target_fence_);
+        if (target_fence_ >= 0) close(target_fence_);
+        target_fence_ = -1;
         results->emplace_back(PresentFence{kDisplay, ScopedFileDescriptor(SignaledFence()), std::nullopt});
         ReleaseFences rf;
         rf.display = kDisplay;
@@ -674,6 +715,7 @@ class Client : public BnComposerClient {
   std::map<int64_t, Composition> layers_;
   std::map<int32_t, std::shared_ptr<Mapped>> slots_;
   std::shared_ptr<Mapped> target_;
+  int target_fence_ = -1;  // its acquire fence, until presented
   Display display_;
   std::thread vsync_thread_;
 };

@@ -146,6 +146,13 @@ public final class LogActivity extends Activity {
         for (String l : st.subList(Math.max(0, st.size() - 60), st.size())) sb.append(l).append('\n');
         // Last, so the end of a paste carries it: why apps stopped (crashes,
         // native aborts, ANRs, process deaths) and browser (Gecko) lines.
+        // The display's frame rate (ncomposer logs it every 10 s)
+        sb.append("== frame rate\n");
+        List<String> fr = new java.util.ArrayList<>();
+        for (String l : LogTail.lines(LogTail.file(this), 16 << 20)) {
+            if (l.contains("fps over")) fr.add(l);
+        }
+        for (String l : fr.subList(Math.max(0, fr.size() - 12), fr.size())) sb.append(l).append('\n');
         sb.append("== app crashes\n");
         List<String> cr = new java.util.ArrayList<>();
         for (String l : LogTail.lines(LogTail.file(this), 16 << 20)) {

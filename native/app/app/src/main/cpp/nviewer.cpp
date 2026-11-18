@@ -165,7 +165,7 @@ void ViewerLoop(ANativeWindow* win) {
     if (poll(&p, 1, 200) <= 0) continue;
     nviewer_frame f;
     struct iovec iov = {&f, sizeof(f)};
-    alignas(struct cmsghdr) char control[CMSG_SPACE(sizeof(int))];
+    alignas(struct cmsghdr) char control[CMSG_SPACE(2 * sizeof(int))];
     struct msghdr msg = {};
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
@@ -188,10 +188,26 @@ void ViewerLoop(ANativeWindow* win) {
     }
     if (n != sizeof(f) || f.magic != NVIEWER_FRAME) continue;
     Buffer& b = bufs[f.buffer_id];
+    // The buffer's fd (first frame naming it) and the GPU's acquire fence,
+    // in that order (nviewer.h)
+    int fds[2] = {-1, -1}, nfds = 0;
     struct cmsghdr* c = CMSG_FIRSTHDR(&msg);
     if (c && c->cmsg_type == SCM_RIGHTS) {
+      nfds = (int)((c->cmsg_len - CMSG_LEN(0)) / sizeof(int));
+      if (nfds > 2) nfds = 2;
+      memcpy(fds, CMSG_DATA(c), nfds * sizeof(int));
+    }
+    int k = 0, fence = -1;
+    if ((f.has_fd & NVIEWER_FD_BUFFER) && k < nfds) {
       if (b.fd >= 0) close(b.fd);
-      memcpy(&b.fd, CMSG_DATA(c), sizeof(int));
+      b.fd = fds[k++];
+    }
+    if ((f.has_fd & NVIEWER_FD_FENCE) && k < nfds) fence = fds[k++];
+    if (fence >= 0) {  // Android's GPU is done drawing the frame
+      struct pollfd fp = {fence, POLLIN, 0};
+      while (poll(&fp, 1, 1000) < 0 && errno == EINTR) {
+      }
+      close(fence);
     }
     if (b.fd < 0) continue;
     if (!b.tex) {

@@ -6,7 +6,10 @@
  *                        presented frame; the first frame naming a buffer
  *                        carries its fd (SCM_RIGHTS: the client target's
  *                        dma-buf, or a memfd without ION), later ones only
- *                        its id
+ *                        its id. A frame may also carry the GPU's acquire
+ *                        fence (a sync file, after the buffer fd): the viewer
+ *                        waits for it before reading the buffer, so the
+ *                        composer needn't (has_fd bits below)
  *   viewer -> composer   nviewer_ack when it is done with a frame (drawn);
  *                        the composer waits up to 100 ms for it
  *
@@ -40,8 +43,11 @@ struct nviewer_frame {
   uint32_t height;
   uint32_t stride;
   uint32_t format;
-  uint32_t has_fd;
+  uint32_t has_fd;  // NVIEWER_FD_BUFFER | NVIEWER_FD_FENCE, in that order
 };
+
+#define NVIEWER_FD_BUFFER 1
+#define NVIEWER_FD_FENCE 2
 
 struct nviewer_ack {
   uint32_t magic;
