@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Full screen, the notch's strip included where the phone allows it. -->
+    <style name="Screen" parent="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

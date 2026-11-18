@@ -38,7 +38,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         wlp.layoutInDisplayCutoutMode =
                 android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
         getWindow().setAttributes(wlp);
-        int[] screen = Paths.saveScreen(this);
+        // Content under the (hidden) bars too, so its size doesn't depend on them.
+        getWindow().setDecorFitsSystemWindows(false);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
         surface = new SurfaceView(this);
@@ -47,10 +48,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         status.setPadding(48, 96, 48, 48);
         status.setTextSize(11);
         // Android 17's display is the screen below the notch, at full size.
-        FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(-1, -1);
-        slp.topMargin = screen[3];
-        slp.bottomMargin = screen[4];
-        root.addView(surface, slp);
+        root.addView(surface, new FrameLayout.LayoutParams(-1, -1));
         root.addView(status);
         logButton = new Button(this);
         logButton.setText("Log");
@@ -61,6 +59,30 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         setContentView(root);
         surface.getHolder().addCallback(this);
         hideSystemBars();
+        // Measured once the window is laid out: its real size and where the
+        // notch is in it (phones differ in what they allow apps).
+        root.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
+                if (r - l <= 0 || b - t <= 0) return;
+                root.removeOnLayoutChangeListener(this);
+                int top = 0, bottom = 0;
+                WindowInsets in = root.getRootWindowInsets();
+                if (in != null && in.getDisplayCutout() != null) {
+                    top = in.getDisplayCutout().getSafeInsetTop();
+                    bottom = in.getDisplayCutout().getSafeInsetBottom();
+                }
+                Paths.saveScreen(MainActivity.this, r - l, b - t - top - bottom);
+                FrameLayout.LayoutParams slp = (FrameLayout.LayoutParams) surface.getLayoutParams();
+                slp.topMargin = top;
+                slp.bottomMargin = bottom;
+                surface.setLayoutParams(slp);
+                begin();
+            }
+        });
+    }
+
+    private void begin() {
         if (!Paths.installed(this)) {
             status.setText(Importer.INSTRUCTIONS);
             Importer.start(this, msg -> ui.post(() -> {
@@ -153,20 +175,13 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         static boolean installed(android.content.Context c) { return new File(a17(c), "run.sh").exists(); }
 
         /**
-         * The screen for Android 17's display: {width, height, dpi, top, bottom},
-         * the strips the notch (display cutout) takes at the top and bottom left
-         * out. Kept for RuntimeService, which starts Android 17 with it.
+         * Android 17's display: the window's area clear of the notch, at the
+         * phone's density. Kept for RuntimeService, which starts Android 17 with it.
          */
-        static int[] saveScreen(Activity a) {
-            android.view.WindowMetrics m = a.getWindowManager().getMaximumWindowMetrics();
-            android.graphics.Rect b = m.getBounds();
-            android.graphics.Insets cut =
-                    m.getWindowInsets().getInsets(WindowInsets.Type.displayCutout());
-            int w = b.width() & ~1, h = (b.height() - cut.top - cut.bottom) & ~1;
+        static void saveScreen(Activity a, int width, int height) {
             int dpi = a.getResources().getDisplayMetrics().densityDpi;
             a.getSharedPreferences("screen", MODE_PRIVATE).edit()
-                    .putInt("w", w).putInt("h", h).putInt("dpi", dpi).apply();
-            return new int[] {w, h, dpi, cut.top, cut.bottom};
+                    .putInt("w", width & ~1).putInt("h", height & ~1).putInt("dpi", dpi).commit();
         }
 
         /** Android 17's display properties from saveScreen, or none (its defaults). */
