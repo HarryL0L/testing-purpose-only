@@ -119,11 +119,11 @@ public final class LogActivity extends Activity {
         // storage lines of the log at every level.
         sb.append("== FUSE stacks\n");
         appendFuseThreads(new File(root, "data/local/tmp/fuse-stacks.txt"), sb);
-        // libfuse reports why a FUSE session ends with perror(): on
-        // MediaProvider's stderr, which is zygote's, which is nboot.log.
-        sb.append("== fuse errors (nboot.log)\n");
-        for (String l : LogTail.lines(LogTail.bootLog(this), 4 << 20)) {
-            if (l.contains("fuse")) sb.append(l).append('\n');
+        // libfuse reports why a FUSE session ends only on stderr, which
+        // MediaProvider's isn't kept: the same library, run at start.
+        sb.append("== fusetest\n");
+        for (String l : LogTail.lines(new File(root, "data/local/tmp/fusetest.log"), 16384)) {
+            sb.append(l).append('\n');
         }
         sb.append("== storage lines\n");
         List<String> st = new java.util.ArrayList<>();

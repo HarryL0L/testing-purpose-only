@@ -61,10 +61,15 @@ public final class RuntimeService extends Service {
             {"nbinder", "root/system/bin/nbinder"},
             // vold's stand-in (shared storage) and the codec store's (napexd)
             {"napexd.jar", "root/system/framework/napexd.jar"},
+            // A one-off check at start of MediaProvider's FUSE library on this
+            // kernel (tools/fusetest); libfuse.so is MediaProvider's own.
+            {"fusetest", "root/data/local/tmp/fusetest/fusetest"},
+            {"libfuse.so", "root/data/local/tmp/fusetest/libfuse.so"},
         };
         for (String[] f : files) {
             java.io.File dst = new java.io.File(dir, f[1]);
             java.io.File tmp = new java.io.File(dir, f[1] + ".new");
+            dst.getParentFile().mkdirs();
             try (java.io.InputStream in = getAssets().open(f[0]);
                  java.io.OutputStream out = new java.io.FileOutputStream(tmp)) {
                 byte[] buf = new byte[1 << 16];
