@@ -48,7 +48,9 @@ final class CutoutOverlay {
             replace(b, repeat('Y', RECT_LEN), rect);
             // status_bar_height_default (SystemBarUtils.getStatusBarHeight): as tall as the phone's own, at least
             // the cutout (a dimension in px: the value << 8).
-            int px = Math.max(statusBar, hole.bottom);
+            // Phones (realme's) draw their status bar's clock below the middle of
+            // the bar they report; Android 17 centres it: a fifth taller matches.
+            int px = Math.max(statusBar, hole.bottom) * 6 / 5;
             replaceDimen(b, 1234, px);
             fixCrc(b, "resources.arsc");
             dst.getParentFile().mkdirs();

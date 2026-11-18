@@ -106,6 +106,13 @@ public final class RuntimeService extends Service {
 
     private BroadcastReceiver battery;
 
+    private static final String MEDIA_SERVICES =
+            "# media.player, media.metrics, media.camera (mediaextractor's seccomp\n"
+            + "# filter has no room for our binder, like mediaswcodec's)\n"
+            + "mediaserver </dev/null >/dev/null 2>&1 &\n"
+            + "mediametrics </dev/null >/dev/null 2>&1 &\n"
+            + "cameraserver </dev/null >/dev/null 2>&1 &\n";
+
     /**
      * The phone's battery for Android 17's battery HAL (napexd's nmode.Health),
      * in BatteryManager's own numbers.
@@ -144,10 +151,16 @@ public final class RuntimeService extends Service {
     private static void patchNzygote(String dir) {
         java.io.File f = new java.io.File(dir, "root/system/bin/nzygote");
         String line = "    /apex/com.google.cf.health/bin/hw/android.hardware.health-service.cuttlefish \\\n";
+        // mediaserver (media.player: MediaProvider's scanner waits for it
+        // forever), its metrics, and the camera service (no cameras yet).
+        String audio = "audioserver </dev/null";
+        String media = MEDIA_SERVICES + audio;
         try {
             String s = new String(java.nio.file.Files.readAllBytes(f.toPath()));
-            if (!s.contains(line)) return;
-            java.nio.file.Files.write(f.toPath(), s.replace(line, "").getBytes());
+            String t = s.replace(line, "");
+            if (!t.contains("mediaserver </dev/null")) t = t.replace(audio, media);
+            if (t.equals(s)) return;
+            java.nio.file.Files.write(f.toPath(), t.getBytes());
         } catch (java.io.IOException e) {
             android.util.Log.e("a17", "can't update nzygote", e);
         }

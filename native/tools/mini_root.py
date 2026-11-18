@@ -120,6 +120,10 @@ done
     nsocket aconfigd_mainline:stream:0666 -- \\
     /apex/com.android.configinfrastructure/bin/aconfigd-mainline start-socket </dev/null >/dev/null 2>&1 &
 # audioserver (AudioFlinger, audio policy), on the audio HAL above
+# media.player (MediaProvider's scanner waits for it), media.metrics, media.camera
+mediaserver </dev/null >/dev/null 2>&1 &
+mediametrics </dev/null >/dev/null 2>&1 &
+cameraserver </dev/null >/dev/null 2>&1 &
 audioserver </dev/null >/dev/null 2>&1 &
 mkdir -p /data/misc/keystore
 keystore2 /data/misc/keystore </dev/null >/dev/null 2>&1 &
