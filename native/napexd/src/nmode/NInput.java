@@ -65,8 +65,19 @@ public final class NInput {
           int action = kind == 0 ? MotionEvent.ACTION_DOWN : kind == 1 ? MotionEvent.ACTION_UP
               : kind == 2 ? MotionEvent.ACTION_MOVE : MotionEvent.ACTION_CANCEL;
           if (kind == 0) downTime = now;
-          MotionEvent e = MotionEvent.obtain(downTime, now, action, x, y, 0);
-          e.setSource(SOURCE_TOUCHSCREEN);
+          // a finger, as `input tap` sends: apps such as Files ignore
+          // pointers whose tool type is unknown
+          MotionEvent.PointerProperties pp = new MotionEvent.PointerProperties();
+          pp.id = 0;
+          pp.toolType = MotionEvent.TOOL_TYPE_FINGER;
+          MotionEvent.PointerCoords pc = new MotionEvent.PointerCoords();
+          pc.x = x;
+          pc.y = y;
+          pc.pressure = kind == 1 ? 0f : 1f;
+          pc.size = 1f;
+          MotionEvent e = MotionEvent.obtain(downTime, now, action, 1,
+              new MotionEvent.PointerProperties[] {pp}, new MotionEvent.PointerCoords[] {pc},
+              0, 0, 1f, 1f, 0, 0, SOURCE_TOUCHSCREEN, 0);
           inject(e);
           e.recycle();
         } else if (kind == 4) {
