@@ -673,6 +673,12 @@ extern "C" int capset(void* header, const void* data) {
 
 extern "C" int prctl(int option, unsigned long a2, unsigned long a3, unsigned long a4,
                      unsigned long a5) {
+  // PR_SET_SECCOMP: the media services (minijail) install filters that
+  // allow only the system calls their kernel driver takes, not the sockets
+  // native mode's binder uses, and die at their first binder call. Everything
+  // here runs in the host app's sandbox already; zygote's own filter is off
+  // too ("seccomp disabled by setenforce 0").
+  if (option == 22 && nr_ids()) return 0;
   int r = __nrp_prctl(option, a2, a3, a4, a5);
   // Only "not allowed" is faked: EINVAL stays (zygote drops the bounding set
   // with "for (i = 0; prctl(PR_CAPBSET_READ, i) >= 0; i++)", which ends on
