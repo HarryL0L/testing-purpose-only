@@ -75,14 +75,26 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                     hole = in.getDisplayCutout().getBoundingRectTop();
                 }
                 // The phone's status bar (hidden here, so regardless of visibility).
-                final int statusBar = in != null
+                // Its inset, and the height the phone's own status bar uses (which
+                // some, realme's, make taller than the inset it reports).
+                int inset = in != null
                         ? in.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top : 0;
+                int res = getResources().getIdentifier("status_bar_height", "dimen", "android");
+                int own = res != 0 ? getResources().getDimensionPixelSize(res) : 0;
+                final int statusBar = Math.max(inset, own);
+                final String screenInfo = "window " + (r - l) + "x" + (b - t) + ", cutout " + hole
+                        + ", status bar inset " + inset + ", status_bar_height " + own;
                 Paths.saveScreen(MainActivity.this, r - l, b - t);
                 final android.graphics.Rect cutout = hole;
                 File a17 = Paths.a17(MainActivity.this);
                 new Thread(() -> {
                     if (Paths.installed(MainActivity.this)) {
                         CutoutOverlay.write(MainActivity.this, a17, cutout, statusBar);
+                        try (java.io.FileWriter w = new java.io.FileWriter(new File(a17, "screen.txt"))) {
+                            w.write(screenInfo + "\n");
+                        } catch (java.io.IOException e) {
+                            // only for the log screen
+                        }
                     }
                     ui.post(MainActivity.this::begin);
                 }, "a17-cutout").start();

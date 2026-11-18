@@ -62,6 +62,10 @@ public final class LogActivity extends Activity {
 
     private String collect(int bytes) {
         StringBuilder sb = new StringBuilder();
+        // The screen Android 17 was given (MainActivity: size, cutout, status bar)
+        for (String l : LogTail.lines(new File(MainActivity.Paths.a17(this), "screen.txt"), 1024)) {
+            sb.append("== screen: ").append(l).append('\n');
+        }
         List<String> boot = LogTail.lines(LogTail.bootLog(this), 4096);
         sb.append("== nboot.log (end)\n");
         for (String l : boot) if (!l.contains("ctl.interface_start")) sb.append(l).append('\n');
