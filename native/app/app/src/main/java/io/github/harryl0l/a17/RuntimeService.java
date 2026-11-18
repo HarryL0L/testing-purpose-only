@@ -5,7 +5,11 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.BatteryManager;
 import android.os.IBinder;
 
 /**
@@ -37,15 +41,29 @@ public final class RuntimeService extends Service {
                 .addAction(new Notification.Action.Builder(null, "Log",
                         PendingIntent.getActivity(this, 2, new Intent(this, LogActivity.class),
                                 PendingIntent.FLAG_IMMUTABLE)).build())
+                .addAction(new Notification.Action.Builder(null, "Import file",
+                        PendingIntent.getActivity(this, 3, new Intent(this, ImportActivity.class),
+                                PendingIntent.FLAG_IMMUTABLE)).build())
                 .addAction(new Notification.Action.Builder(null, "Stop", stop).build())
                 .setOngoing(true)
                 .build();
         startForeground(1, n);
+        String a17 = MainActivity.Paths.a17(this).getAbsolutePath();
+        if (battery == null) {
+            battery = new BroadcastReceiver() {
+                @Override public void onReceive(Context c, Intent i) { writeBattery(a17, i); }
+            };
+            Intent sticky = registerReceiver(battery, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if (sticky != null) writeBattery(a17, sticky);
+        }
         if (!Native.running()) {
-            String dir = MainActivity.Paths.a17(this).getAbsolutePath();
+            String dir = a17;
             new Thread(() -> {
                 installUpdates(dir);
-                Native.start(dir, new String[] {"ro.input.video_enabled=false"});
+                patchNzygote(dir);
+                Native.start(dir, new String[] {"ro.input.video_enabled=false",
+                        // the phone's time zone (the clock is the phone's already)
+                        "persist.sys.timezone=" + java.util.TimeZone.getDefault().getID()});
             },
                     "a17-start").start();
         }
@@ -84,8 +102,58 @@ public final class RuntimeService extends Service {
         }
     }
 
+    private BroadcastReceiver battery;
+
+    /**
+     * The phone's battery for Android 17's battery HAL (napexd's nmode.Health),
+     * in BatteryManager's own numbers.
+     */
+    private void writeBattery(String dir, Intent i) {
+        BatteryManager bm = getSystemService(BatteryManager.class);
+        int scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+        int level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, 50);
+        String s = "level=" + (scale > 0 ? level * 100 / scale : level)
+                + "\nstatus=" + i.getIntExtra(BatteryManager.EXTRA_STATUS, 1)
+                + "\nhealth=" + i.getIntExtra(BatteryManager.EXTRA_HEALTH, 2)
+                + "\nplugged=" + i.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
+                + "\npresent=" + (i.getBooleanExtra(BatteryManager.EXTRA_PRESENT, true) ? 1 : 0)
+                + "\nvoltage=" + i.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 3800)
+                + "\ntemperature=" + i.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 250)
+                + "\ncurrent_now=" + bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+                + "\ncurrent_average=" + bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE)
+                + "\ncharge_counter=" + bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+                + "\n";
+        java.io.File dst = new java.io.File(dir, "root/data/local/tmp/nbattery");
+        java.io.File tmp = new java.io.File(dir, "root/data/local/tmp/nbattery.new");
+        if (!dst.getParentFile().isDirectory()) return;
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) {
+            out.write(s.getBytes());
+        } catch (java.io.IOException e) {
+            return;
+        }
+        tmp.setReadable(true, false);
+        tmp.renameTo(dst);
+    }
+
+    /**
+     * Older roots' nzygote starts the image's battery HAL (cuttlefish's, a fixed
+     * 85%, always charging); napexd serves the phone's battery in its place.
+     */
+    private static void patchNzygote(String dir) {
+        java.io.File f = new java.io.File(dir, "root/system/bin/nzygote");
+        String line = "    /apex/com.google.cf.health/bin/hw/android.hardware.health-service.cuttlefish \\\n";
+        try {
+            String s = new String(java.nio.file.Files.readAllBytes(f.toPath()));
+            if (!s.contains(line)) return;
+            java.nio.file.Files.write(f.toPath(), s.replace(line, "").getBytes());
+        } catch (java.io.IOException e) {
+            android.util.Log.e("a17", "can't update nzygote", e);
+        }
+    }
+
     @Override
     public void onDestroy() {
+        if (battery != null) unregisterReceiver(battery);
         Native.stop(MainActivity.Paths.a17(this).getAbsolutePath());
         super.onDestroy();
     }

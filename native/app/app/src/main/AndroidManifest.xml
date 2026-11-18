@@ -22,6 +22,23 @@
         </activity>
         <activity android:name=".LogActivity" android:exported="false"
             android:theme="@android:style/Theme.DeviceDefault" />
+        <activity android:name=".ImportActivity" android:exported="true"
+            android:label="Android 17"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter android:label="Copy to Android 17">
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter android:label="Install in Android 17">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/vnd.android.package-archive" />
+            </intent-filter>
+        </activity>
         <service android:name=".RuntimeService" android:exported="false" />
     </application>
 </manifest>

@@ -99,7 +99,6 @@ surfaceflinger </dev/null >/dev/null 2>&1 &
 # Vendor HALs that need no hardware (the image's software ones, from its
 # APEXes), and keystore2 on top of KeyMint.
 for hal in \\
-    /apex/com.google.cf.health/bin/hw/android.hardware.health-service.cuttlefish \\
     /apex/com.android.hardware.keymint/bin/hw/android.hardware.security.keymint-service.nonsecure \\
     /apex/com.android.hardware.gatekeeper/bin/hw/android.hardware.gatekeeper-service.nonsecure \\
     /apex/com.android.hardware.authsecret/bin/hw/android.hardware.authsecret-service.example \\

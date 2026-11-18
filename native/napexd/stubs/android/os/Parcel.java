@@ -9,6 +9,10 @@ package android.os; public final class Parcel {
   public void writeString(String s) {}
   public int readInt() { return 0; }
   public void writeInt(int v) {}
+  public void writeLong(long v) {}
+  public void writeBoolean(boolean v) {}
+  public int dataPosition() { return 0; }
+  public void setDataPosition(int p) {}
   public IBinder readStrongBinder() { return null; }
   public void writeStrongBinder(IBinder b) {}
   public void writeRawFileDescriptor(java.io.FileDescriptor fd) {}

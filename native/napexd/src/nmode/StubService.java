@@ -62,6 +62,9 @@ public class StubService extends Binder {
         // has no room for our socket binder), so C2Store answers instead, with
         // no codecs. (Not a command line argument: older boot scripts get it too.)
         ServiceManager.addService(C2Store.STORE + "/software", new C2Store());
+        // The battery HAL with the phone's battery (Health): the image's reports
+        // a fixed one. nzygote no longer starts that one (the app patches it out).
+        ServiceManager.addService(Health.NAME, new Health());
         Looper.loop();
     }
 }
