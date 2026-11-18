@@ -6,6 +6,7 @@ package android.os; public final class Parcel {
   public void writeNoException() {}
   public void readException() {}
   public String readString() { return null; }
+  public String[] createStringArray() { return null; }
   public void writeString(String s) {}
   public int readInt() { return 0; }
   public void writeInt(int v) {}

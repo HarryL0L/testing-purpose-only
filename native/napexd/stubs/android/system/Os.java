@@ -9,4 +9,5 @@ package android.system; public final class Os {
   public static int sendto(java.io.FileDescriptor fd, byte[] b, int off, int n, int flags, java.net.InetAddress a, int port) throws ErrnoException, java.net.SocketException { return 0; }
   public static int recvfrom(java.io.FileDescriptor fd, byte[] b, int off, int n, int flags, java.net.InetSocketAddress src) throws ErrnoException, java.net.SocketException { return 0; }
   public static void setsockoptTimeval(java.io.FileDescriptor fd, int level, int opt, StructTimeval v) throws ErrnoException {}
+  public static void chown(String path, int uid, int gid) throws ErrnoException {}
 }

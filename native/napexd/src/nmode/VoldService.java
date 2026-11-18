@@ -67,11 +67,41 @@ public class VoldService extends StubService {
                 mount(id, user, callback);
                 break;
             }
+            case SETUP_APP_DIR:
+            case FIXUP_APP_DIR: {
+                // An app's own folders on shared storage (Android/data/<pkg>/
+                // cache, ...): apps ask vold for them (they can't create
+                // them through FUSE themselves), and get null dirs without.
+                data.enforceInterface(mDescriptor);
+                appDir(data.readString(), data.readInt());
+                break;
+            }
+            case ENSURE_APP_DIRS_CREATED: {
+                data.enforceInterface(mDescriptor);
+                String[] paths = data.createStringArray();
+                int uid = data.readInt();
+                if (paths != null) for (String path : paths) appDir(path, uid);
+                break;
+            }
             default:
                 return super.onTransact(code, data, reply, flags);
         }
         if ((flags & IBinder.FLAG_ONEWAY) == 0 && reply != null) reply.writeNoException();
         return true;
+    }
+
+    private static final int SETUP_APP_DIR = 23, FIXUP_APP_DIR = 24, ENSURE_APP_DIRS_CREATED = 25;
+
+    private void appDir(String path, int uid) {
+        if (path == null) return;
+        java.io.File f = new java.io.File(path);
+        f.mkdirs();
+        // The app's own, as vold makes them (libc records the owner)
+        try {
+            android.system.Os.chown(path, uid, uid);
+        } catch (Exception e) {
+            log("chown " + path + ": " + e);
+        }
     }
 
     // VolumeBase::mount for an emulated volume, as vold reports it.
