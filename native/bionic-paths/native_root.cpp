@@ -220,6 +220,15 @@ static void nr_fake_selinuxfs(const char* path, struct statfs* buf) {
   if (path != nullptr && nr_root(&rl) != nullptr && nr_under(path, "/sys/fs/bpf", 11)) {
     buf->f_type = kBpfFsMagic;
   }
+  // /system shares the phone's data partition with /data. Storage settings
+  // add the two sizes, which would count that partition twice (a 256 GB
+  // phone showed 512 GB). Report /system as a full read-only 4 GB image.
+  if (path != nullptr && nr_root(&rl) != nullptr && nr_under(path, "/system", 7) &&
+      buf->f_bsize > 0) {
+    buf->f_blocks = (4ULL << 30) / buf->f_bsize;
+    buf->f_bfree = 0;
+    buf->f_bavail = 0;
+  }
 }
 
 // Bytes needed to map `path` (see nr_map), or 0 when it stays as it is.
