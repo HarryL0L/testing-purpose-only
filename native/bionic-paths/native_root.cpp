@@ -881,6 +881,14 @@ extern "C" int __faccessat(int fd, const char* path, int mode) {
     errno = EROFS;
     return -1;
   }
+  if (r == 0 && (mode & W_OK) && path != nullptr && nr_ids() && g_ids.e % 100000 >= 10000 &&
+      nr_under(path, "/data/app", 9) && strlen(path) > 10) {
+    // Installed APKs belong to the system (0644, uid 1000) on a device: an
+    // app can't write its own, and ART refuses one it could ("Writable dex
+    // file"). Here every file is the host app's, so say what a device says.
+    errno = EACCES;
+    return -1;
+  }
   return r;
 }
 
