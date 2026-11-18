@@ -80,6 +80,11 @@ public final class RuntimeService extends Service {
     private void installUpdates(String dir) {
         String[][] files = {
             {"nbinder", "root/system/bin/nbinder"},
+            // our bionic (one build: libc, libdl, libm and the linker together)
+            {"libc.so", "root/apex/com.android.runtime/lib64/bionic/libc.so"},
+            {"libdl.so", "root/apex/com.android.runtime/lib64/bionic/libdl.so"},
+            {"libm.so", "root/apex/com.android.runtime/lib64/bionic/libm.so"},
+            {"linker64", "root/apex/com.android.runtime/bin/linker64"},
             // vold's stand-in (shared storage) and the codec store's (napexd)
             {"napexd.jar", "root/system/framework/napexd.jar"},
             // A one-off check at start of MediaProvider's FUSE library on this
