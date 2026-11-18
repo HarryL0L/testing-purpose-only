@@ -35,6 +35,7 @@
 #include <condition_variable>
 #include <map>
 #include <set>
+#include <functional>
 #include <mutex>
 #include <thread>
 
@@ -141,9 +142,11 @@ std::shared_ptr<Mapped> Import(const NativeHandle& nh) {
 // may draw into it again.
 class Viewer {
  public:
-  void Start(int32_t w, int32_t h, int32_t dpi, int32_t fps) {
+  // on_connect: called for each new viewer (to show it the current frame)
+  void Start(int32_t w, int32_t h, int32_t dpi, int32_t fps, std::function<void()> on_connect) {
     hello_ = {NVIEWER_HELLO, NVIEWER_VERSION, (uint32_t)w, (uint32_t)h, (uint32_t)dpi,
               (uint32_t)fps};
+    on_connect_ = std::move(on_connect);
     std::thread([this] { Listen(); }).detach();
   }
 
@@ -213,10 +216,15 @@ class Viewer {
         close(c);
         continue;
       }
-      std::lock_guard<std::mutex> g(mu_);
-      DropLocked();
-      fd_ = c;
-      LOG("viewer connected");
+      {
+        std::lock_guard<std::mutex> g(mu_);
+        DropLocked();
+        fd_ = c;
+        LOG("viewer connected");
+      }
+      // The app comes back from the background with a new surface: until
+      // something changes, SurfaceFlinger presents nothing new.
+      if (on_connect_) on_connect_();
     }
   }
 
@@ -233,6 +241,7 @@ class Viewer {
   int fd_ = -1;
   std::set<uint64_t> sent_;  // buffers whose fd this viewer has
   nviewer_hello hello_ = {};
+  std::function<void()> on_connect_;
 };
 
 class Display {
@@ -243,14 +252,19 @@ class Display {
     dpi = Prop("native.display.dpi", 420);
     fps = Prop("native.display.fps", 60);
     period = 1000000000 / fps;
-    viewer_.Start(width, height, dpi, fps);
+    viewer_.Start(width, height, dpi, fps, [this] { Resend(); });
   }
 
   int32_t width, height, dpi, fps, period;
 
   // Hands the client target to the viewer, or copies it into the frame file.
-  void Present(const Mapped& m) {
+  void Present(const std::shared_ptr<Mapped>& target) {
+    const Mapped& m = *target;
     if (m.h.real_format != 1 && m.h.real_format != 2 && m.h.real_format != 5) return;
+    {
+      std::lock_guard<std::mutex> g(last_mu_);
+      last_ = target;
+    }
     frames_++;
     if (frames_ == 1 || frames_ % 600 == 0) LOG("presented frame %u", frames_);
     if (viewer_.Offer(m, frames_)) return;
@@ -295,6 +309,18 @@ class Display {
     return true;
   }
 
+  // The last frame again, for a viewer that just connected.
+  void Resend() {
+    std::shared_ptr<Mapped> m;
+    {
+      std::lock_guard<std::mutex> g(last_mu_);
+      m = last_;
+    }
+    if (m) viewer_.Offer(*m, frames_);
+  }
+
+  std::mutex last_mu_;
+  std::shared_ptr<Mapped> last_;
   uint8_t* fb_ = nullptr;
   size_t fb_len_ = 0;
   uint32_t frames_ = 0;
@@ -385,7 +411,7 @@ class Client : public BnComposerClient {
           if (comp != Composition::CLIENT) comp = Composition::CLIENT;
       }
       if (c.presentDisplay) {
-        if (target_) display_.Present(*target_);
+        if (target_) display_.Present(target_);
         results->emplace_back(PresentFence{kDisplay, ScopedFileDescriptor(SignaledFence()), std::nullopt});
         ReleaseFences rf;
         rf.display = kDisplay;

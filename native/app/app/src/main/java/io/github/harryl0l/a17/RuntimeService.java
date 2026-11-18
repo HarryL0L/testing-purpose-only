@@ -90,6 +90,9 @@ public final class RuntimeService extends Service {
     private void installUpdates(String dir) {
         String[][] files = {
             {"nbinder", "root/system/bin/nbinder"},
+            // the composer HAL (it resends the last frame to a viewer that
+            // reconnects, e.g. after the app was in the background)
+            {"ncomposer", "root/system/bin/ncomposer"},
             // our bionic (one build: libc, libdl, libm and the linker together)
             {"libc.so", "root/apex/com.android.runtime/lib64/bionic/libc.so"},
             {"libdl.so", "root/apex/com.android.runtime/lib64/bionic/libdl.so"},
