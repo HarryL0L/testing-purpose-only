@@ -110,14 +110,19 @@ public class VoldService extends StubService {
 
     // The kernel's first FUSE request, which a FUSE server waits for before it
     // counts as started (MediaProvider waits for that): FUSE_INIT, protocol
-    // 7.31, no features asked. Its reply, and anything after, is read and
+    // 7.31, large requests allowed. Its reply, and anything after, is read and
     // dropped, on a thread of its own. If no reply comes in 4 s (MediaProvider
     // gives up at 5), its threads' stacks are saved to show where it is stuck.
     private static void fuseInit(FileDescriptor fd) {
         java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(104).order(java.nio.ByteOrder.LITTLE_ENDIAN);
         b.putInt(104).putInt(26).putLong(1).putLong(0);  // fuse_in_header: len, FUSE_INIT, unique, nodeid
         b.putInt(0).putInt(0).putInt(0).putInt(0);       // uid, gid, pid, extlen+padding
-        b.putInt(7).putInt(31).putInt(128 * 1024).putInt(0);  // fuse_init_in: major, minor, max_readahead, flags
+        // fuse_init_in: major, minor, max_readahead, flags. FUSE_MAX_PAGES lets
+        // requests reach 1 MB + 4 KB, more than an app's pipe may hold: libfuse
+        // then reads the socket with read() instead of splice(), which this
+        // socket doesn't support on every kernel (4.19's refuses; the session
+        // ended right after FUSE_INIT).
+        b.putInt(7).putInt(31).putInt(128 * 1024).putInt(1 << 22);
         final boolean[] replied = {false};
         Thread t = new Thread(() -> {
             byte[] buf = new byte[256 * 1024];

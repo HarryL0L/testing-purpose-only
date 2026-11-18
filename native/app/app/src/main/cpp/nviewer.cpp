@@ -351,7 +351,7 @@ void Supervise(std::string dir, std::vector<std::string> props) {
   while (waitpid(b, &st, 0) < 0 && errno == EINTR) {
   }
   // MediaProvider's FUSE library on this kernel, once (it ends itself
-  // within 3 s): its own report of how a FUSE session over a socket goes.
+  // within 1 s): its own report of how a FUSE session over a socket goes.
   std::string ft = dir + "/root/data/local/tmp/fusetest.log";
   unlink(ft.c_str());
   pid_t t = Spawn(dir, {"/system/bin/sh", dir + "/run.sh", "/data/local/tmp/fusetest/fusetest"}, ft);

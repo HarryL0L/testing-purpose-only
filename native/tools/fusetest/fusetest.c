@@ -25,12 +25,16 @@ extern int fuse_session_loop_mt_312(void*, void*);
 static int fds[2];
 static void on_init(void *ud, void *conn) {
   *(uint32_t*)((char*)conn + 0xc) = MAX_READ;  // fuse_conn_info.max_read, as MediaProvider sets it
-  fprintf(stderr, "fusetest: init called\n");
+  // As MediaProvider's init: every optional feature libfuse offers, but
+  // splice writes (want |= capable & ~SPLICE_WRITE).
+  uint64_t cap = *(uint64_t*)((char*)conn + 0x18), *want = (uint64_t*)((char*)conn + 0x20);
+  if (getenv("FT_PLAIN") == NULL) *want |= cap & ~0x80ull;
+  fprintf(stderr, "fusetest: init called, capable 0x%llx, want 0x%llx\n", (unsigned long long)cap, (unsigned long long)*want);
 }
 static void on_write_buf(void) {}
 static void *kernel(void *a) {
   unsigned char b[104] = {0}; uint32_t *w = (uint32_t*)b;
-  w[0] = 104; w[1] = 26; w[2] = 1; w[10] = 7; w[11] = 31; w[12] = 128 * 1024;
+  w[0] = 104; w[1] = 26; w[2] = 1; w[10] = 7; w[11] = 31; w[12] = 128 * 1024; if (!getenv("FT_NOMAXPAGES")) w[13] = 1 << 22;  // FUSE_MAX_PAGES
   fprintf(stderr, "fusetest: FUSE_INIT written: %zd\n", write(fds[0], b, 104));
   char r[4096]; ssize_t n;
   while ((n = read(fds[0], r, sizeof r)) > 0) fprintf(stderr, "fusetest: reply %zd bytes, error %d\n", n, ((int32_t*)r)[1]);
@@ -38,14 +42,14 @@ static void *kernel(void *a) {
   return 0;
 }
 static void on_alarm(int s) {
-  const char m[] = "fusetest: session still running after 3 s: OK\n";
+  const char m[] = "fusetest: session still running after 1 s: OK\n";
   write(2, m, sizeof m - 1);
   _exit(0);
 }
 int main(void) {
   signal(SIGALRM, on_alarm);
-  alarm(3);
-  if (socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) != 0) { perror("fusetest: socketpair"); return 1; }
+  alarm(1);
+  if (socketpair(AF_UNIX, getenv("FT_STREAM") ? SOCK_STREAM : SOCK_SEQPACKET, 0, fds) != 0) { perror("fusetest: socketpair"); return 1; }
   char opt[32]; snprintf(opt, sizeof opt, "-omax_read=%d", MAX_READ);
   char *av[] = {"/storage/emulated", "-odebug", opt, NULL};
   struct fuse_args args = {3, av, 0};
