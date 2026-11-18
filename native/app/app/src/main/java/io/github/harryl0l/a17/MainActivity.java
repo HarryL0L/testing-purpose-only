@@ -74,12 +74,15 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                 if (in != null && in.getDisplayCutout() != null) {
                     hole = in.getDisplayCutout().getBoundingRectTop();
                 }
+                // The phone's status bar (hidden here, so regardless of visibility).
+                final int statusBar = in != null
+                        ? in.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top : 0;
                 Paths.saveScreen(MainActivity.this, r - l, b - t);
                 final android.graphics.Rect cutout = hole;
                 File a17 = Paths.a17(MainActivity.this);
                 new Thread(() -> {
                     if (Paths.installed(MainActivity.this)) {
-                        CutoutOverlay.write(MainActivity.this, a17, cutout);
+                        CutoutOverlay.write(MainActivity.this, a17, cutout, statusBar);
                     }
                     ui.post(MainActivity.this::begin);
                 }, "a17-cutout").start();

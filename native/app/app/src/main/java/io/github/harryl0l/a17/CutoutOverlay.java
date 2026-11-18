@@ -22,8 +22,11 @@ final class CutoutOverlay {
     private static final String APK = "root/product/overlay/A17Cutout/A17Cutout.apk";
     private static final int SPEC_LEN = 240, RECT_LEN = 120;
 
-    /** The cutout at the top of the window, in its pixels; null removes the overlay. */
-    static void write(Context c, File a17, Rect hole) {
+    /**
+     * The cutout at the top of the window, in its pixels (null removes the
+     * overlay), and the phone's status bar height (0: Android 17's own).
+     */
+    static void write(Context c, File a17, Rect hole, int statusBar) {
         File dst = new File(a17, APK);
         if (hole == null || hole.isEmpty()) {
             dst.delete();
@@ -43,6 +46,10 @@ final class CutoutOverlay {
             byte[] b = read(c.getAssets().open("cutout.apk"));
             replace(b, repeat('X', SPEC_LEN), spec);
             replace(b, repeat('Y', RECT_LEN), rect);
+            // status_bar_height_portrait: as tall as the phone's own, at least
+            // the cutout (a dimension in px: the value << 8).
+            int px = Math.max(statusBar, hole.bottom);
+            replaceDimen(b, 1234, px);
             fixCrc(b, "resources.arsc");
             dst.getParentFile().mkdirs();
             File tmp = new File(dst.getPath() + ".new");
@@ -84,6 +91,19 @@ final class CutoutOverlay {
             return;
         }
         throw new IllegalStateException("no placeholder in the cutout template");
+    }
+
+    // A dimension Res_value {size 8, 0, TYPE_DIMENSION, data} in px.
+    private static void replaceDimen(byte[] b, int placeholderPx, int px) {
+        byte[] ph = {8, 0, 0, 5, 0, 0, 0, 0};
+        ByteBuffer.wrap(ph, 4, 4).order(ByteOrder.LITTLE_ENDIAN).putInt(placeholderPx << 8);
+        outer:
+        for (int i = 0; i + ph.length <= b.length; i++) {
+            for (int k = 0; k < ph.length; k++) if (b[i + k] != ph[k]) continue outer;
+            ByteBuffer.wrap(b, i + 4, 4).order(ByteOrder.LITTLE_ENDIAN).putInt(px << 8);
+            return;
+        }
+        throw new IllegalStateException("no status bar height in the cutout template");
     }
 
     // The patched entry is stored (not compressed): its CRC in both zip headers.
