@@ -3,7 +3,8 @@
 #
 #   build.sh OUT ROOT CRT
 #
-#   OUT   where nalloc, mapper.native.so and ncomposer go
+#   OUT   where nalloc, mapper.native.so, ncomposer, gralloc.default.so and
+#         libhardware.so go
 #   ROOT  the image's files: ROOT/system/lib64, ROOT/vendor/lib64 and
 #         ROOT/apex/com.android.runtime/lib64/bionic (only linked against)
 #   CRT   bionic's crtbegin_dynamic.o, crtend_android.o, crtbegin_so.o, crtend_so.o
@@ -101,11 +102,6 @@ O=$W/obj && mkdir -p "$O"
   "$CRT/crtbegin_so.o" "$O/mapper.o" "$CRT/crtend_so.o" -o "$OUT/mapper.native.so" \
   "$V/libcutils.so" -llog "$V/libc++.so" -lc -lm -ldl
 
-# gralloc.native.so: a gralloc0 module, only for Mesa's YUV buffer layouts
-"${CXX[@]}" -fvisibility=hidden -c "$HERE/gralloc.cpp" -o "$O/gralloc.o"
-"${LINK[@]}" -shared -Wl,-soname,gralloc.native.so -Wl,--no-undefined \
-  "$CRT/crtbegin_so.o" "$O/gralloc.o" "$CRT/crtend_so.o" -o "$OUT/gralloc.native.so" -lc
-
 # ncomposer: a system program (the composer3 NDK library is only in /system)
 "${CXX[@]}" -c "$HERE/ncomposer.cpp" -o "$O/ncomposer.o"
 "${LINK[@]}" -L"$S" "${EXE[@]}" "$O/ncomposer.o" "$CRT/crtend_android.o" -o "$OUT/ncomposer" \
@@ -113,4 +109,14 @@ O=$W/obj && mkdir -p "$O"
   "$S/android.hardware.graphics.common-V7-ndk.so" "$S/android.hardware.drm.common-V1-ndk.so" \
   -lbinder_ndk -llog "$S/libc++.so" -lc -lm -ldl
 
-ls -la "$OUT/nalloc" "$OUT/mapper.native.so" "$OUT/gralloc.native.so" "$OUT/ncomposer"
+# gralloc.default.so and libhardware.so: for the Vulkan driver APEX (PanVK's
+# YUV buffers); libc only
+"${CXX[@]}" -fvisibility=hidden -c "$HERE/gralloc.cpp" -o "$O/gralloc.o"
+"${LINK[@]}" -shared -Wl,-soname,gralloc.default.so -Wl,--no-undefined \
+  "$CRT/crtbegin_so.o" "$O/gralloc.o" "$CRT/crtend_so.o" -o "$OUT/gralloc.default.so" -lc
+"${CXX[@]}" -fvisibility=hidden -c "$HERE/hardware.cpp" -o "$O/hardware.o"
+"${LINK[@]}" -shared -Wl,-soname,libhardware.so -Wl,--no-undefined \
+  "$CRT/crtbegin_so.o" "$O/hardware.o" "$CRT/crtend_so.o" -o "$OUT/libhardware.so" -lc -ldl
+
+ls -la "$OUT/nalloc" "$OUT/mapper.native.so" "$OUT/ncomposer" "$OUT/gralloc.default.so" \
+  "$OUT/libhardware.so"

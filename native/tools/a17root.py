@@ -395,6 +395,11 @@ RUNTIME = [  # our build, from MINI_DIR, over the image's
     "system/bin/ncomposer",
     "vendor/etc/vintf/manifest/native-gfx.xml",
     "vendor/etc/permissions/native-unavailable-features.xml",
+    # PanVK's gralloc0 module (YUV buffers) and the libhardware that finds it
+    "apex/com.google.cf.vulkan/lib64/hw/gralloc.default.so",
+    "apex/com.google.cf.vulkan/lib64/libhardware.so",
+    # native/naudio: the audio HAL's tinyalsa, to the phone's speaker
+    "apex/com.android.hardware.audio/lib64/libtinyalsav2.so",
 ]
 
 

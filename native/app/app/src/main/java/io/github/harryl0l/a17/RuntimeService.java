@@ -85,9 +85,6 @@ public final class RuntimeService extends Service {
             {"ncomposer", "root/system/bin/ncomposer"},
             // the property service (it reports sys.powerctl: Power off, Restart)
             {"nprops", "root/system/bin/nprops"},
-            // a gralloc0 module for Mesa (PanVK): YUV buffer layouts, so video
-            // frames can be drawn (ro.hardware.gralloc=native selects it)
-            {"gralloc.native.so", "root/vendor/lib64/hw/gralloc.native.so"},
             // our bionic (one build: libc, libdl, libm and the linker together)
             {"libc.so", "root/apex/com.android.runtime/lib64/bionic/libc.so"},
             {"libdl.so", "root/apex/com.android.runtime/lib64/bionic/libdl.so"},
@@ -95,6 +92,12 @@ public final class RuntimeService extends Service {
             {"linker64", "root/apex/com.android.runtime/bin/linker64"},
             // vold's stand-in (shared storage) and the codec store's (napexd)
             {"napexd.jar", "root/system/framework/napexd.jar"},
+            // video: PanVK's gralloc0 module (YUV buffers, else SurfaceFlinger
+            // aborts on the first frame) and the libhardware that finds it
+            {"gralloc.default.so", "root/apex/com.google.cf.vulkan/lib64/hw/gralloc.default.so"},
+            {"libhardware.so", "root/apex/com.google.cf.vulkan/lib64/libhardware.so"},
+            // sound: the audio HAL's tinyalsa, to naudio (the phone's speaker)
+            {"libtinyalsav2.so", "root/apex/com.android.hardware.audio/lib64/libtinyalsav2.so"},
             // A one-off check at start of MediaProvider's FUSE library on this
             // kernel (tools/fusetest); libfuse.so is MediaProvider's own.
             {"fusetest", "root/data/local/tmp/fusetest/fusetest"},
@@ -200,6 +203,42 @@ public final class RuntimeService extends Service {
             + "mediametrics </dev/null >/dev/null 2>&1 &\n"
             + "cameraserver </dev/null >/dev/null 2>&1 &\n";
 
+    // SurfaceFlinger and zygote restart when they end, as init restarts them
+    // (native/tools/mini_root.py has the same lines): with SurfaceFlinger gone,
+    // system_server waits for it forever and its watchdog kills it.
+    private static final String SURFACEFLINGER = "surfaceflinger </dev/null >/dev/null 2>&1 &\n";
+    private static final String SURFACEFLINGER_RESTART =
+            "# SurfaceFlinger restarts when it ends, and zygote with it, as init does\n"
+            + "# (surfaceflinger.rc: onrestart restart zygote): system_server and the apps\n"
+            + "# hold the old one's layers, and system_server waits for it forever (its\n"
+            + "# watchdog kills it after a minute, PowerManagerService blocked). Zygote's\n"
+            + "# children (system_server, the apps) go; zygote follows system_server and\n"
+            + "# comes back (below).\n"
+            + "(while true; do\n"
+            + "  surfaceflinger </dev/null >/dev/null 2>&1\n"
+            + "  z=$(cat /dev/socket/.zygote 2>/dev/null)\n"
+            + "  [ -n \"$z\" ] && for f in $(grep -lx \"PPid:[[:space:]]*$z\" /proc/[0-9]*/status 2>/dev/null); do\n"
+            + "    f=${f%/status}; kill -9 ${f#/proc/}\n"
+            + "  done\n"
+            + "  sleep 1\n"
+            + "done) &\n";
+    private static final String ZYGOTE =
+            "exec nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\\n"
+            + "    /system/bin/app_process64 -Xzygote /system/bin --zygote --start-system-server \\\n"
+            + "    --socket-name=zygote </dev/null >/dev/null 2>&1\n";
+    private static final String ZYGOTE_RESTART =
+            "# Zygote restarts when it ends (it follows system_server: the watchdog, a\n"
+            + "# crash, SurfaceFlinger's restart above), as init restarts it. Its pid is for\n"
+            + "# SurfaceFlinger's restart.\n"
+            + "while true; do\n"
+            + "  nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\\n"
+            + "      /system/bin/app_process64 -Xzygote /system/bin --zygote --start-system-server \\\n"
+            + "      --socket-name=zygote </dev/null >/dev/null 2>&1 &\n"
+            + "  echo $! >/dev/socket/.zygote\n"
+            + "  wait $!\n"
+            + "  sleep 1\n"
+            + "done\n";
+
     /**
      * The phone's battery for Android 17's battery HAL (napexd's nmode.Health),
      * in BatteryManager's own numbers.
@@ -262,6 +301,8 @@ public final class RuntimeService extends Service {
             if (!t.contains("mediaextractor </dev/null"))
                 t = t.replace("mediaserver </dev/null", EXTRACTOR + "mediaserver </dev/null");
             if (!t.contains("nmode.NetService")) t = t.replace(STUBS, NET_SERVICE + STUBS);
+            if (!t.contains("/dev/socket/.zygote") && t.contains(SURFACEFLINGER) && t.contains(ZYGOTE))
+                t = t.replace(SURFACEFLINGER, SURFACEFLINGER_RESTART).replace(ZYGOTE, ZYGOTE_RESTART);
             if (t.equals(s)) return;
             java.nio.file.Files.write(f.toPath(), t.getBytes());
         } catch (java.io.IOException e) {
@@ -289,7 +330,6 @@ public final class RuntimeService extends Service {
         // PackageManager "recovered" by wiping the app's data.
         props.add("persist.zygote.app_data_isolation=false");
         props.add("persist.zygote.vold_app_data_isolation=false");
-        props.add("ro.hardware.gralloc=native");
         Native.start(dir, props.toArray(new String[0]));
         if (!watching) {
             watching = true;

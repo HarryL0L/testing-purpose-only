@@ -99,7 +99,20 @@ installd </dev/null >/dev/null 2>&1 &
 # (ncomposer, frames to /data/vendor/nfb) and SurfaceFlinger.
 /vendor/bin/nalloc </dev/null >/dev/null 2>&1 &
 ncomposer </dev/null >/dev/null 2>&1 &
-surfaceflinger </dev/null >/dev/null 2>&1 &
+# SurfaceFlinger restarts when it ends, and zygote with it, as init does
+# (surfaceflinger.rc: onrestart restart zygote): system_server and the apps
+# hold the old one's layers, and system_server waits for it forever (its
+# watchdog kills it after a minute, PowerManagerService blocked). Zygote's
+# children (system_server, the apps) go; zygote follows system_server and
+# comes back (below).
+(while true; do
+  surfaceflinger </dev/null >/dev/null 2>&1
+  z=$(cat /dev/socket/.zygote 2>/dev/null)
+  [ -n "$z" ] && for f in $(grep -lx "PPid:[[:space:]]*$z" /proc/[0-9]*/status 2>/dev/null); do
+    f=${f%/status}; kill -9 ${f#/proc/}
+  done
+  sleep 1
+done) &
 # Vendor HALs that need no hardware (the image's software ones, from its
 # APEXes), and keystore2 on top of KeyMint.
 for hal in \\
@@ -154,9 +167,17 @@ i=0
 for svc in apexservice vold netd dnsresolver; do
   while ! service check $svc | grep -q ': found' && [ $i -lt 300 ]; do sleep 0.2; i=$((i + 1)); done
 done
-exec nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\
-    /system/bin/app_process64 -Xzygote /system/bin --zygote --start-system-server \\
-    --socket-name=zygote </dev/null >/dev/null 2>&1
+# Zygote restarts when it ends (it follows system_server: the watchdog, a
+# crash, SurfaceFlinger's restart above), as init restarts it. Its pid is for
+# SurfaceFlinger's restart.
+while true; do
+  nsocket zygote:stream:0660 usap_pool_primary:stream:0660 -- \\
+      /system/bin/app_process64 -Xzygote /system/bin --zygote --start-system-server \\
+      --socket-name=zygote </dev/null >/dev/null 2>&1 &
+  echo $! >/dev/socket/.zygote
+  wait $!
+  sleep 1
+done
 """
 
 # selinux_status_t: version 1, sequence 0, enforcing 0, policyload 0, deny_unknown 0
@@ -173,6 +194,12 @@ GFX = {  # image path -> file of native/gfx
     "/system/bin/ncomposer": "ncomposer",
     "/vendor/etc/vintf/manifest/native-gfx.xml": "native-gfx.xml",
     "/vendor/etc/permissions/native-unavailable-features.xml": "native-unavailable-features.xml",
+    # PanVK's gralloc0 module (YUV buffers) and the libhardware that finds it
+    "/apex/com.google.cf.vulkan/lib64/hw/gralloc.default.so": "gralloc.default.so",
+    "/apex/com.google.cf.vulkan/lib64/libhardware.so": "libhardware.so",
+}
+NAUDIO = {  # image path -> file of native/naudio: the audio HAL's tinyalsa (naudio)
+    "/apex/com.android.hardware.audio/lib64/libtinyalsav2.so": "libtinyalsav2.so",
 }
 LIB_DIRS = ["/system/lib64", "/apex/com.android.runtime/lib64/bionic", "/apex/com.android.runtime/lib64"]
 
@@ -355,6 +382,12 @@ def main():
             place(guest, src)
             if guest.endswith(".xml"):
                 os.chmod(os.path.join(root, guest.lstrip("/")), 0o644)
+        else:
+            print("not built:", name)
+    for guest, name in NAUDIO.items():
+        src = os.path.join(built, "naudio", name)
+        if os.path.exists(src):
+            place(guest, src)
         else:
             print("not built:", name)
     for prog in BUILT_PROGRAMS:

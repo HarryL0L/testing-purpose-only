@@ -12,7 +12,8 @@ them orphans on a device without a parent to adopt them, and some phones
 (realme) kill orphaned processes of apps. This process takes them in instead
 (PR_SET_CHILD_SUBREAPER), as init does on a device. Its own output and
 nboot's go to A17_DIR/nboot.log. --stop ends every process running from
-A17_DIR's root (they show as /system/bin/linker64 ..., so pkill -f misses them).
+A17_DIR's root (they show as /system/bin/linker64 ..., so pkill -f misses them)
+and A17_DIR/naudio.
 """
 import ctypes
 import os
@@ -38,7 +39,8 @@ def stop(a17):
                 cmd = open("/proc/%s/cmdline" % pid, "rb").read()
             except OSError:
                 continue
-            if exe.startswith(root) or b"nstart.py\0" + os.fsencode(a17) in cmd or \
+            if exe.startswith(root) or exe == os.path.realpath(os.path.join(a17, "naudio")) or \
+                    b"nstart.py\0" + os.fsencode(a17) in cmd or \
                     (b"nstart.py" in cmd and os.fsencode(os.path.basename(a17)) in cmd):
                 try:
                     os.kill(int(pid), signal.SIGKILL)
@@ -68,6 +70,12 @@ def main():
     print("nstart: nboot (output in %s)" % log.name, flush=True)
     subprocess.run([run, "nboot"] + sys.argv[2:], stdin=subprocess.DEVNULL, stdout=log,
                    stderr=log)
+    # naudio (native/naudio): the audio HAL's streams to the phone's speaker,
+    # when built into A17_DIR ("clang -O2 -o naudio naudio.c -ldl -lpthread")
+    naudio = os.path.join(a17, "naudio")
+    if os.access(naudio, os.X_OK):
+        subprocess.Popen([naudio, os.path.join(a17, "root")], stdin=subprocess.DEVNULL,
+                         stdout=log, stderr=log)
     zygote = subprocess.Popen([run, "nzygote"], stdin=subprocess.DEVNULL, stdout=log, stderr=log)
     print("nstart: zygote started (pid %d); log: %s" %
           (zygote.pid, os.path.join(a17, "root/data/local/tmp/log.txt")), flush=True)

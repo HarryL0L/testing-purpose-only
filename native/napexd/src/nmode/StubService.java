@@ -57,25 +57,14 @@ public class StubService extends Binder {
             System.err.println("nmode: stand-in " + name + " (" + descriptor + ") up");
         }
         // The software codecs' store, which system_server and MediaProvider
-        // wait for by name, forever (on the thread storage needs too, in
-        // system_server). mediaswcodec registers the real one now that libc
-        // skips its seccomp filter; C2Store (no codecs) answers only if it
-        // hasn't after a while (an older boot script, or mediaswcodec died).
-        // Registering it regardless replaced the real store: no video decoder.
-        new Thread(() -> {
-            String store = C2Store.STORE + "/software";
-            for (int i = 0; i < 60 && ServiceManager.checkService(store) == null; i++) {
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    return;
-                }
-            }
-            if (ServiceManager.checkService(store) == null) {
-                ServiceManager.addService(store, new C2Store());
-                System.err.println("nmode: stand-in " + store + " (no mediaswcodec) up");
-            }
-        }, "c2store").start();
+        // wait for by name, forever: on the thread storage needs too, in
+        // system_server. nzygote starts the real one (mediaswcodec, libc skips
+        // its seccomp filter); older boot scripts don't, and C2Store answers
+        // there instead, with no codecs. Never over the real one: addService
+        // replaces, and every codec lookup would then find none. (A real store
+        // registering after this one replaces it in turn.)
+        if (ServiceManager.checkService(C2Store.STORE + "/software") == null)
+            ServiceManager.addService(C2Store.STORE + "/software", new C2Store());
         // The battery HAL with the phone's battery (Health): the image's reports
         // a fixed one. nzygote no longer starts that one (the app patches it out).
         ServiceManager.addService(Health.NAME, new Health());
