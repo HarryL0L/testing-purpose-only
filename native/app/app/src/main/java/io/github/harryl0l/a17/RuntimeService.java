@@ -330,10 +330,32 @@ public final class RuntimeService extends Service {
         // PackageManager "recovered" by wiping the app's data.
         props.add("persist.zygote.app_data_isolation=false");
         props.add("persist.zygote.vold_app_data_isolation=false");
+        Native.stop(dir);  // this app's leftovers, so that what answers below isn't ours
+        if (otherInstance()) {
+            String msg = "Another Android 17 is running on this phone (Termux's?). Stop it"
+                    + " (force-stop Termux) and start again.";
+            android.util.Log.e("a17", msg);
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                    android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show());
+            return;
+        }
         Native.start(dir, props.toArray(new String[0]));
         if (!watching) {
             watching = true;
             new Thread(() -> watchPower(dir), "a17-power").start();
+        }
+    }
+
+    // The viewer's sockets are abstract: one namespace for every app on the
+    // phone. A second Android 17 (Termux's test copy, which restarts itself)
+    // holds @ninput, and this one's input service dies ("Address already in
+    // use").
+    private static boolean otherInstance() {
+        try (android.net.LocalSocket s = new android.net.LocalSocket()) {
+            s.connect(new android.net.LocalSocketAddress("ninput"));
+            return true;
+        } catch (java.io.IOException e) {
+            return false;  // nobody listening
         }
     }
 
