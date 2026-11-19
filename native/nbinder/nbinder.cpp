@@ -1012,8 +1012,16 @@ bool fill_read(Thread* th, size_t read_size, std::string& out, std::vector<int>&
   Proc* proc = th->proc;
   if (read_size < 4) return false;
   put32(out, BR_NOOP);
+  // Decided once, as binder_thread_read() does: a thread that came in with
+  // work of its own (the BR_TRANSACTION_COMPLETE of a oneway call it just
+  // made) gets only that, not a call for the process picked up behind it. A
+  // thread serving a oneway call (activityIdle, with WindowManager's lock
+  // held) that makes a oneway call (scheduleTransaction) otherwise ran an
+  // incoming removeContentProvider nested in it, waiting for
+  // ActivityManager's lock while ActivityManager waited for WindowManager's:
+  // system_server deadlocked and its watchdog killed it.
+  const bool want_proc = thread_wants_proc_work(th);
   while (true) {
-    bool want_proc = thread_wants_proc_work(th);
     WorkList* list = nullptr;
     if (list_has_work(th->todo)) {
       list = &th->todo;
