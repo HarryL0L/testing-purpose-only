@@ -7,7 +7,8 @@
 //   input    records for ninput (socket @ninput)
 //   start    Android 17's processes from the app's files: run.sh nboot, then
 //            run.sh nzygote; this process adopts their orphans (some phones
-//            kill apps' orphaned processes) and reaps them, as init would
+//            kill apps' orphaned processes) and reaps them, as init would; and
+//            naudio (../../../../naudio), the audio HAL's way to the speaker
 //   run      one program from a root (setup: fsck.erofs, linkerconfig, ...),
 //            waited for, its output appended to a log
 //   untar    a root streamed from Termux (tar --xattrs), keeping the owner and
@@ -297,6 +298,11 @@ void SendInput(int kind, int x, int y) {
 
 std::atomic<bool> g_running{false};
 
+// naudio (../../../../naudio/naudio.c): the audio HAL's streams to AAudio, in
+// this process. Once: it outlives Android 17's restarts.
+extern "C" int naudio_run(const char* root);
+std::atomic<bool> g_naudio{false};
+
 pid_t Spawn(const std::string& dir, const std::vector<std::string>& args, const std::string& log) {
   pid_t pid = fork();
   if (pid != 0) return pid;
@@ -361,6 +367,14 @@ void Supervise(std::string dir, std::vector<std::string> props) {
     chmod(bpf.c_str(), 01777);  // bpffs's root mode (ClatCoordinator checks it)
     fprintf(f, "app: BPF filesystem cleared%s\n", failed ? " (with errors)" : "");
     fclose(f);
+  }
+  if (!g_naudio.exchange(true)) {
+    std::string root = dir + "/root";
+    std::thread([root] {
+      int r = naudio_run(root.c_str());
+      LOG("naudio ended (%d)", r);
+      g_naudio = false;
+    }).detach();
   }
   std::vector<std::string> boot = {"/system/bin/sh", dir + "/run.sh", "nboot"};
   boot.insert(boot.end(), props.begin(), props.end());

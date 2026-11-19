@@ -197,6 +197,7 @@ jobs:
           B="$RUNNER_TEMP/imglibs/apex/com.android.runtime/lib64/bionic"
           mkdir -p "$B" && cp built/libc.so built/libdl.so built/libm.so "$B/"
           GFX_WORK="$RUNNER_TEMP/gfxwork" native/gfx/build.sh built/gfx "$RUNNER_TEMP/imglibs" built
+          NAUDIO_WORK="$RUNNER_TEMP/naudiowork" native/naudio/build.sh built/naudio "$RUNNER_TEMP/imglibs" built
           rm -rf "$RUNNER_TEMP/imglibs"
       - name: Assemble
         run: |

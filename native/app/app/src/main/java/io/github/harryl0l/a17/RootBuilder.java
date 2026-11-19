@@ -377,7 +377,7 @@ final class RootBuilder {
             "com.android.hardware.authsecret", "com.android.hardware.power",
             "com.android.hardware.vibrator", "com.google.cf.light", "com.android.hardware.thermal",
             "com.android.hardware.memtrack", "com.google.cf.vulkan", "com.google.cf.input.config",
-            // the example audio HAL (software streams; audio to the host app comes later)
+            // the example audio HAL (its tinyalsa is native/naudio: the phone's speaker)
             "com.android.hardware.audio"));
     // Vendor manifest fragments of HALs native mode doesn't run yet.
     static final String[] INACTIVE_VENDOR_MANIFESTS = {"android.hardware.sensors-multihal.xml",
@@ -479,6 +479,11 @@ final class RootBuilder {
         "system/bin/ncomposer",
         "vendor/etc/vintf/manifest/native-gfx.xml",
         "vendor/etc/permissions/native-unavailable-features.xml",
+        // PanVK's gralloc0 module (YUV buffers) and the libhardware that finds it
+        "apex/com.google.cf.vulkan/lib64/hw/gralloc.default.so",
+        "apex/com.google.cf.vulkan/lib64/libhardware.so",
+        // native/naudio: the audio HAL's tinyalsa, to the phone's speaker
+        "apex/com.android.hardware.audio/lib64/libtinyalsav2.so",
     };
 
     void overlay(File miniRoot, File root) throws IOException {
