@@ -85,6 +85,9 @@ public final class RuntimeService extends Service {
             {"ncomposer", "root/system/bin/ncomposer"},
             // the property service (it reports sys.powerctl: Power off, Restart)
             {"nprops", "root/system/bin/nprops"},
+            // a gralloc0 module for Mesa (PanVK): YUV buffer layouts, so video
+            // frames can be drawn (ro.hardware.gralloc=native selects it)
+            {"gralloc.native.so", "root/vendor/lib64/hw/gralloc.native.so"},
             // our bionic (one build: libc, libdl, libm and the linker together)
             {"libc.so", "root/apex/com.android.runtime/lib64/bionic/libc.so"},
             {"libdl.so", "root/apex/com.android.runtime/lib64/bionic/libdl.so"},
@@ -286,6 +289,7 @@ public final class RuntimeService extends Service {
         // PackageManager "recovered" by wiping the app's data.
         props.add("persist.zygote.app_data_isolation=false");
         props.add("persist.zygote.vold_app_data_isolation=false");
+        props.add("ro.hardware.gralloc=native");
         Native.start(dir, props.toArray(new String[0]));
         if (!watching) {
             watching = true;

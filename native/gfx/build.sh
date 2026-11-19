@@ -101,6 +101,11 @@ O=$W/obj && mkdir -p "$O"
   "$CRT/crtbegin_so.o" "$O/mapper.o" "$CRT/crtend_so.o" -o "$OUT/mapper.native.so" \
   "$V/libcutils.so" -llog "$V/libc++.so" -lc -lm -ldl
 
+# gralloc.native.so: a gralloc0 module, only for Mesa's YUV buffer layouts
+"${CXX[@]}" -fvisibility=hidden -c "$HERE/gralloc.cpp" -o "$O/gralloc.o"
+"${LINK[@]}" -shared -Wl,-soname,gralloc.native.so -Wl,--no-undefined \
+  "$CRT/crtbegin_so.o" "$O/gralloc.o" "$CRT/crtend_so.o" -o "$OUT/gralloc.native.so" -lc
+
 # ncomposer: a system program (the composer3 NDK library is only in /system)
 "${CXX[@]}" -c "$HERE/ncomposer.cpp" -o "$O/ncomposer.o"
 "${LINK[@]}" -L"$S" "${EXE[@]}" "$O/ncomposer.o" "$CRT/crtend_android.o" -o "$OUT/ncomposer" \
@@ -108,4 +113,4 @@ O=$W/obj && mkdir -p "$O"
   "$S/android.hardware.graphics.common-V7-ndk.so" "$S/android.hardware.drm.common-V1-ndk.so" \
   -lbinder_ndk -llog "$S/libc++.so" -lc -lm -ldl
 
-ls -la "$OUT/nalloc" "$OUT/mapper.native.so" "$OUT/ncomposer"
+ls -la "$OUT/nalloc" "$OUT/mapper.native.so" "$OUT/gralloc.native.so" "$OUT/ncomposer"

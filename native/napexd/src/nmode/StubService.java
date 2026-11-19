@@ -56,12 +56,26 @@ public class StubService extends Binder {
             ServiceManager.addService(name, s);
             System.err.println("nmode: stand-in " + name + " (" + descriptor + ") up");
         }
-        // The software codecs' store (mediaswcodec), which system_server and
-        // MediaProvider wait for by name, forever: on the thread storage needs
-        // too, in system_server. mediaswcodec can't run here (its seccomp filter
-        // has no room for our socket binder), so C2Store answers instead, with
-        // no codecs. (Not a command line argument: older boot scripts get it too.)
-        ServiceManager.addService(C2Store.STORE + "/software", new C2Store());
+        // The software codecs' store, which system_server and MediaProvider
+        // wait for by name, forever (on the thread storage needs too, in
+        // system_server). mediaswcodec registers the real one now that libc
+        // skips its seccomp filter; C2Store (no codecs) answers only if it
+        // hasn't after a while (an older boot script, or mediaswcodec died).
+        // Registering it regardless replaced the real store: no video decoder.
+        new Thread(() -> {
+            String store = C2Store.STORE + "/software";
+            for (int i = 0; i < 60 && ServiceManager.checkService(store) == null; i++) {
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+            if (ServiceManager.checkService(store) == null) {
+                ServiceManager.addService(store, new C2Store());
+                System.err.println("nmode: stand-in " + store + " (no mediaswcodec) up");
+            }
+        }, "c2store").start();
         // The battery HAL with the phone's battery (Health): the image's reports
         // a fixed one. nzygote no longer starts that one (the app patches it out).
         ServiceManager.addService(Health.NAME, new Health());
