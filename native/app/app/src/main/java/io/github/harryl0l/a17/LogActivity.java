@@ -214,7 +214,12 @@ public final class LogActivity extends Activity {
             }
             String b = block.toString();
             block.setLength(0);
-            if (!(b.contains("Fuse") || b.contains("fuse") || b.startsWith("\"main\""))) continue;
+            // ART puts "DALVIK THREADS (n):" right above "main", in its block
+            boolean main = b.startsWith("\"main\"") || b.contains("\n\"main\" ");
+            boolean fuse = b.contains("Fuse") || b.contains("fuse");
+            if (!main && !fuse) continue;
+            // the dump's header (class loaders, GC) names libfuse_jni: not a thread
+            if (!main && !b.contains(" tid=")) continue;
             if (total + b.length() > 30000) break;
             sb.append(b).append('\n');
             total += b.length();
