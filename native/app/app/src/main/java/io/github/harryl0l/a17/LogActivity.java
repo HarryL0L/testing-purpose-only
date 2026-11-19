@@ -94,10 +94,6 @@ public final class LogActivity extends Activity {
             nb.add(l);
         }
         for (String l : nb.subList(Math.max(0, nb.size() - 80), nb.size())) sb.append(l).append('\n');
-        // When system_server hangs its watchdog dumps every thread's stack
-        // here before killing it: the threads stuck in binder or on a lock.
-        sb.append("== watchdog stacks\n");
-        appendStuckThreads(new File(root, "data/anr"), sb);
         sb.append("== kmsg (start)\n");
         int kept = 0;
         for (String l : LogTail.lines(new File(root, "dev/kmsg"), 4 << 20)) {
@@ -131,6 +127,10 @@ public final class LogActivity extends Activity {
         appendFuseThreads(new File(root, "data/local/tmp/fuse-stacks.txt"), sb);
         // libfuse reports why a FUSE session ends only on stderr, which
         // MediaProvider's isn't kept: the same library, run at start.
+        // When system_server hangs its watchdog dumps every thread's stack
+        // here (kept near the end, where a paste carries it) before killing it: the threads stuck in binder or on a lock.
+        sb.append("== watchdog stacks\n");
+        appendStuckThreads(new File(root, "data/anr"), sb);
         sb.append("== fusetest\n");
         for (String l : LogTail.lines(new File(root, "data/local/tmp/fusetest.log"), 16384)) {
             sb.append(l).append('\n');
