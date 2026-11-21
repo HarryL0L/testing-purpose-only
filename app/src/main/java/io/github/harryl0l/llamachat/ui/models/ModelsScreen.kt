@@ -96,6 +96,7 @@ import io.github.harryl0l.llamachat.data.LinkedFolder
 import io.github.harryl0l.llamachat.data.LocalModel
 import io.github.harryl0l.llamachat.data.MODEL_PRESETS
 import io.github.harryl0l.llamachat.data.ModelPreset
+import io.github.harryl0l.llamachat.data.PromptHelperModel
 import io.github.harryl0l.llamachat.engine.EngineState
 import kotlin.math.roundToInt
 
@@ -430,6 +431,50 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                     modifier = Modifier.clickable { vm.selectImageModel(c.id) },
                 )
             }
+            run {
+                @Suppress("UNUSED_VARIABLE") val helperVersion = vm.promptHelperVersion
+                val helperReady = vm.repo.isPromptHelperDownloaded()
+                val hd = vm.promptHelperDownload
+                ListItem(
+                    headlineContent = { Text("Prompt helper: ${PromptHelperModel.TITLE}") },
+                    supportingContent = {
+                        Column {
+                            Text(
+                                Formatter.formatShortFileSize(context, PromptHelperModel.SIZE) + " · Small text model for " +
+                                    "\"Improve prompt\": rewrites your idea in a few seconds, instead of loading the big chat " +
+                                    "model. " + if (helperReady) "In use." else "Without it, the chat model does it (slower).",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            when (hd) {
+                                is DownloadState.Running -> Column {
+                                    LinearWavyProgressIndicator(
+                                        progress = { hd.progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                                    )
+                                    Text(
+                                        if (hd.verifying) "Checking file… ${(hd.progress * 100).roundToInt()}%"
+                                        else "Downloading… ${(hd.progress * 100).roundToInt()}%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
+                                is DownloadState.Failed -> Text(hd.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                null -> {}
+                            }
+                        }
+                    },
+                    trailingContent = {
+                        if (helperReady) {
+                            IconButton(onClick = { vm.deletePromptHelper() }, shapes = IconButtonDefaults.shapes()) {
+                                Icon(Icons.Rounded.Delete, "Delete the prompt helper")
+                            }
+                        } else if (hd !is DownloadState.Running) {
+                            IconButton(onClick = { vm.downloadPromptHelper() }, shapes = IconButtonDefaults.shapes()) {
+                                Icon(Icons.Rounded.Download, "Download the prompt helper")
+                            }
+                        }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                )
+            }
             if (vm.imageGpuSupported) {
                 ListItem(
                     headlineContent = { Text("Create images on the GPU (Vulkan)") },
@@ -464,6 +509,9 @@ private fun ImageModelsCard(vm: ChatViewModel, settings: AppSettings) {
                 Text(
                     if (current != null && current.defaultSize > 512)
                         "This model is trained for about 1024×1024: 768 is a good balance; larger is sharper but much slower."
+                    else if (current != null && current.sizes.max() > 512)
+                        "This model is trained for about 1024×1024 but heavy: 512 is the practical size on a phone; 768 " +
+                            "takes about 2.5× as long, 1024 about 6×."
                     else "These models are trained for 512×512; smaller is much faster but less detailed.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

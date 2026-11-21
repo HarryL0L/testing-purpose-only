@@ -105,6 +105,10 @@ data class ImageModelPreset(
     /** image sizes offered (square), and the default */
     val sizes: List<Int> = listOf(256, 384, 512),
     val defaultSize: Int = 512,
+    /** draws readable short text (the prompt helper then doesn't steer away from signs and labels) */
+    val rendersText: Boolean = false,
+    /** big enough that the chat model is unloaded before creating (both don't fit in memory) */
+    val unloadsChat: Boolean = false,
 )
 
 /** An extra model file; with [convertType] >= 0 it's downloaded as [sourceFile] and quantized on the device. */
@@ -134,6 +138,12 @@ private val TAESDXL = TaesdFile(
 private val TAEW2_1 = TaesdFile(
     "https://raw.githubusercontent.com/madebyollin/taehv/9055eee0391548d1787938d040a161cbe396bf98/safetensors/taew2_1.safetensors",
     "taew2_1.safetensors", 22_642_902L, "04766eac0221b5390b985ae3fdcca652cbb4b1e8b82b28ea7ff89dfad1b1a93f",
+)
+
+/** TAEF2: tiny decoder for the FLUX.2 VAE (FLUX.2 Klein) */
+private val TAEF2 = TaesdFile(
+    "https://huggingface.co/madebyollin/taef2/resolve/bd244ebfe4398c84fbf312a2f1c868c676b500e3/taef2.safetensors?download=true",
+    "taef2.safetensors", 10_723_524L, "701d31c0ecbef3b609fe236e2e3a65ffb17f3a94237acdd771e8ea3194df557a",
 )
 
 val IMAGE_PRESETS = listOf(
@@ -167,11 +177,12 @@ val IMAGE_PRESETS = listOf(
         "sdxl-turbo", "SDXL-Turbo",
         "SD-Turbo's big brother: better anatomy, detail and prompt following (about 30 s for 2 steps on a desktop " +
             "CPU, ~2× SD-Turbo). Needs ~4.5 GB RAM " +
-            "(unload the chat model first). Uses the TAESDXL fast decoder. Non-commercial license.",
+            "(the chat model is unloaded first). Uses the TAESDXL fast decoder. Non-commercial license.",
         "https://huggingface.co/OlegSkutte/sdxl-turbo-GGUF/resolve/62a28b8b2c3cb4bf76d9aad45a5b798047dc786c/sd_xl_turbo_1.0.q8_0.gguf?download=true",
         "sd_xl_turbo_1.0.q8_0.gguf", 4_098_988_672L,
         defaultSteps = 2, maxSteps = 4, cfgScale = 1.0f, taesd = TAESDXL,
         sha256 = "f5659e6cdad699b1432870cc9fe811359e45c8a331687be505d0ba05c8364720",
+        unloadsChat = true,
     ),
     ImageModelPreset(
         "anima-turbo", "Anima Turbo (anime)",
@@ -192,7 +203,38 @@ val IMAGE_PRESETS = listOf(
         ),
         sizes = listOf(512, 768, 1024), defaultSize = 768,
     ),
+    ImageModelPreset(
+        "flux2-klein-4b", "FLUX.2 Klein 4B",
+        "Best all-round quality: realistic or any style, good hands and detail, follows long prompts, and writes " +
+            "short text correctly (signs, labels). 4 steps; about 3x Anima's time per step, so 512 px is the " +
+            "practical size on a phone (768 for keepers). Q4_0 files from the stable-diffusion.cpp author + " +
+            "Qwen3-4B text encoder (4.9 GB). Needs ~5.5 GB RAM: the chat model is unloaded first. Apache 2.0.",
+        "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF/resolve/3b1f5a9dc3abb32238b053aeb3d823c30afdacbd/flux-2-klein-4b-Q4_0.gguf?download=true",
+        "flux-2-klein-4b-Q4_0.gguf", 2_460_378_560L,
+        defaultSteps = 4, maxSteps = 8, cfgScale = 1.0f, taesd = TAEF2,
+        sha256 = "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4",
+        sampler = SAMPLER_EULER,
+        llm = ModelSource(
+            "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/22c9fc8a8c7700b76a1789366280a6a5a1ad1120/Qwen3-4B-Q4_0.gguf?download=true",
+            "Qwen3-4B-Q4_0.gguf", 2_375_773_472L,
+            "92f4a83cdfe691b216a949f915e47f35f0ed85b833aa03490c719160ac5cdf7a",
+        ),
+        sizes = listOf(512, 768, 1024), defaultSize = 512,
+        rendersText = true, unloadsChat = true,
+    ),
 )
+
+/**
+ * Small text model that rewrites image ideas into prompts (the prompt helper), so the big chat model
+ * isn't needed for it: ~1 GB, a couple of seconds per prompt. Text only; thinking is turned off.
+ */
+object PromptHelperModel {
+    const val TITLE = "LFM3 1.7B"
+    const val URL = "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/cd0c74c575b5c416f3011b5b4c298077f26ca8c2/LFM3-1.7B-QAD-Q4_0.gguf?download=true"
+    const val FILE = "LFM3-1.7B-QAD-Q4_0.gguf"
+    const val SIZE = 1_049_615_680L
+    const val SHA256 = "43a7d09a0e9cba91b63eb7052488b9564569bddfd65754d2e426465e572a7452"
+}
 
 /** The fast decoders the app knows, by the file name they're stored under. */
 val TAESD_FILES = listOf(TAESD, TAESDXL)
@@ -415,6 +457,26 @@ class ModelRepository(private val context: Context) {
             doneBefore += f.size
         }
         onProgress(1f, false)
+    }
+
+    // ------------------------------------------------------------------ prompt helper model
+
+    fun promptHelperFile() = File(modelsDir, "helper/" + PromptHelperModel.FILE)
+
+    fun isPromptHelperDownloaded(): Boolean =
+        isVerified(promptHelperFile(), PromptHelperModel.SIZE, PromptHelperModel.SHA256)
+
+    /** Downloads the prompt helper model (resumable, verified). [onProgress]: 0..1, verifying. */
+    suspend fun downloadPromptHelper(onProgress: (Float, Boolean) -> Unit) = withContext(Dispatchers.IO) {
+        downloadAll(
+            listOf(RemoteFile(PromptHelperModel.URL, promptHelperFile(), PromptHelperModel.SIZE, PromptHelperModel.SHA256)),
+            onProgress,
+        )
+    }
+
+    fun deletePromptHelper() {
+        promptHelperFile().delete()
+        markerOf(promptHelperFile()).delete()
     }
 
     // ------------------------------------------------------------------ image models

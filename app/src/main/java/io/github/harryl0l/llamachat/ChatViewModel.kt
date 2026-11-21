@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -29,6 +30,7 @@ import io.github.harryl0l.llamachat.engine.EngineState
 import io.github.harryl0l.llamachat.engine.ImageEngine
 import io.github.harryl0l.llamachat.data.IMAGE_PRESETS
 import io.github.harryl0l.llamachat.data.ImageModelPreset
+import io.github.harryl0l.llamachat.data.PromptHelperModel
 import io.github.harryl0l.llamachat.engine.LlamaEngine
 import io.github.harryl0l.llamachat.engine.ModelSpec
 import io.github.harryl0l.llamachat.engine.ProjectorSpec
@@ -69,6 +71,10 @@ class ImageModelChoice(
     val scheduler: Int = -1,
     val sizes: List<Int> = listOf(256, 384, 512),
     val defaultSize: Int = 512,
+    /** draws readable short text (FLUX.2 Klein) */
+    val rendersText: Boolean = false,
+    /** the chat model is unloaded before creating: both don't fit in memory */
+    val unloadsChat: Boolean = false,
 ) {
     /** the size to use: the chosen one if this model offers it, else the model's default */
     fun sizeFor(chosen: Int): Int = if (chosen in sizes) chosen else defaultSize
@@ -373,11 +379,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             ImageModelChoice(
                 p.id, p.title, m, repo.imageLlmFile(p), t, p.defaultSteps, p.maxSteps, p.cfgScale, p.sampler, custom = false,
                 scheduler = p.scheduler, sizes = p.sizes, defaultSize = p.defaultSize,
+                rendersText = p.rendersText, unloadsChat = p.unloadsChat,
             )
         } + repo.customImageModels().map { c ->
             ImageModelChoice(
                 c.id, c.title, c.file, null, repo.taesdFile(xl = c.isXl),
                 c.defaultSteps, c.maxSteps, c.defaultCfg, c.defaultSampler, custom = true,
+                unloadsChat = c.file.length() > 3_500_000_000L,
             )
         }
     }
@@ -492,6 +500,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
             val t0 = System.nanoTime()
             try {
+                if (preset.unloadsChat && engine.state.value is EngineState.Ready) {
+                    reply.addLog(listOf(stamp("unloading the chat model to make room (it reloads on your next chat message)")))
+                    unloadChatForRoom()
+                }
                 val gpu = BuildConfig.GPU_EXPERIMENTAL && s.imageGpu
                 if (gpu) markImageGpu(true)
                 val img = try {
@@ -542,11 +554,62 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var promptHelperBusy by mutableStateOf(false)
         private set
 
+    /** the prompt helper model is downloading: progress 0..1, or null */
+    var promptHelperDownload by mutableStateOf<DownloadState?>(null)
+        private set
+
+    /** bumped when the prompt helper model is downloaded / deleted, so the UI re-checks */
+    var promptHelperVersion by mutableIntStateOf(0)
+        private set
+
+    /** the chat model was unloaded to make room (big image model, prompt helper): reload it on the next send */
+    private var chatUnloadedForRoom = false
+
+    private suspend fun unloadChatForRoom() {
+        engine.unload()
+        markGpuInUse(io.github.harryl0l.llamachat.engine.GPU_CPU)
+        contextUsage = 0 to 0
+        chatUnloadedForRoom = true
+    }
+
+    fun downloadPromptHelper() {
+        if (promptHelperDownload is DownloadState.Running) return
+        promptHelperDownload = DownloadState.Running(0f)
+        viewModelScope.launch {
+            try {
+                repo.downloadPromptHelper { p, verifying -> promptHelperDownload = DownloadState.Running(p, verifying) }
+                promptHelperDownload = null
+                promptHelperVersion++
+                snackbar = "${PromptHelperModel.TITLE} downloaded: \"Improve prompt\" now uses it"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                promptHelperDownload = DownloadState.Failed(e.message ?: "Download failed")
+            }
+        }
+    }
+
+    fun deletePromptHelper() {
+        viewModelScope.launch {
+            if (promptHelperBusy) return@launch
+            withContext(Dispatchers.IO) { repo.deletePromptHelper() }
+            promptHelperDownload = null
+            promptHelperVersion++
+        }
+    }
+
     /**
-     * Rewrites the idea in the input box into a prompt for the current image model, with the chat
-     * model (the loaded one, or the last one used: loaded just for this, then unloaded again so the
-     * image model has the memory). The result replaces the input for the user to check. The chat's
-     * conversation in the engine is restored afterwards.
+     * Rewrites the idea in the input box into a prompt for the current image model.
+     *
+     * With the small prompt helper model downloaded (LFM3 1.7B), that one does it: loaded on the CPU
+     * just for this (about a second), a few seconds to write, unloaded again. A loaded chat model is
+     * unloaded for it (only one model fits in the engine) and reloads on the next chat message.
+     *
+     * Without it, the chat model does it (the loaded one, or the last one used: loaded just for this,
+     * then unloaded again so the image model has the memory); the chat's conversation in the engine is
+     * restored afterwards.
+     *
+     * The result replaces the input for the user to check.
      */
     fun improveImagePrompt() {
         val idea = input.trim()
@@ -554,28 +617,42 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (promptHelperBusy || generating) return
         viewModelScope.launch {
             val s = store.current()
+            val helper = withContext(Dispatchers.IO) { repo.promptHelperFile().takeIf { repo.isPromptHelperDownloaded() } }
             val wasLoaded = engine.state.value is EngineState.Ready
             val model = s.modelPath
-            if (!wasLoaded && model == null) { snackbar = "Load a chat model once first (Models)"; return@launch }
+            if (helper == null && !wasLoaded && model == null) {
+                snackbar = "Download the prompt helper (Models → Image creation) or load a chat model once first"
+                return@launch
+            }
             promptHelperBusy = true
+            // whether the engine holds a model only for this, to unload afterwards
+            var temporary = false
             try {
-                if (!wasLoaded) {
+                if (helper != null) {
+                    stop(); genJob?.join()
+                    if (wasLoaded) unloadChatForRoom()
+                    temporary = true
+                    engine.load(
+                        ModelSpec(PromptHelperModel.TITLE, helper.absolutePath, -1, null),
+                        2048, s.effectiveThreads, s.sampling, "", false, s.repack,
+                        gpuMode = io.github.harryl0l.llamachat.engine.GPU_CPU,
+                    )
+                    (engine.state.value as? EngineState.Failed)?.let { error(it.message) }
+                } else if (!wasLoaded) {
                     imageEngine.unload() // make room: a big chat model and the image model don't fit together
                     loadNow(model!!, null) // no vision projector needed
                     if (engine.state.value !is EngineState.Ready) return@launch
+                    temporary = true
                 }
                 val image = currentImageModel(s)
                 val anime = image?.id?.startsWith("anima") == true
                 engine.resetChat()
                 engine.setThinking(false)
-                engine.updateSampling(s.sampling.copy(temperature = 0.6f, maxTokens = 160), promptHelperSystem(anime))
+                engine.updateSampling(s.sampling.copy(temperature = 0.6f, maxTokens = 160), promptHelperSystem(anime, image?.rendersText == true))
                 val out = StringBuilder()
                 engine.generate("Idea: $idea", emptyList()).collect { out.append(it) }
-                val text = out.toString()
-                    .replace(Regex("(?s)<think>.*?</think>"), "").replace("<think>", "").replace("</think>", "")
-                    .lines().map { it.trim() }.filter { it.isNotEmpty() }
-                    .joinToString(" ").removePrefix("Prompt:").trim().trim('`').trim()
-                if (text.isEmpty()) snackbar = "The chat model gave no prompt; try again"
+                val text = cleanHelperOutput(out.toString())
+                if (text.isEmpty()) snackbar = "The model gave no prompt; try again"
                 else { input = text; snackbar = "Prompt rewritten: check it, then create" }
             } catch (e: CancellationException) {
                 throw e
@@ -586,23 +663,35 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     if (engine.state.value is EngineState.Ready) {
                         engine.updateSampling(s.sampling, s.systemPrompt)
                         engine.setThinking(s.thinking)
-                        if (wasLoaded) {
+                        if (!temporary) {
                             engine.resetChat()
                             if (messages.isNotEmpty()) restoreIntoEngine()
                         } else {
                             engine.unload()
                             markGpuInUse(io.github.harryl0l.llamachat.engine.GPU_CPU)
                             contextUsage = 0 to 0
-                            refreshLastModel()
                         }
                     }
+                    refreshLastModel()
                     promptHelperBusy = false
                 }
             }
         }
     }
 
-    private fun promptHelperSystem(anime: Boolean): String = buildString {
+    /**
+     * The prompt out of the model's reply: small models sometimes still write a thought block, or the
+     * prompt, a stray </think> and the prompt again; keep what comes after the last </think>.
+     */
+    private fun cleanHelperOutput(raw: String): String {
+        val noBlocks = raw.replace(Regex("(?s)<think>.*?</think>"), "")
+        val after = noBlocks.substringAfterLast("</think>").replace("<think>", "")
+        val text = after.ifBlank { noBlocks.substringBefore("</think>").replace("<think>", "") }
+        return text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            .joinToString(" ").removePrefix("Prompt:").trim().trim('`').trim().trim('"').trim()
+    }
+
+    private fun promptHelperSystem(anime: Boolean, rendersText: Boolean): String = buildString {
         append("You write prompts for an on-device image generator. Rewrite the user's idea as ONE prompt line. ")
         append("Output only the prompt: no explanations, no quotes around it, no labels. ")
         append("Describe only what the idea contains, plus fitting visual details (pose, clothing, setting, light, mood); ")
@@ -616,10 +705,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             append("Write a concise English description (subject, details, setting, lighting, style) ending with: ")
             append("highly detailed, sharp focus. ")
         }
-        append("Image models draw text as garbled shapes, so avoid things that usually carry writing (shop signs, ")
-        append("posters, labels, books, screens, packaging) unless the idea asks for them; prefer plain surfaces. ")
-        append("If the idea asks for specific text, keep it to at most three words, in double quotes, in capitals, large on ")
-        append("one object, e.g. wooden sign with the text \"OPEN\". At most 50 words.")
+        if (rendersText) {
+            append("This model can write short text: if the idea asks for text, put it in double quotes, large on one ")
+            append("object, e.g. wooden sign with the text \"OPEN\"; don't add text the idea doesn't ask for. ")
+        } else {
+            append("Image models draw text as garbled shapes, so avoid things that usually carry writing (shop signs, ")
+            append("posters, labels, books, screens, packaging) unless the idea asks for them; prefer plain surfaces. ")
+            append("If the idea asks for specific text, keep it to at most three words, in double quotes, in capitals, large on ")
+            append("one object, e.g. wooden sign with the text \"OPEN\". ")
+        }
+        append("At most 50 words.")
     }
 
     /** Imports an image-model file downloaded outside the app. */
@@ -1088,7 +1183,19 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val attachments = pendingAttachments.toList()
         if ((text.isEmpty() && attachments.isEmpty()) || generating) return
         val ready = engine.state.value as? EngineState.Ready
-        if (ready == null) { snackbar = "Load a model first"; return }
+        if (ready == null) {
+            // unloaded by an image model or the prompt helper: bring it back, then send
+            val last = settings.value.modelPath
+            if (chatUnloadedForRoom && last != null && engine.state.value !is EngineState.Loading) {
+                chatUnloadedForRoom = false
+                viewModelScope.launch {
+                    loadNow(last, settings.value.mmprojPath)
+                    if (engine.state.value is EngineState.Ready) send()
+                }
+                return
+            }
+            snackbar = "Load a model first"; return
+        }
         if (attachments.isNotEmpty() && !ready.info.vision) {
             snackbar = "This model has no vision projector (mmproj) loaded"
             return
