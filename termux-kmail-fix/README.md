@@ -114,13 +114,28 @@ asynchronous opens still hung in the 35 second cases (second dialog for a
 nameless wallet, then a permanent hang), both when creating and when unlocking.
 That is what was seen on the device as "still the same".
 
-The patched shim was also compiled with clang 22 without new warnings.
+The table is from an Ubuntu development-release chroot (KDE Frameworks 6.30
+libraries, kwallet 6.32.0 sources). The patched shim was also compiled there
+with clang 22 without new warnings.
 
-Limits: the test bed runs on Ubuntu's development release (KDE Frameworks
-6.30 libraries, kwallet 6.32.0 sources), not on Termux; the wallet is created
-without GPG support, so the dialog is the plain password dialog rather than
-the Blowfish/GPG chooser; and the real KMail, Akonadi and Google sign-in are
-not part of it.
+### Real Termux packages (termux-docker)
+
+The same test bed was then run in a `termux/termux-docker:x86_64` container
+with the packages from the Termux repositories: `kf6-kwallet` 6.32.0,
+`libsecret` 0.21.8.2, `qt6-qtbase` 6.12.0, `qtkeychain` 0.18.0. kwallet 6.32.0
+was built there with Termux's clang 21, unpatched and with the three patches.
+
+* Unpatched: the libkgapi-like client gets an empty wallet name, a dialog for
+  a nameless wallet appears, and the shim hangs, exactly as on Ubuntu.
+* Patched: no new compiler warnings, and these scenarios pass: one client;
+  both clients with a 35 second user; cancel and retry; later session with a
+  35 second unlock (stored password reads back); window id passed to the
+  dialog.
+
+Limits of both environments: no Android and no Termux:X11 (the X server is
+Xvfb); x86_64 instead of ARM; the wallet is created without GPG support, so
+the dialog is the plain password dialog rather than the Blowfish/GPG chooser;
+and the real KMail, Akonadi and Google sign-in are not part of it.
 
 ### libsecret only (`repro/`)
 
@@ -135,7 +150,8 @@ bug 2 in isolation. `./repro/run.sh` shows two wallets (`kdewallet`,
   appeared, followed by one for `kdewallet__0_` hidden behind a frozen KMail.
 * With the first three-patch set: still no browser, and
   `org.kde.pim.akonadicontrol ... NoReply` in the log.
-* The current set has not been run on a device yet.
+* The current set has not been run on a device yet. It has been run against
+  the real Termux packages in termux-docker, see above.
 
 ## Testing on a device
 

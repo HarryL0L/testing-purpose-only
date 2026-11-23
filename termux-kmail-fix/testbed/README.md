@@ -48,3 +48,23 @@ dialog the driver can fill in.
 
 Each run uses a fresh home directory, so every scenario starts without a
 wallet.
+
+## Running it against the real Termux packages
+
+The same files work in a `termux/termux-docker:x86_64` container with these
+changes:
+
+* install `x11-repo`, then `kf6-kwallet qtkeychain clang cmake ninja pkg-config
+  extra-cmake-modules kf6-kservice libsecret qca gpgme gpgmepp libgcrypt
+  qt6-qtbase qt6-qtbase-gtk-platformtheme qt6-qttools dbus xorg-server-xvfb
+  xdotool openbox xorg-xprop xorg-setxkbmap gettext patch glib`;
+* replace `/root` with `$HOME` and `/opt/kw-` with `$HOME/kw-` in the scripts,
+  use `$P/lib` and `$PREFIX/share` for the library and data paths, and start
+  `scenario_inner.sh` with `bash`;
+* configure kwallet as the Termux recipe does (`-DCMAKE_SYSTEM_NAME=Linux
+  -DKDE_INSTALL_QMLDIR=lib/qt6/qml -DKDE_INSTALL_QTPLUGINDIR=lib/qt6/plugins`)
+  and drop the line that lowers the Frameworks version, Termux has 6.32;
+* Termux's `pkill -x` does not match the running daemons, kill them with
+  `pkill -f bin/kwalletd6` and `pkill -f bin/ksecretd` instead. Without that
+  the `later-session` scenario never restarts them and shows no unlock dialog.
+
