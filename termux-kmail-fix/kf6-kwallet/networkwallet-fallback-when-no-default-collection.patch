@@ -21,7 +21,8 @@ whether the file existed. Do that again: when there is no default
 collection yet, answer with the configured name so the client's open()
 call reaches ksecretd and the create dialog shows up as intended.
 
-The error reply was introduced by MR 157 (merged 2026-07-28, in KF 6.31).
+The error reply was introduced by MR 157 (merged 2026-07-28, first released
+in KF 6.29.0). Still present in 6.32.0 and in master.
 
 --- a/src/runtime/kwalletd/kwalletd.cpp
 +++ b/src/runtime/kwalletd/kwalletd.cpp
