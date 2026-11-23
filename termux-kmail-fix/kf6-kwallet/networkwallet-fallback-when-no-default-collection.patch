@@ -38,7 +38,7 @@ in KF 6.29.0). Still present in 6.32.0 and in master.
 +        // not an error from the caller's point of view, it just means the wallet
 +        // hasn't been created. Hand back the configured name (kdewallet unless
 +        // the user changed it) like the old kwalletd did, otherwise qtkeychain
-+        // decides KWallet is unusable and libkgapi ends up trying to open a
++        // gives up with an error and libkgapi ends up trying to open a
 +        // wallet with an empty name, and the first wallet never gets created.
 +        return KWallet::Backend::networkWallet();
      }
