@@ -1,0 +1,38 @@
+{
+ "id": 2,
+ "key": "uws_twin_turret",
+ "name": "West Side Twin-Turret Apartments",
+ "description": "21-storey tan brick apartment house with paired windows and two copper-roofed rooftop turrets.",
+ "file": "models/hd02_uws_twin_turret.gltf",
+ "size_m": [
+  38.6,
+  32.6,
+  79.3
+ ],
+ "materials": [
+  "hd_limestone",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_signs",
+  "hd_glass_door",
+  "hd_awning_green",
+  "hd_gold",
+  "hd_awning_red",
+  "hd_awning_navy",
+  "hd_awning_black",
+  "hd_awning_burgundy",
+  "hd_win_res",
+  "hd_brick_tan",
+  "hd_frame_white",
+  "hd_hvac",
+  "hd_grille",
+  "hd_roof_membrane",
+  "hd_copper",
+  "hd_steel_dark",
+  "hd_steel",
+  "hd_wood_staves"
+ ],
+ "lod0_tris": 116210,
+ "lod1_tris": 3350,
+ "glb_kb": 8530
+}

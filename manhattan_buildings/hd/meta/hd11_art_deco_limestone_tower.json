@@ -1,0 +1,33 @@
+{
+ "id": 11,
+ "key": "art_deco_limestone_tower",
+ "name": "Art Deco Limestone Tower",
+ "description": "36-storey limestone tower with bronze spandrels, setbacks and a colonnaded lantern crown.",
+ "file": "models/hd11_art_deco_limestone_tower.gltf",
+ "size_m": [
+  38.6,
+  34.6,
+  167.3
+ ],
+ "materials": [
+  "hd_granite_black",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_signs",
+  "hd_awning_black",
+  "hd_awning_green",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_awning_navy",
+  "hd_awning_red",
+  "hd_awning_burgundy",
+  "hd_limestone",
+  "hd_win_office",
+  "hd_spandrel_bronze",
+  "hd_roof_membrane",
+  "hd_metal_alum"
+ ],
+ "lod0_tris": 36466,
+ "lod1_tris": 3494,
+ "glb_kb": 2742
+}

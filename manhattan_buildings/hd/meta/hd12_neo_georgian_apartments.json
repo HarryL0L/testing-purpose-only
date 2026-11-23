@@ -1,0 +1,34 @@
+{
+ "id": 12,
+ "key": "neo_georgian_apartments",
+ "name": "Neo-Georgian Apartment House",
+ "description": "12-storey red brick with white multi-pane windows, keystone lintels and a mansard roof.",
+ "file": "models/hd12_neo_georgian_apartments.gltf",
+ "size_m": [
+  33.5,
+  32.3,
+  56.4
+ ],
+ "materials": [
+  "hd_limestone_rustic",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_awning_green",
+  "hd_limestone",
+  "hd_win_res",
+  "hd_frame_black",
+  "hd_brick_red",
+  "hd_frame_white",
+  "hd_hvac",
+  "hd_grille",
+  "hd_roof_membrane",
+  "hd_steel_dark",
+  "hd_steel",
+  "hd_wood_staves"
+ ],
+ "lod0_tris": 45814,
+ "lod1_tris": 1166,
+ "glb_kb": 3251
+}

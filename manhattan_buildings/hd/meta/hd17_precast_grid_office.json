@@ -1,0 +1,28 @@
+{
+ "id": 17,
+ "key": "precast_grid_office",
+ "name": "Precast Concrete Grid Office",
+ "description": "25-storey office with deep-set windows in a precast concrete grid.",
+ "file": "models/hd17_precast_grid_office.gltf",
+ "size_m": [
+  40.1,
+  35.1,
+  103.7
+ ],
+ "materials": [
+  "hd_granite_gray",
+  "hd_win_shop",
+  "hd_frame_alum",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_frame_black",
+  "hd_limestone",
+  "hd_concrete_precast",
+  "hd_win_office",
+  "hd_frame_bronze",
+  "hd_roof_membrane"
+ ],
+ "lod0_tris": 70574,
+ "lod1_tris": 2380,
+ "glb_kb": 5319
+}

@@ -1,0 +1,37 @@
+{
+ "id": 8,
+ "key": "garment_district_loft",
+ "name": "Garment District Setback Loft",
+ "description": "18-storey tan-brick loft with factory windows, two setbacks and twin water towers.",
+ "file": "models/hd08_garment_district_loft.gltf",
+ "size_m": [
+  42.6,
+  31.4,
+  85.7
+ ],
+ "materials": [
+  "hd_granite_black",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_glass_door",
+  "hd_signs",
+  "hd_awning_burgundy",
+  "hd_gold",
+  "hd_awning_black",
+  "hd_awning_green",
+  "hd_brick_tan",
+  "hd_awning_red",
+  "hd_limestone",
+  "hd_win_office",
+  "hd_frame_green",
+  "hd_roof_membrane",
+  "hd_steel_dark",
+  "hd_steel",
+  "hd_wood_staves",
+  "hd_hvac",
+  "hd_grille"
+ ],
+ "lod0_tris": 49616,
+ "lod1_tris": 1552,
+ "glb_kb": 3742
+}

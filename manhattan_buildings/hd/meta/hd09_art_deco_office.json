@@ -1,0 +1,35 @@
+{
+ "id": 9,
+ "key": "art_deco_office",
+ "name": "Art Deco Setback Office",
+ "description": "32-storey buff-brick deco tower: vertical piers, dark spandrels, four setbacks and a ziggurat crown.",
+ "file": "models/hd09_art_deco_office.gltf",
+ "size_m": [
+  44.6,
+  39.8,
+  155.9
+ ],
+ "materials": [
+  "hd_granite_black",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_signs",
+  "hd_glass_door",
+  "hd_awning_black",
+  "hd_awning_red",
+  "hd_gold",
+  "hd_frame_black",
+  "hd_awning_burgundy",
+  "hd_awning_green",
+  "hd_awning_navy",
+  "hd_limestone",
+  "hd_brick_buff",
+  "hd_win_office",
+  "hd_spandrel_dark",
+  "hd_roof_membrane",
+  "hd_steel"
+ ],
+ "lod0_tris": 36702,
+ "lod1_tris": 3224,
+ "glb_kb": 2746
+}

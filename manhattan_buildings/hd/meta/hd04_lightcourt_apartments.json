@@ -1,0 +1,40 @@
+{
+ "id": 4,
+ "key": "lightcourt_apartments",
+ "name": "Light-Court Apartment Building",
+ "description": "U-plan 15-storey building around a front light court, limestone base, cornices.",
+ "file": "models/hd04_lightcourt_apartments.gltf",
+ "size_m": [
+  46.6,
+  36.8,
+  60.5
+ ],
+ "materials": [
+  "hd_limestone_rustic",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_awning_green",
+  "hd_limestone",
+  "hd_win_res",
+  "hd_frame_black",
+  "hd_brick_buff",
+  "hd_frame_white",
+  "hd_hvac",
+  "hd_grille",
+  "hd_roof_membrane",
+  "hd_signs",
+  "hd_awning_black",
+  "hd_awning_navy",
+  "hd_awning_red",
+  "hd_awning_burgundy",
+  "hd_steel_dark",
+  "hd_steel",
+  "hd_wood_staves",
+  "hd_sidewalk"
+ ],
+ "lod0_tris": 79066,
+ "lod1_tris": 2454,
+ "glb_kb": 5827
+}

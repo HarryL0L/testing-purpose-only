@@ -1,0 +1,38 @@
+{
+ "id": 3,
+ "key": "rounded_corner_apartments",
+ "name": "Round-Corner Apartment House",
+ "description": "15-storey buff-brick building with rounded corners and shops wrapping the base.",
+ "file": "models/hd03_rounded_corner_apartments.gltf",
+ "size_m": [
+  36.6,
+  30.6,
+  63.6
+ ],
+ "materials": [
+  "hd_granite_black",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_signs",
+  "hd_awning_burgundy",
+  "hd_awning_black",
+  "hd_awning_navy",
+  "hd_awning_red",
+  "hd_awning_green",
+  "hd_limestone",
+  "hd_brick_buff",
+  "hd_win_res",
+  "hd_frame_alum",
+  "hd_hvac",
+  "hd_grille",
+  "hd_roof_membrane",
+  "hd_steel_dark",
+  "hd_steel",
+  "hd_wood_staves"
+ ],
+ "lod0_tris": 26416,
+ "lod1_tris": 1626,
+ "glb_kb": 1948
+}

@@ -1,0 +1,37 @@
+{
+ "id": 13,
+ "key": "romanesque_warehouse",
+ "name": "Romanesque Revival Warehouse",
+ "description": "10-storey warehouse with arched upper floors, brick cornice and cast-iron storefronts.",
+ "file": "models/hd13_romanesque_warehouse.gltf",
+ "size_m": [
+  34.6,
+  38.0,
+  51.4
+ ],
+ "materials": [
+  "hd_metal_black",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_signs",
+  "hd_glass_door",
+  "hd_awning_navy",
+  "hd_gold",
+  "hd_awning_black",
+  "hd_awning_green",
+  "hd_brick_redbrown",
+  "hd_limestone",
+  "hd_win_office",
+  "hd_frame_green",
+  "hd_brick_dark",
+  "hd_roof_membrane",
+  "hd_steel_dark",
+  "hd_steel",
+  "hd_wood_staves",
+  "hd_hvac",
+  "hd_grille"
+ ],
+ "lod0_tris": 28312,
+ "lod1_tris": 960,
+ "glb_kb": 2050
+}

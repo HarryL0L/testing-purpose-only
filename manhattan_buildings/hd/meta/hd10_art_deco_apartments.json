@@ -1,0 +1,35 @@
+{
+ "id": 10,
+ "key": "art_deco_apartments",
+ "name": "Art Deco Apartment House",
+ "description": "20-storey orange-brick apartments with corner windows and stepped terraces.",
+ "file": "models/hd10_art_deco_apartments.gltf",
+ "size_m": [
+  36.6,
+  30.6,
+  70.2
+ ],
+ "materials": [
+  "hd_limestone",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_signs",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_awning_burgundy",
+  "hd_awning_black",
+  "hd_awning_green",
+  "hd_awning_navy",
+  "hd_awning_red",
+  "hd_brick_orange",
+  "hd_win_res",
+  "hd_frame_black",
+  "hd_brick_dark",
+  "hd_hvac",
+  "hd_grille",
+  "hd_roof_membrane"
+ ],
+ "lod0_tris": 58742,
+ "lod1_tris": 1770,
+ "glb_kb": 4389
+}

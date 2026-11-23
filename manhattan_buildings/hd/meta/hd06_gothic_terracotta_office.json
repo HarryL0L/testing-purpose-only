@@ -1,0 +1,33 @@
+{
+ "id": 6,
+ "key": "gothic_terracotta_office",
+ "name": "Gothic Terracotta Office Tower",
+ "description": "25-storey cream terracotta tower with soaring piers, green spandrels and a pinnacled copper crown.",
+ "file": "models/hd06_gothic_terracotta_office.gltf",
+ "size_m": [
+  34.6,
+  32.6,
+  114.6
+ ],
+ "materials": [
+  "hd_terracotta_white",
+  "hd_win_shop",
+  "hd_frame_green",
+  "hd_glass_door",
+  "hd_signs",
+  "hd_awning_navy",
+  "hd_awning_red",
+  "hd_gold",
+  "hd_awning_black",
+  "hd_awning_green",
+  "hd_awning_burgundy",
+  "hd_limestone",
+  "hd_win_office",
+  "hd_spandrel_green",
+  "hd_roof_membrane",
+  "hd_copper"
+ ],
+ "lod0_tris": 25082,
+ "lod1_tris": 2192,
+ "glb_kb": 1883
+}

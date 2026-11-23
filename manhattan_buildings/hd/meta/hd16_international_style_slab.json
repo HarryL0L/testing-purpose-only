@@ -1,0 +1,29 @@
+{
+ "id": 16,
+ "key": "international_style_slab",
+ "name": "International Style Glass Slab",
+ "description": "31-storey green curtain-wall slab on pilotis over a granite plaza.",
+ "file": "models/hd16_international_style_slab.gltf",
+ "size_m": [
+  70.4,
+  51.0,
+  124.2
+ ],
+ "materials": [
+  "hd_granite_flamed",
+  "hd_metal_black",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_roof_membrane",
+  "hd_limestone",
+  "hd_win_curtain_green",
+  "hd_spandrel_green",
+  "hd_frame_alum",
+  "hd_louver"
+ ],
+ "lod0_tris": 10576,
+ "lod1_tris": 6192,
+ "glb_kb": 1136
+}

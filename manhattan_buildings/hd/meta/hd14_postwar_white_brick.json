@@ -1,0 +1,31 @@
+{
+ "id": 14,
+ "key": "postwar_white_brick",
+ "name": "Postwar White-Brick Tower",
+ "description": "24-storey white-brick apartment tower with balconies and a setback.",
+ "file": "models/hd14_postwar_white_brick.gltf",
+ "size_m": [
+  40.7,
+  27.4,
+  77.3
+ ],
+ "materials": [
+  "hd_granite_black",
+  "hd_win_shop",
+  "hd_frame_alum",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_frame_black",
+  "hd_limestone",
+  "hd_brick_white",
+  "hd_win_res",
+  "hd_hvac",
+  "hd_grille",
+  "hd_concrete",
+  "hd_roof_membrane",
+  "hd_steel_dark"
+ ],
+ "lod0_tris": 57042,
+ "lod1_tris": 3150,
+ "glb_kb": 4380
+}

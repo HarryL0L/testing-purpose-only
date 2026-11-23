@@ -1,0 +1,33 @@
+{
+ "id": 20,
+ "key": "postmodern_granite_office",
+ "name": "Postmodern Granite Office",
+ "description": "30-storey pink granite office with arched base, setbacks and a copper pyramid crown.",
+ "file": "models/hd20_postmodern_granite_office.gltf",
+ "size_m": [
+  38.6,
+  36.3,
+  137.6
+ ],
+ "materials": [
+  "hd_granite_gray",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_signs",
+  "hd_awning_green",
+  "hd_glass_door",
+  "hd_awning_red",
+  "hd_gold",
+  "hd_frame_black",
+  "hd_awning_burgundy",
+  "hd_awning_navy",
+  "hd_awning_black",
+  "hd_win_office",
+  "hd_granite_pink",
+  "hd_roof_membrane",
+  "hd_copper"
+ ],
+ "lod0_tris": 74638,
+ "lod1_tris": 2648,
+ "glb_kb": 5654
+}

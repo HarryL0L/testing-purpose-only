@@ -1,0 +1,26 @@
+{
+ "id": 19,
+ "key": "brutalist_tower",
+ "name": "Brutalist Concrete Tower",
+ "description": "23-storey board-formed concrete tower with deep windows and heavy piers on pilotis.",
+ "file": "models/hd19_brutalist_tower.gltf",
+ "size_m": [
+  37.1,
+  32.1,
+  90.0
+ ],
+ "materials": [
+  "hd_concrete_board",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_metal_black",
+  "hd_roof_membrane",
+  "hd_limestone",
+  "hd_win_office"
+ ],
+ "lod0_tris": 57642,
+ "lod1_tris": 2086,
+ "glb_kb": 4358
+}

@@ -1,0 +1,35 @@
+{
+ "id": 1,
+ "key": "ues_prewar_coop",
+ "name": "Upper East Side Prewar Co-op",
+ "description": "15-storey red-brick co-op: rusticated limestone base, arched top floors, grand bracketed cornice, water tower.",
+ "file": "models/hd01_ues_prewar_coop.gltf",
+ "size_m": [
+  32.4,
+  32.7,
+  61.1
+ ],
+ "materials": [
+  "hd_limestone_rustic",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_awning_green",
+  "hd_brick_redbrown",
+  "hd_limestone",
+  "hd_win_res",
+  "hd_frame_black",
+  "hd_brick_red",
+  "hd_frame_white",
+  "hd_hvac",
+  "hd_grille",
+  "hd_roof_membrane",
+  "hd_steel_dark",
+  "hd_steel",
+  "hd_wood_staves"
+ ],
+ "lod0_tris": 32884,
+ "lod1_tris": 1078,
+ "glb_kb": 2358
+}

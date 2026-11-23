@@ -1,0 +1,38 @@
+{
+ "id": 5,
+ "key": "beaux_arts_office",
+ "name": "Beaux-Arts Office Building",
+ "description": "17-storey limestone office: rusticated arched base, paired windows, arcaded top, grand cornice.",
+ "file": "models/hd05_beaux_arts_office.gltf",
+ "size_m": [
+  40.6,
+  36.3,
+  79.8
+ ],
+ "materials": [
+  "hd_granite_gray",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_signs",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_awning_burgundy",
+  "hd_awning_black",
+  "hd_awning_navy",
+  "hd_awning_red",
+  "hd_awning_green",
+  "hd_limestone",
+  "hd_limestone_rustic",
+  "hd_win_office",
+  "hd_frame_black",
+  "hd_roof_membrane",
+  "hd_steel_dark",
+  "hd_steel",
+  "hd_wood_staves",
+  "hd_hvac",
+  "hd_grille"
+ ],
+ "lod0_tris": 83904,
+ "lod1_tris": 2352,
+ "glb_kb": 6229
+}

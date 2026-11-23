@@ -1,0 +1,35 @@
+{
+ "id": 7,
+ "key": "chicago_school_loft",
+ "name": "Chicago-School Loft",
+ "description": "14-storey brick loft with wide three-part windows, piers and a metal cornice.",
+ "file": "models/hd07_chicago_school_loft.gltf",
+ "size_m": [
+  32.0,
+  36.0,
+  68.2
+ ],
+ "materials": [
+  "hd_metal_black",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_glass_door",
+  "hd_signs",
+  "hd_gold",
+  "hd_awning_black",
+  "hd_awning_navy",
+  "hd_brick_brown",
+  "hd_limestone",
+  "hd_win_office",
+  "hd_brick_dark",
+  "hd_roof_membrane",
+  "hd_steel_dark",
+  "hd_steel",
+  "hd_wood_staves",
+  "hd_hvac",
+  "hd_grille"
+ ],
+ "lod0_tris": 19106,
+ "lod1_tris": 682,
+ "glb_kb": 1384
+}
