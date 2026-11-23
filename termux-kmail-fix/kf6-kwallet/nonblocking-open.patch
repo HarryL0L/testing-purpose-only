@@ -1,0 +1,458 @@
+kwalletd6: don't block while a wallet is being opened
+
+Opening a wallet can involve the user: ksecretd asks for the password, or
+for the details of a wallet that doesn't exist yet. kwalletd6 did this with
+secret_collection_create_sync() and secret_service_unlock_sync(), which run
+the prompt themselves and don't return until the user is done. For all that
+time kwalletd6 answered nobody.
+
+Everything else that talks to the wallet has the default 25 second D-Bus
+timeout, so with a user who takes a little longer over the dialog:
+
+  - KWallet::Wallet::NetworkWallet() called by another application times
+    out and returns an empty string;
+  - that application then asks us to open the wallet "", we pass that on,
+    ksecretd shows a second dialog for a wallet without a name and can't
+    report the result of it, and we never come back from the prompt. From
+    then on every wallet call hangs until kwalletd6 is restarted;
+  - applications that made a blocking call show up as "not responding".
+
+This is what happens when a Gmail account is added in KMail on a fresh
+profile: the mail transport and the IMAP resource both want the wallet,
+the first one brings up the create dialog, the second one gets no wallet
+name, and the Google sign-in never starts.
+
+Open requests are now queued and handled one at a time, and the two steps
+that can prompt are done with plain D-Bus calls to the Secret Service
+(CreateCollection, Unlock, Prompt and the Completed signal) instead of the
+blocking libsecret helpers. open() answers with a delayed reply, openAsync()
+with its signal as before. While a prompt is on screen kwalletd6 keeps
+serving other calls, and a second open of the same wallet simply waits for
+the first one instead of asking again.
+
+Three things come with this because they are the same code:
+
+  - A failed asynchronous open is reported. We used to emit
+    walletAsyncOpened() only on success, so KWallet::Wallet never emitted
+    walletOpened() and the application waited forever. The old kwalletd
+    always emitted it, with -1 as the handle.
+  - Opening a wallet with an empty name is refused right away.
+  - The window id the application passed to open() is handed to the prompt,
+    so the dialog is attached to that window. It used to be dropped.
+
+Tested with the real kwalletd6 and ksecretd under Xvfb, with a QtKeychain
+client and an asynchronous KWallet client started together and the dialog
+answered after 3 and after 35 seconds: creating the first wallet, unlocking
+it in a later session, and cancelling the dialog and trying again.
+
+--- a/src/runtime/kwalletd/kwalletd.cpp
++++ b/src/runtime/kwalletd/kwalletd.cpp
+@@ -292,49 +292,84 @@
+     return m_enabled && m_backend->isAvailable();
+ }
+ 
+-int KWalletD::openInternal(const QString &wallet, qlonglong wId, const QString &appId)
++// Opening a wallet can mean waiting for the user: ksecretd may have to ask for
++// a password, or for the details of a wallet that doesn't exist yet. We used to
++// sit in libsecret for as long as that dialog was on screen, and that blocked
++// everybody else too: an application asking networkWallet() in the meantime
++// got no answer, gave up after 25 seconds and carried on with an empty wallet
++// name.
++// So open requests are queued, handled one at a time, and answered when the
++// backend reports back. Nothing in here waits for the user anymore.
++void KWalletD::queueOpen(const OpenRequest &request)
+ {
+-    if (wId < 0) {
+-        return -1;
++    m_openRequests.append(request);
++    QTimer::singleShot(0, this, &KWalletD::processOpenRequests);
++}
++
++void KWalletD::processOpenRequests()
++{
++    if (m_openInProgress || m_openRequests.isEmpty()) {
++        return;
+     }
+ 
+-    bool ok;
+-    const QStringList wallets = m_backend->listCollections(&ok);
+-    if (!ok) {
+-        return -1;
++    m_openInProgress = true;
++    const OpenRequest request = m_openRequests.takeFirst();
++
++    if (request.wallet.isEmpty()) {
++        // This is what applications send when they couldn't find out the wallet
++        // name. There is nothing sensible to open or create for it.
++        finishOpen(request, false);
++        return;
+     }
+-    if (!wallets.contains(wallet)) {
+-        m_backend->createCollection(wallet, &ok);
+-        if (!ok) {
+-            return -1;
++
++    m_backend->openCollection(request.wallet, request.wId, [this, request](bool opened) {
++        finishOpen(request, opened);
++    });
++}
++
++void KWalletD::finishOpen(const OpenRequest &request, bool opened)
++{
++    int handle = -1;
++
++    if (opened) {
++        bool ok;
++        for (const QString &folder : m_backend->listFolders(request.wallet, &ok)) {
++            m_structure.insert(request.wallet, folder);
+         }
+-    }
+-    bool unlocked = m_backend->unlockCollection(wallet, &ok);
+-    if (!ok || !unlocked) {
+-        return -1;
+-    }
+ 
+-    for (const QString &folder : m_backend->listFolders(wallet, &ok)) {
+-        m_structure.insert(wallet, folder);
+-    }
++        QRandomGenerator rand = QRandomGenerator::securelySeeded();
++        handle = std::abs(int(rand.generate()));
+ 
+-    QRandomGenerator rand = QRandomGenerator::securelySeeded();
+-    const int rnd = std::abs(int(rand.generate()));
++        m_openWallets[QPair<int, QString>(handle, request.appId)] = request.wallet;
++    }
+ 
+-    m_openWallets[QPair<int, QString>(rnd, appId)] = wallet;
++    if (request.async) {
++        // Failures are reported as well, with -1 as the handle like the old
++        // kwalletd did. KWallet::Wallet only emits walletOpened() once this
++        // signal arrives, so an application that never hears back waits forever.
++        Q_EMIT walletAsyncOpened(request.tid, handle);
++    } else {
++        if (handle >= 0) {
++            Q_EMIT walletOpened(request.wallet);
++        }
++        QDBusConnection::sessionBus().send(request.message.createReply(handle));
++    }
+ 
+-    return rnd;
++    m_openInProgress = false;
++    QTimer::singleShot(0, this, &KWalletD::processOpenRequests);
+ }
+ 
+ int KWalletD::open(const QString &wallet, qlonglong wId, const QString &appId)
+ {
+-    int rnd = openInternal(wallet, wId, appId);
+-    if (rnd < 0) {
++    if (wId < 0 || !calledFromDBus()) {
+         return -1;
+     }
+ 
+-    Q_EMIT walletOpened(wallet);
+-    return rnd;
++    // The reply is sent from finishOpen()
++    setDelayedReply(true);
++    queueOpen({wallet, wId, appId, false, 0, message()});
++
++    return 0;
+ }
+ 
+ int KWalletD::openAsync(const QString &wallet, qlonglong wId, const QString &appId, bool handleSession)
+@@ -346,14 +381,7 @@
+     }
+ 
+     const int tid = ++s_lastTransaction;
+-
+-    QTimer::singleShot(0, [this, wallet, wId, appId, tid]() {
+-        int rnd = openInternal(wallet, wId, appId);
+-        if (rnd < 0) {
+-            return;
+-        }
+-        Q_EMIT walletAsyncOpened(tid, rnd);
+-    });
++    queueOpen({wallet, wId, appId, true, tid, QDBusMessage()});
+ 
+     return tid;
+ }
+--- a/src/runtime/kwalletd/kwalletd.h
++++ b/src/runtime/kwalletd/kwalletd.h
+@@ -7,6 +7,7 @@
+ #pragma once
+ 
+ #include <QDBusContext>
++#include <QDBusMessage>
+ #include <QObject>
+ 
+ #include "kwalletd_debug.h"
+@@ -141,7 +142,17 @@
+     QString localWallet();
+ 
+ protected:
+-    int openInternal(const QString &wallet, qlonglong wId, const QString &appId);
++    struct OpenRequest {
++        QString wallet;
++        qlonglong wId;
++        QString appId;
++        bool async;
++        int tid;
++        QDBusMessage message;
++    };
++    void queueOpen(const OpenRequest &request);
++    void processOpenRequests();
++    void finishOpen(const OpenRequest &request, bool opened);
+     // Migrate a single wallet, returns true on success
+     // sourceWallet is the wallet name on kwallet backend
+     // destWallet is the collection name on secretservice
+@@ -189,6 +200,8 @@
+     // We need to store a structure here as well, because the api has createFolder that would make a folder without any keys
+     QMultiHash<QString, QString> m_structure;
+     QHash<QPair<int, QString>, QString> m_openWallets;
++    QList<OpenRequest> m_openRequests;
++    bool m_openInProgress = false;
+ 
+     bool m_enabled = true;
+ 
+--- a/src/runtime/kwalletd/secretserviceclient.cpp
++++ b/src/runtime/kwalletd/secretserviceclient.cpp
+@@ -10,6 +10,9 @@
+ #include <KLocalizedString>
+ #include <QDBusConnection>
+ #include <QDBusInterface>
++#include <QDBusMessage>
++#include <QDBusPendingCallWatcher>
++#include <QDBusPendingReply>
+ #include <QDBusReply>
+ #include <QDBusServiceWatcher>
+ #include <QEventLoop>
+@@ -339,6 +342,9 @@
+ 
+     bool available = !newOwner.isEmpty();
+ 
++    // Whoever was showing a prompt for us is gone, it won't complete anymore
++    finishPrompt(false);
++
+     m_openCollections.clear();
+ 
+     if (available && !m_service) {
+@@ -487,6 +493,170 @@
+     return true;
+ }
+ 
++void SecretServiceClient::openCollection(const QString &collectionName, qlonglong windowId, const std::function<void(bool)> &callback)
++{
++    bool ok = false;
++    const QStringList collections = listCollections(&ok);
++    if (!ok) {
++        callback(false);
++        return;
++    }
++
++    if (collections.contains(collectionName)) {
++        unlockCollectionAsync(collectionName, windowId, callback);
++        return;
++    }
++
++    // Ask the service directly rather than through secret_collection_create_sync():
++    // that one runs the prompt itself and only comes back when the user is done.
++    QDBusMessage call = QDBusMessage::createMethodCall(m_serviceBusName,
++                                                       QStringLiteral("/org/freedesktop/secrets"),
++                                                       QStringLiteral("org.freedesktop.Secret.Service"),
++                                                       QStringLiteral("CreateCollection"));
++    call << QVariantMap{{QStringLiteral("org.freedesktop.Secret.Collection.Label"), collectionName}} << QString();
++
++    auto watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call), this);
++    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, collectionName, windowId, callback](QDBusPendingCallWatcher *watcher) {
++        watcher->deleteLater();
++
++        const QDBusPendingReply<QDBusObjectPath, QDBusObjectPath> reply = *watcher;
++        if (reply.isError()) {
++            qCWarning(KWALLETD_LOG) << "Failed to create collection" << collectionName << reply.error().message();
++            callback(false);
++            return;
++        }
++
++        const auto created = [this, collectionName, windowId, callback](bool accepted) {
++            if (accepted) {
++                unlockCollectionAsync(collectionName, windowId, callback);
++            } else {
++                callback(false);
++            }
++        };
++
++        const QString promptPath = reply.argumentAt<1>().path();
++        if (promptPath == QLatin1String("/")) {
++            created(true);
++        } else {
++            runPrompt(promptPath, windowId, created);
++        }
++    });
++}
++
++void SecretServiceClient::unlockCollectionAsync(const QString &collectionName, qlonglong windowId, const std::function<void(bool)> &callback)
++{
++    SecretCollection *collection = retrieveCollection(collectionName);
++    if (!collection) {
++        callback(false);
++        return;
++    }
++
++    bool ok = false;
++    watchCollection(collectionName, &ok);
++    if (!ok) {
++        callback(false);
++        return;
++    }
++
++    const QString path = QString::fromUtf8(g_dbus_proxy_get_object_path(G_DBUS_PROXY(collection)));
++
++    // Ask the service whether it is locked, what libsecret has cached can be out of date
++    QDBusInterface collectionInterface(m_serviceBusName, path, QStringLiteral("org.freedesktop.Secret.Collection"), QDBusConnection::sessionBus());
++    const QVariant locked = collectionInterface.property("Locked");
++    if (!locked.isValid()) {
++        qCWarning(KWALLETD_LOG) << "Error reading locked:" << collectionInterface.lastError();
++        callback(false);
++        return;
++    }
++    if (!locked.toBool()) {
++        callback(true);
++        return;
++    }
++
++    QDBusMessage call = QDBusMessage::createMethodCall(m_serviceBusName,
++                                                       QStringLiteral("/org/freedesktop/secrets"),
++                                                       QStringLiteral("org.freedesktop.Secret.Service"),
++                                                       QStringLiteral("Unlock"));
++    call << QVariant::fromValue(QList<QDBusObjectPath>{QDBusObjectPath(path)});
++
++    auto watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call), this);
++    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, collectionName, path, windowId, callback](QDBusPendingCallWatcher *watcher) {
++        watcher->deleteLater();
++
++        const QDBusPendingReply<QList<QDBusObjectPath>, QDBusObjectPath> reply = *watcher;
++        if (reply.isError()) {
++            qCWarning(KWALLETD_LOG) << i18n("Unable to unlock collectionName %1", collectionName) << reply.error().message();
++            callback(false);
++            return;
++        }
++
++        const QString promptPath = reply.argumentAt<1>().path();
++        if (promptPath == QLatin1String("/")) {
++            callback(reply.argumentAt<0>().contains(QDBusObjectPath(path)));
++        } else {
++            runPrompt(promptPath, windowId, callback);
++        }
++    });
++}
++
++// Shows a Secret Service prompt and reports whether the user went through with
++// it. We only ever have one of these going, open requests are handled one at a
++// time. The window id of the application that asked is passed along so that
++// the dialog can be attached to its window.
++void SecretServiceClient::runPrompt(const QString &promptPath, qlonglong windowId, const std::function<void(bool)> &callback)
++{
++    m_promptPath = promptPath;
++    m_promptCallback = callback;
++
++    QDBusConnection bus = QDBusConnection::sessionBus();
++    bus.connect(m_serviceBusName,
++                promptPath,
++                QStringLiteral("org.freedesktop.Secret.Prompt"),
++                QStringLiteral("Completed"),
++                this,
++                SLOT(onPromptCompleted(bool, QDBusVariant)));
++
++    QDBusMessage call =
++        QDBusMessage::createMethodCall(m_serviceBusName, promptPath, QStringLiteral("org.freedesktop.Secret.Prompt"), QStringLiteral("Prompt"));
++    call << QString::number(windowId);
++
++    auto watcher = new QDBusPendingCallWatcher(bus.asyncCall(call), this);
++    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, promptPath](QDBusPendingCallWatcher *watcher) {
++        watcher->deleteLater();
++
++        if (watcher->isError() && m_promptPath == promptPath) {
++            qCWarning(KWALLETD_LOG) << "Failed to show prompt" << promptPath << watcher->error().message();
++            finishPrompt(false);
++        }
++    });
++}
++
++void SecretServiceClient::onPromptCompleted(bool dismissed, const QDBusVariant &result)
++{
++    Q_UNUSED(result);
++    finishPrompt(!dismissed);
++}
++
++void SecretServiceClient::finishPrompt(bool accepted)
++{
++    if (!m_promptCallback) {
++        return;
++    }
++
++    QDBusConnection::sessionBus().disconnect(m_serviceBusName,
++                                             m_promptPath,
++                                             QStringLiteral("org.freedesktop.Secret.Prompt"),
++                                             QStringLiteral("Completed"),
++                                             this,
++                                             SLOT(onPromptCompleted(bool, QDBusVariant)));
++
++    const std::function<void(bool)> callback = m_promptCallback;
++    m_promptCallback = nullptr;
++    m_promptPath.clear();
++
++    callback(accepted);
++}
++
+ QString SecretServiceClient::defaultCollection(bool *ok)
+ {
+     if (!attemptConnection()) {
+--- a/src/runtime/kwalletd/secretserviceclient.h
++++ b/src/runtime/kwalletd/secretserviceclient.h
+@@ -7,8 +7,11 @@
+ #pragma once
+ 
+ #include <QDBusObjectPath>
++#include <QDBusVariant>
+ #include <QObject>
+ 
++#include <functional>
++
+ #include <libsecret/secret.h>
+ 
+ class QDBusServiceWatcher;
+@@ -52,6 +55,11 @@
+ 
+     bool unlockCollection(const QString &collectionName, bool *ok);
+ 
++    // Creates the collection if it doesn't exist yet and unlocks it. Unlike
++    // createCollection() and unlockCollection() this doesn't block while the
++    // user is busy with a dialog, the outcome is handed to the callback.
++    void openCollection(const QString &collectionName, qlonglong windowId, const std::function<void(bool)> &callback);
++
+     QString defaultCollection(bool *ok);
+     void setDefaultCollection(const QString &collectionName, bool *ok);
+     QStringList listCollections(bool *ok);
+@@ -98,10 +106,14 @@
+ 
+     QString collectionLabelForPath(const QDBusObjectPath &path);
+     SecretCollection *retrieveCollection(const QString &name);
++    void unlockCollectionAsync(const QString &collectionName, qlonglong windowId, const std::function<void(bool)> &callback);
++    void runPrompt(const QString &promptPath, qlonglong windowId, const std::function<void(bool)> &callback);
++    void finishPrompt(bool accepted);
+     SecretItemPtr retrieveItem(const QString &key, const SecretServiceClient::Type type, const QString &folder, const QString &collectionName, bool *ok);
+ 
+ protected Q_SLOTS:
+     void handlePrompt(bool dismissed);
++    void onPromptCompleted(bool dismissed, const QDBusVariant &result);
+     void onCollectionCreated(const QDBusObjectPath &path);
+     void onCollectionDeleted(const QDBusObjectPath &path);
+     void onCollectionChanged(const QDBusObjectPath &path);
+@@ -115,6 +127,8 @@
+     QSet<QString> m_dirtyCollections;
+     QTimer *m_collectionDirtyTimer;
+     QString m_serviceBusName;
++    QString m_promptPath;
++    std::function<void(bool)> m_promptCallback;
+     bool m_useKSecretBackend = false;
+     bool m_updateInProgress = false;
+ };

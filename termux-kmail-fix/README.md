@@ -1,138 +1,141 @@
 # KMail on Termux: root cause and proper fix
 
 The guide at https://github.com/BullyMaguire-lol/kmail-guide-termux is a
-workaround. This directory contains the analysis of *why* KMail cannot set up
-an account on a fresh Termux Plasma session, and three patches for the
-termux-packages `kf6-kwallet` recipe that fix it at the source.
+workaround. This directory has the analysis of *why* KMail cannot set up a
+Gmail account on a fresh Termux Plasma session, three patches for the
+termux-packages `kf6-kwallet` recipe that fix it at the source, and the tests
+used to find and check them.
 
 Checked against what Termux ships as of 2026-11-23: `kf6-kwallet` 6.32.0,
-`qtkeychain` 0.18.0, `libsecret` 0.21.8.
+`qtkeychain` 0.18.0, `libsecret` 0.21.8. Nothing in the `kmail`, `libkgapi`,
+`kdepim-runtime` or `qtkeychain` packages needs to change.
 
 ## Background
 
 Since KF 6.2x, KWallet is two daemons:
 
 * `ksecretd` owns the wallet files and the dialogs. It speaks the freedesktop
-  Secret Service API on `org.freedesktop.secrets` and `org.kde.secretservicecompat`.
+  Secret Service API.
 * `kwalletd6` is only a shim. It implements the legacy `org.kde.KWallet` D-Bus
   API and forwards everything to ksecretd through libsecret.
 
-Desktop distributions rarely see the problems below because kwallet-pam or an
-earlier KWallet client has already created `kdewallet` by the time a mail
-client asks for it. On Termux nothing does, so KMail's account setup is the
-first thing to ask for a wallet and has to create it on demand. All three bugs
-are in that create-on-demand path of the shim.
+Desktop distributions rarely see the problems below because the wallet is
+created and unlocked at login by kwallet-pam, before any application asks. On
+Termux nothing does that, so KMail's account setup is the first thing to ask
+for a wallet, several of its components ask at the same time, and the user
+has to type a password on a phone while they wait. All three bugs are in the
+shim.
 
-## Bug 1: the shim's wallet list is stale right after a wallet is created
+## The three bugs
 
-**Symptom (seen on a device, 2026-11-23):** after `kdewallet` has been created,
-a second dialog asks to create a wallet named `kdewallet__0_`.
+### 1. kwalletd6 answers nobody while a wallet dialog is open
 
-`KWalletD::openInternal()` decides whether to create a wallet by calling
-`listCollections()`. That calls `secret_service_load_collections_sync()`, which
-does not query the service: it rebuilds the list from the `Collections`
-property cached in libsecret's D-Bus proxy. The cache is only updated when
-ksecretd's `PropertiesChanged` signal is dispatched by the shim's main loop,
-and the shim does not get back to its main loop in time:
+`kwalletd6` creates and unlocks wallets with `secret_collection_create_sync()`
+and `secret_service_unlock_sync()`. Those run the prompt themselves and only
+return when the user is done, and the shim serves no other request until then.
+Everything else has the default 25 second D-Bus timeout, so when the user
+needs longer than that for the dialog:
 
-* Right after `createCollection()` the shim looks the new collection up in
-  order to unlock it. It is not in the cache yet, so the `open()` that just
-  created the wallet returns -1.
-* If another `open()` was queued while the create dialog was on screen, it can
-  be handled before the pending signal. It does not see the wallet either and
-  calls `createCollection()` again. ksecretd picks a free name for the same
-  label, and the user is asked to create `kdewallet__0_`.
+* `KWallet::Wallet::NetworkWallet()` in another component times out and
+  returns an empty string;
+* that component asks to open the wallet `""`. ksecretd shows a second dialog
+  for a wallet without a name, cannot report its result (invalid object path),
+  and the shim never returns from the prompt. Every wallet call then hangs
+  until `kwalletd6` is restarted, which is why the guide needs a logout;
+* a failed asynchronous open is not reported at all (`walletAsyncOpened` is
+  only emitted on success), so libkgapi waits forever before starting the
+  Google sign-in and the browser never opens;
+* components that made a blocking call show up as "KMail (Not Responding)" and
+  as `org.kde.pim.akonadicontrol ... NoReply` in the log.
 
-**Fix:** `kf6-kwallet/reload-collections-from-service.patch`. Before reloading,
-fetch the `Collections` property from the service and put it in the proxy's
-cache. Both callers (`listCollections` and `retrieveCollection`) use the new
-helper.
+**Fix:** `kf6-kwallet/nonblocking-open.patch`. Open requests are queued and
+handled one at a time; the two steps that can prompt use plain D-Bus calls to
+the Secret Service (`CreateCollection`, `Unlock`, `Prompt`, `Completed`)
+instead of the blocking libsecret helpers. Failed asynchronous opens are
+reported, an empty wallet name is refused, and the caller's window id is
+passed on to the prompt.
 
-**Status:** reproduced and fixed in `repro/` (see below). Not yet run on a
-device. Still present in kwallet master.
+### 2. The shim's wallet list is stale right after a wallet is created
 
-## Bug 2: a failed asynchronous open is never reported
+`listCollections()` and `retrieveCollection()` call
+`secret_service_load_collections_sync()`, which does not query the service: it
+rebuilds the list from the `Collections` property cached in libsecret's D-Bus
+proxy. Right after a create that cache does not contain the new wallet, so the
+shim cannot find the wallet it just made, and a request queued behind it asks
+to create it again. ksecretd then offers `kdewallet__0_`.
 
-**Symptom:** when adding a Gmail account, the browser for the Google sign-in
-never opens. The guide works around it with "click Previous, then Next".
+**Fix:** `kf6-kwallet/reload-collections-from-service.patch`. Fetch the
+property from the service before reloading.
 
-`KWalletD::openAsync()` returns a transaction id and is supposed to deliver the
-result through the `walletAsyncOpened` signal. When `openInternal()` fails it
-returns without emitting anything. `KWallet::Wallet` only emits
-`walletOpened(bool)` when that signal arrives, so an asynchronous caller waits
-forever, with no error.
+### 3. `networkWallet()` fails when no wallet exists yet
 
-libkgapi opens the wallet asynchronously before it starts the Google sign-in
-(`KWalletStorage::open`), so a failed open means the sign-in never starts.
-Because of bug 1 the open that creates the wallet is exactly such a failed
-open. Pressing Next again in the account wizard creates a second IMAP resource,
-which opens the now existing wallet and gets as far as the browser.
-
-**Fix:** `kf6-kwallet/openasync-report-failure.patch`. Always emit
-`walletAsyncOpened`, with -1 as the handle on failure, as the old kwalletd did
-(checked against v6.10.0). `KWallet::Wallet` already treats `handle > 0` as
-success.
-
-**Status:** derived from the code, not reproduced. With bug 1 fixed the
-creating open should succeed and the browser should open on the first attempt;
-this patch makes any remaining failure (for example a cancelled dialog) show up
-as an error instead of a hang. Still present in kwallet master.
-
-## Bug 3: `networkWallet()` fails when no wallet exists yet
-
-On a fresh profile ksecretd answers `ReadAlias("default")` with `/`. The shim's
-`defaultCollection()` therefore fails and `KWalletD::networkWallet()` replies
-with the D-Bus error `Failed to query default collection` (kwalletd.cpp, lines
-1010-1020). That error reply was introduced by kwallet MR 157 (merged
-2026-07-28, first released in KF 6.29.0). Before it, kwalletd returned the
-configured name ("kdewallet") unconditionally.
-
-Two client paths used by KMail depend on that call:
-
-1. **qtkeychain** (Akonadi IMAP resource, MailTransport, account wizard) asks
-   for the network wallet name before every read or write. With 0.18.0 the job
-   ends with the daemon's error.
-2. **libkgapi** (Gmail OAuth tokens) calls `KWallet::Wallet::NetworkWallet()`,
-   which returns an empty string on the error, and then tries `openWallet("")`.
+On a fresh profile there is no default collection, and since kwallet MR 157
+(first released in KF 6.29.0) `KWalletD::networkWallet()` answers with the
+D-Bus error `Failed to query default collection`. QtKeychain jobs end with that
+error, and `KWallet::Wallet::NetworkWallet()` returns an empty string.
 
 **Fix:** `kf6-kwallet/networkwallet-fallback-when-no-default-collection.patch`.
-When no default collection exists yet, `networkWallet()` and `localWallet()`
-return the configured name instead of an error.
-
-**Status:** derived from the code. With this patch installed, the create dialog
-for `kdewallet` did appear on a device. Whether a create dialog would also
-appear without it has not been tested yet, so treat this patch as likely
-needed rather than proven needed. Still present in kwallet master.
+Return the configured name (`kdewallet`) instead, as the old kwalletd did.
 
 ## Installing the patches
 
 Drop the three files from `kf6-kwallet/` into `x11-packages/kf6-kwallet/` in
-termux-packages and bump `TERMUX_PKG_REVISION`. Each applies on its own, and
-all three apply together in filename order, to kwallet v6.32.0 and master.
-Each patch header is written as a commit message so it can be sent upstream to
-invent.kde.org/frameworks/kwallet unchanged.
+termux-packages and bump `TERMUX_PKG_REVISION`. They apply in filename order to
+kwallet v6.32.0. Each patch header is written as a commit message.
 
-No qtkeychain patch is needed: 0.18.0 already contains the two fixes that were
-backported here earlier (upstream PRs 304 and 305).
+For upstream (invent.kde.org/frameworks/kwallet): all three bugs are still in
+master. Patches 2 and 3 apply to master as they are. `nonblocking-open.patch`
+needs a small rebase there, because master replaced `QPair` with `std::pair`
+in the code it rewrites.
 
-## Reproduction of bug 1
+## Evidence
 
-`repro/` has a mock Secret Service that does what ksecretd does on
-`CreateCollection` (create, emit `CollectionCreated` and `PropertiesChanged`,
-uniquify the name when the label is taken) and a test that makes the same
-libsecret calls as the shim's `openInternal()`, twice in a row.
+### Real daemons (`testbed/`)
 
-    ./repro/run.sh
+kwallet 6.32.0 built unpatched and with the three patches, real `kwalletd6`
+and `ksecretd` under Xvfb, clients that do what KMail's components do
+(a QtKeychain client like MailTransport, an asynchronous KWallet client like
+libkgapi), and a scripted user answering the dialogs after a delay. Every run
+starts from an empty home directory.
 
-| case | result |
-|---|---|
-| current, second open already queued | creates `kdewallet` and `kdewallet__0_`, both opens fail |
-| current, main loop runs between opens | one wallet, first open fails, second succeeds |
-| fixed, second open already queued | one wallet, both opens succeed |
-| fixed, main loop runs between opens | one wallet, both opens succeed |
+| scenario | unpatched 6.32.0 | with the three patches |
+|---|---|---|
+| libkgapi-like client alone | wallet name is empty, dialog for a nameless wallet, shim hangs for good | one dialog, `kdewallet` created, open succeeds |
+| QtKeychain client alone | fails at once: `Failed to query default collection` | one dialog, password written |
+| both clients, user answers after 3 s | (fails as above) | one dialog, one wallet, both succeed |
+| both clients, user answers after 35 s | (fails as above) | one dialog, one wallet, both succeed; wallet name answered immediately |
+| same, clients started in the other order | (fails as above) | one dialog, one wallet, both succeed |
+| user cancels, then tries again | (fails as above) | both clients get an error instead of hanging; the retry succeeds |
+| later session: unlock, user answers after 35 s | not reachable, no wallet | one unlock dialog, both succeed, stored password reads back |
+| client passes its window id | dialog not attached to the window | dialog's `WM_TRANSIENT_FOR` is the client's window |
 
-The "fixed" cases use `reloadCollections()` exactly as it is in the patch. This
-exercises real libsecret (0.21.4 here) but not the real kwalletd6 or ksecretd.
+An intermediate patch set that fixed bugs 2 and 3 and only reported failed
+asynchronous opens still hung in the 35 second cases (second dialog for a
+nameless wallet, then a permanent hang), both when creating and when unlocking.
+That is what was seen on the device as "still the same".
+
+The patched shim was also compiled with clang 22 without new warnings.
+
+Limits: the test bed runs on Ubuntu's development release (KDE Frameworks
+6.30 libraries, kwallet 6.32.0 sources), not on Termux; the wallet is created
+without GPG support, so the dialog is the plain password dialog rather than
+the Blowfish/GPG chooser; and the real KMail, Akonadi and Google sign-in are
+not part of it.
+
+### libsecret only (`repro/`)
+
+A mock Secret Service and a test that makes the shim's libsecret calls, for
+bug 2 in isolation. `./repro/run.sh` shows two wallets (`kdewallet`,
+`kdewallet__0_`) and failed opens with the current code, and one wallet with
+`reloadCollections()`.
+
+### On the device
+
+* With only the `networkWallet` patch: the create dialog for `kdewallet`
+  appeared, followed by one for `kdewallet__0_` hidden behind a frozen KMail.
+* With the first three-patch set: still no browser, and
+  `org.kde.pim.akonadicontrol ... NoReply` in the log.
+* The current set has not been run on a device yet.
 
 ## Testing on a device
 
@@ -151,41 +154,28 @@ nothing is still running that could write its state back.
 Check with `ls ~/.local/share/kwalletd ~/.local/share/akonadi`: both should be
 reported as missing.
 
-Then start Plasma, open KMail directly and add an account. Expected with all
-three patches: one dialog for `kdewallet`, Blowfish plus a password creates it,
-the browser opens for the Google sign-in without pressing Previous and Next,
-the wizard completes, no second wallet prompt and no logout.
+Then start Plasma, open KMail directly and add an account. Expected: one
+dialog for `kdewallet` (choose Blowfish and a password, take as long as you
+like), then the browser opens for the Google sign-in without pressing Previous
+and Next, the wizard completes, there is no second wallet prompt, and no
+logout is needed.
 
-The wallet dialog can open behind the KMail or Account Assistant window (see
-below). The browser only opens after that dialog has been completed, so check
-the taskbar for a "KDE Wallet Service" entry if nothing seems to happen.
+If the browser still does not open, look in the taskbar for a "KDE Wallet
+Service" entry hidden behind another window, and run
+`xdg-open https://example.com` in Konsole to check that Plasma can start a
+browser at all.
 
-If the browser still does not open, run `xdg-open https://example.com` in
-Konsole inside the Plasma session. If that opens a browser, the launcher is
-fine and the problem is still on the wallet side.
+## Known remaining problems
 
-To find out whether the `networkWallet` patch is needed, repeat without
-`networkwallet-fallback-when-no-default-collection.patch` and note the wallet
-name the create dialog shows, if one appears at all.
-
-## Known remaining problem: wallet dialogs can open behind other windows
-
-The shim receives the caller's window id but does not pass it on, and libsecret
-starts the prompt with no window id, so ksecretd shows its dialogs without a
-parent window. The window manager may then place them behind KMail, which
-itself stops responding while it waits for the wallet. This affects the create
-dialog and the unlock prompt of every later session. Not fixed here; bring the
-dialog forward from the taskbar.
-
-## Also worth doing
-
-* In the create-wallet dialog GPG is still the preselected option. 6.32.0
-  explains that it needs a GPG key and that Blowfish only needs a password, but
-  a user without a GPG key still has to switch to Blowfish.
-* `kmail` should depend on `kwalletmanager` so the System Settings wallet page
-  is always present. Today it is only a recommendation of `kf6-kwallet`.
-* Google sign-in opens the browser with `QDesktopServices::openUrl` and listens
-  on `127.0.0.1:<port>` for the redirect (libkgapi `fullauthenticationjob.cpp`).
-  On Termux that goes through `xdg-open`, which needs a browser registered for
-  https links. The guide's retry does reach a browser, so the launcher works
-  there; the missing browser on the first attempt is bug 2, not the launcher.
+* **Wallet dialogs can still open behind other windows.** The window id is
+  now passed on, but libkgapi and QtKeychain pass none, so for KMail's own
+  requests ksecretd still shows a dialog without a parent window. The
+  applications no longer freeze while it is open, and it can be brought
+  forward from the taskbar.
+* **ksecretd accepts an empty collection label** and then cannot complete the
+  prompt. The shim no longer sends one, but another Secret Service client
+  could.
+* In the create-wallet dialog GPG is the preselected option; a user without a
+  GPG key has to switch to Blowfish.
+* `kmail` could depend on `kwalletmanager` so the System Settings wallet page
+  is always present.
