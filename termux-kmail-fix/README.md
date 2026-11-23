@@ -2,7 +2,7 @@
 
 The guide at https://github.com/BullyMaguire-lol/kmail-guide-termux is a
 workaround. This directory contains the analysis of *why* KMail cannot set up
-an account on a fresh Termux Plasma session, and two patches for the
+an account on a fresh Termux Plasma session, and three patches for the
 termux-packages `kf6-kwallet` recipe that fix it at the source.
 
 Checked against what Termux ships as of 2026-11-23: `kf6-kwallet` 6.32.0,
@@ -20,8 +20,8 @@ Since KF 6.2x, KWallet is two daemons:
 Desktop distributions rarely see the problems below because kwallet-pam or an
 earlier KWallet client has already created `kdewallet` by the time a mail
 client asks for it. On Termux nothing does, so KMail's account setup is the
-first thing to ask for a wallet and has to create it on demand. Both bugs are
-in that create-on-demand path of the shim.
+first thing to ask for a wallet and has to create it on demand. All three bugs
+are in that create-on-demand path of the shim.
 
 ## Bug 1: the shim's wallet list is stale right after a wallet is created
 
@@ -51,7 +51,34 @@ helper.
 **Status:** reproduced and fixed in `repro/` (see below). Not yet run on a
 device. Still present in kwallet master.
 
-## Bug 2: `networkWallet()` fails when no wallet exists yet
+## Bug 2: a failed asynchronous open is never reported
+
+**Symptom:** when adding a Gmail account, the browser for the Google sign-in
+never opens. The guide works around it with "click Previous, then Next".
+
+`KWalletD::openAsync()` returns a transaction id and is supposed to deliver the
+result through the `walletAsyncOpened` signal. When `openInternal()` fails it
+returns without emitting anything. `KWallet::Wallet` only emits
+`walletOpened(bool)` when that signal arrives, so an asynchronous caller waits
+forever, with no error.
+
+libkgapi opens the wallet asynchronously before it starts the Google sign-in
+(`KWalletStorage::open`), so a failed open means the sign-in never starts.
+Because of bug 1 the open that creates the wallet is exactly such a failed
+open. Pressing Next again in the account wizard creates a second IMAP resource,
+which opens the now existing wallet and gets as far as the browser.
+
+**Fix:** `kf6-kwallet/openasync-report-failure.patch`. Always emit
+`walletAsyncOpened`, with -1 as the handle on failure, as the old kwalletd did
+(checked against v6.10.0). `KWallet::Wallet` already treats `handle > 0` as
+success.
+
+**Status:** derived from the code, not reproduced. With bug 1 fixed the
+creating open should succeed and the browser should open on the first attempt;
+this patch makes any remaining failure (for example a cancelled dialog) show up
+as an error instead of a hang. Still present in kwallet master.
+
+## Bug 3: `networkWallet()` fails when no wallet exists yet
 
 On a fresh profile ksecretd answers `ReadAlias("default")` with `/`. The shim's
 `defaultCollection()` therefore fails and `KWalletD::networkWallet()` replies
@@ -79,9 +106,9 @@ needed rather than proven needed. Still present in kwallet master.
 
 ## Installing the patches
 
-Drop both files from `kf6-kwallet/` into `x11-packages/kf6-kwallet/` in
-termux-packages and bump `TERMUX_PKG_REVISION`. They touch different source
-files and apply independently, without offset, to kwallet v6.32.0 and master.
+Drop the three files from `kf6-kwallet/` into `x11-packages/kf6-kwallet/` in
+termux-packages and bump `TERMUX_PKG_REVISION`. Each applies on its own, and
+all three apply together in filename order, to kwallet v6.32.0 and master.
 Each patch header is written as a commit message so it can be sent upstream to
 invent.kde.org/frameworks/kwallet unchanged.
 
@@ -119,13 +146,31 @@ passwords and Akonadi cache.** Skip the last line to keep locally stored mail.
     rm -f  ~/.config/kmail2rc ~/.config/emailidentities ~/.config/mailtransports ~/.config/specialmailcollectionsrc
     rm -rf ~/.local/share/local-mail
 
-Then start Plasma, open KMail directly and add an account. Expected with both
-patches: one dialog for `kdewallet`, Blowfish plus a password creates it, the
-wizard completes, no second wallet prompt and no logout.
+Then start Plasma, open KMail directly and add an account. Expected with all
+three patches: one dialog for `kdewallet`, Blowfish plus a password creates it,
+the browser opens for the Google sign-in without pressing Previous and Next,
+the wizard completes, no second wallet prompt and no logout.
 
-To find out whether the `networkWallet` patch is needed, repeat with only
-`reload-collections-from-service.patch` installed and note the wallet name the
-create dialog shows, if one appears at all.
+The wallet dialog can open behind the KMail or Account Assistant window (see
+below). The browser only opens after that dialog has been completed, so check
+the taskbar for a "KDE Wallet Service" entry if nothing seems to happen.
+
+If the browser still does not open, run `xdg-open https://example.com` in
+Konsole inside the Plasma session. If that opens a browser, the launcher is
+fine and the problem is still on the wallet side.
+
+To find out whether the `networkWallet` patch is needed, repeat without
+`networkwallet-fallback-when-no-default-collection.patch` and note the wallet
+name the create dialog shows, if one appears at all.
+
+## Known remaining problem: wallet dialogs can open behind other windows
+
+The shim receives the caller's window id but does not pass it on, and libsecret
+starts the prompt with no window id, so ksecretd shows its dialogs without a
+parent window. The window manager may then place them behind KMail, which
+itself stops responding while it waits for the wallet. This affects the create
+dialog and the unlock prompt of every later session. Not fixed here; bring the
+dialog forward from the taskbar.
 
 ## Also worth doing
 
@@ -136,7 +181,6 @@ create dialog shows, if one appears at all.
   is always present. Today it is only a recommendation of `kf6-kwallet`.
 * Google sign-in opens the browser with `QDesktopServices::openUrl` and listens
   on `127.0.0.1:<port>` for the redirect (libkgapi `fullauthenticationjob.cpp`).
-  On Termux that goes `xdg-open` -> `kde-open6`, which needs a browser registered
-  for `x-scheme-handler/https`. Installing a browser, or registering
-  `termux-open-url` as the https handler so the Android browser completes the
-  redirect, removes the "browser does not open" step from the guide.
+  On Termux that goes through `xdg-open`, which needs a browser registered for
+  https links. The guide's retry does reach a browser, so the launcher works
+  there; the missing browser on the first attempt is bug 2, not the launcher.
