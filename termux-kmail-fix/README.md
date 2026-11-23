@@ -2,13 +2,13 @@
 
 The guide at https://github.com/BullyMaguire-lol/kmail-guide-termux is a
 workaround. This directory contains the analysis of *why* KMail cannot set up
-an account on a fresh Termux Plasma session, and a ready-to-apply patch for the
-termux-packages `kf6-kwallet` recipe that fixes it at the source.
+an account on a fresh Termux Plasma session, and two patches for the
+termux-packages `kf6-kwallet` recipe that fix it at the source.
 
-Checked against what Termux ships as of 2026-11-23: `kf6-kwallet` 6.32.0 and
-`qtkeychain` 0.18.0.
+Checked against what Termux ships as of 2026-11-23: `kf6-kwallet` 6.32.0,
+`qtkeychain` 0.18.0, `libsecret` 0.21.8.
 
-## Root cause (verified against the shipped sources)
+## Background
 
 Since KF 6.2x, KWallet is two daemons:
 
@@ -17,68 +17,119 @@ Since KF 6.2x, KWallet is two daemons:
 * `kwalletd6` is only a shim. It implements the legacy `org.kde.KWallet` D-Bus
   API and forwards everything to ksecretd through libsecret.
 
-On a fresh profile there is no wallet, so ksecretd answers
-`ReadAlias("default")` with `/`. The shim's `defaultCollection()` therefore
-fails, and `KWalletD::networkWallet()` replies with the D-Bus error
-`Failed to query default collection` (kwalletd.cpp, lines 1010-1020).
-That error reply was introduced by kwallet MR 157 (merged 2026-07-28, first
-released in KF 6.29.0). Before it, kwalletd returned the configured wallet name
-("kdewallet") unconditionally. It is still present in 6.32.0 and in master.
+Desktop distributions rarely see the problems below because kwallet-pam or an
+earlier KWallet client has already created `kdewallet` by the time a mail
+client asks for it. On Termux nothing does, so KMail's account setup is the
+first thing to ask for a wallet and has to create it on demand. Both bugs are
+in that create-on-demand path of the shim.
 
-Two client paths used by KMail break on that reply:
+## Bug 1: the shim's wallet list is stale right after a wallet is created
 
-1. **qtkeychain** (Akonadi IMAP resource, MailTransport, account wizard).
-   Every read or write job first asks kwalletd6 for the network wallet name.
-   With qtkeychain 0.18.0 the job ends right there with the daemon's error, so
-   the password is never stored and no wallet is created. (0.17.0 behaved
-   worse: its availability probe used the same call, concluded KWallet was not
-   available, and silently switched to libsecret. That part is fixed upstream
-   in 0.18.0 by PRs 304 and 305, so no qtkeychain patch is needed any more.)
-2. **libkgapi** (Gmail OAuth tokens via `KGAPI2::AccountManager`). It calls
-   `KWallet::Wallet::NetworkWallet()`, which returns an empty string on the
-   error, and then tries `openWallet("")`.
+**Symptom (seen on a device, 2026-11-23):** after `kdewallet` has been created,
+a second dialog asks to create a wallet named `kdewallet__0_`.
 
-This is why the guide insists on creating `kdewallet` through System Settings
-*before* ever starting KMail, and on logging out afterwards: the first step
-makes the default alias resolve, the second restarts kwalletd6 and the Akonadi
-agents. Desktop distributions rarely hit this because kwallet-pam or another
-KWallet client creates the wallet at first login.
+`KWalletD::openInternal()` decides whether to create a wallet by calling
+`listCollections()`. That calls `secret_service_load_collections_sync()`, which
+does not query the service: it rebuilds the list from the `Collections`
+property cached in libsecret's D-Bus proxy. The cache is only updated when
+ksecretd's `PropertiesChanged` signal is dispatched by the shim's main loop,
+and the shim does not get back to its main loop in time:
 
-## The fix
+* Right after `createCollection()` the shim looks the new collection up in
+  order to unlock it. It is not in the cache yet, so the `open()` that just
+  created the wallet returns -1.
+* If another `open()` was queued while the create dialog was on screen, it can
+  be handled before the pending signal. It does not see the wallet either and
+  calls `createCollection()` again. ksecretd picks a free name for the same
+  label, and the user is asked to create `kdewallet__0_`.
 
-`kf6-kwallet/networkwallet-fallback-when-no-default-collection.patch`
+**Fix:** `kf6-kwallet/reload-collections-from-service.patch`. Before reloading,
+fetch the `Collections` property from the service and put it in the proxy's
+cache. Both callers (`listCollections` and `retrieveCollection`) use the new
+helper.
 
+**Status:** reproduced and fixed in `repro/` (see below). Not yet run on a
+device. Still present in kwallet master.
+
+## Bug 2: `networkWallet()` fails when no wallet exists yet
+
+On a fresh profile ksecretd answers `ReadAlias("default")` with `/`. The shim's
+`defaultCollection()` therefore fails and `KWalletD::networkWallet()` replies
+with the D-Bus error `Failed to query default collection` (kwalletd.cpp, lines
+1010-1020). That error reply was introduced by kwallet MR 157 (merged
+2026-07-28, first released in KF 6.29.0). Before it, kwalletd returned the
+configured name ("kdewallet") unconditionally.
+
+Two client paths used by KMail depend on that call:
+
+1. **qtkeychain** (Akonadi IMAP resource, MailTransport, account wizard) asks
+   for the network wallet name before every read or write. With 0.18.0 the job
+   ends with the daemon's error.
+2. **libkgapi** (Gmail OAuth tokens) calls `KWallet::Wallet::NetworkWallet()`,
+   which returns an empty string on the error, and then tries `openWallet("")`.
+
+**Fix:** `kf6-kwallet/networkwallet-fallback-when-no-default-collection.patch`.
 When no default collection exists yet, `networkWallet()` and `localWallet()`
-return the configured name instead of a D-Bus error. The first `open()` then
-reaches ksecretd and shows the normal create-wallet dialog. Drop the file into
-`x11-packages/kf6-kwallet/` in termux-packages and bump `TERMUX_PKG_REVISION`.
-The same change should be proposed upstream at invent.kde.org/frameworks/kwallet;
-the patch header is written as a commit message for that purpose.
+return the configured name instead of an error.
 
-The patch applies without offset to kwallet v6.31.0, v6.32.0 and master.
+**Status:** derived from the code. With this patch installed, the create dialog
+for `kdewallet` did appear on a device. Whether a create dialog would also
+appear without it has not been tested yet, so treat this patch as likely
+needed rather than proven needed. Still present in kwallet master.
 
-## What happens after the fix
+## Installing the patches
 
-1. KMail (or an Akonadi resource) asks qtkeychain to store a password.
-   qtkeychain pings `org.kde.kwalletd6`, which D-Bus-activates the shim.
-2. qtkeychain calls `networkWallet()`. No default collection exists, so the
-   patched shim answers `kdewallet` (the `Default Wallet` value from
-   `kwalletrc`, which defaults to that name).
-3. qtkeychain calls `open("kdewallet")`. The shim sees that no such collection
-   exists and asks ksecretd to create it.
-4. ksecretd shows its create-wallet dialog. The user picks Blowfish and a
-   password; ksecretd writes `kdewallet.kwl` and the password is stored.
-5. From now on the default alias resolves (ksecretd maps "default" to the
-   configured name, which now exists), so the fallback is never taken again.
-   libkgapi gets `kdewallet` from `NetworkWallet()` and stores the Gmail token
-   in the same, already open wallet.
+Drop both files from `kf6-kwallet/` into `x11-packages/kf6-kwallet/` in
+termux-packages and bump `TERMUX_PKG_REVISION`. They touch different source
+files and apply independently, without offset, to kwallet v6.32.0 and master.
+Each patch header is written as a commit message so it can be sent upstream to
+invent.kde.org/frameworks/kwallet unchanged.
 
-On later sessions the wallet only needs unlocking: the first access shows a
-password prompt, since Termux has no PAM login to unlock it automatically.
+No qtkeychain patch is needed: 0.18.0 already contains the two fixes that were
+backported here earlier (upstream PRs 304 and 305).
+
+## Reproduction of bug 1
+
+`repro/` has a mock Secret Service that does what ksecretd does on
+`CreateCollection` (create, emit `CollectionCreated` and `PropertiesChanged`,
+uniquify the name when the label is taken) and a test that makes the same
+libsecret calls as the shim's `openInternal()`, twice in a row.
+
+    ./repro/run.sh
+
+| case | result |
+|---|---|
+| current, second open already queued | creates `kdewallet` and `kdewallet__0_`, both opens fail |
+| current, main loop runs between opens | one wallet, first open fails, second succeeds |
+| fixed, second open already queued | one wallet, both opens succeed |
+| fixed, main loop runs between opens | one wallet, both opens succeed |
+
+The "fixed" cases use `reloadCollections()` exactly as it is in the patch. This
+exercises real libsecret (0.21.4 here) but not the real kwalletd6 or ksecretd.
+
+## Testing on a device
+
+Reset to a fresh profile first. **This deletes your KMail accounts, stored
+passwords and Akonadi cache.** Skip the last line to keep locally stored mail.
+
+    akonadictl stop
+    pkill kwalletd6; pkill ksecretd
+    rm -rf ~/.local/share/kwalletd ~/.config/kwalletrc
+    rm -rf ~/.local/share/akonadi ~/.config/akonadi*
+    rm -f  ~/.config/kmail2rc ~/.config/emailidentities ~/.config/mailtransports ~/.config/specialmailcollectionsrc
+    rm -rf ~/.local/share/local-mail
+
+Then start Plasma, open KMail directly and add an account. Expected with both
+patches: one dialog for `kdewallet`, Blowfish plus a password creates it, the
+wizard completes, no second wallet prompt and no logout.
+
+To find out whether the `networkWallet` patch is needed, repeat with only
+`reload-collections-from-service.patch` installed and note the wallet name the
+create dialog shows, if one appears at all.
 
 ## Also worth doing
 
-* In the create-wallet dialog GPG is still the preselected option. 6.32.0 now
+* In the create-wallet dialog GPG is still the preselected option. 6.32.0
   explains that it needs a GPG key and that Blowfish only needs a password, but
   a user without a GPG key still has to switch to Blowfish.
 * `kmail` should depend on `kwalletmanager` so the System Settings wallet page
@@ -89,16 +140,3 @@ password prompt, since Termux has no PAM login to unlock it automatically.
   for `x-scheme-handler/https`. Installing a browser, or registering
   `termux-open-url` as the https handler so the Android browser completes the
   redirect, removes the "browser does not open" step from the guide.
-
-## How to verify on a device
-
-1. `pkg install` the rebuilt `kf6-kwallet`.
-2. Remove `~/.local/share/kwalletd/` and `~/.config/kwalletrc` to simulate a
-   fresh profile, start Plasma, open KMail directly, add an account.
-3. Expected: the "KDE has requested to create a new wallet named kdewallet"
-   dialog appears, Blowfish plus a password creates it, the wizard completes,
-   and no logout is needed.
-
-The patch was dry-run with `patch -p1` against the exact upstream sources. It
-has not been built or run on a device, and the flow above is derived from
-reading the code, not from a test run.
