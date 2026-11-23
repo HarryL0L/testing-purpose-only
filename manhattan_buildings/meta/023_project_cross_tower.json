@@ -1,0 +1,26 @@
+{
+ "id": 23,
+ "key": "project_cross_tower",
+ "name": "Housing Tower (Cross Plan)",
+ "category": "Residential",
+ "description": "14-storey cross-plan public housing tower.",
+ "file": "models/023_project_cross_tower.glb",
+ "size_m": [
+  60,
+  47.0,
+  43.0
+ ],
+ "materials": [
+  "project_brick",
+  "roof_tar",
+  "concrete",
+  "brick_red_blank",
+  "hvac",
+  "dark",
+  "trim_dark",
+  "grass"
+ ],
+ "faces": 86,
+ "tris": 188,
+ "glb_kb": 93
+}

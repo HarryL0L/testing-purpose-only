@@ -1,0 +1,25 @@
+{
+ "id": 80,
+ "key": "gothic_church",
+ "name": "Gothic Church",
+ "category": "Civic & Institutional",
+ "description": "Twin-spired Gothic Revival church with rose window.",
+ "file": "models/080_gothic_church.glb",
+ "size_m": [
+  26,
+  45.1,
+  50.0
+ ],
+ "materials": [
+  "concrete",
+  "gothic_stone",
+  "slate",
+  "glass_plain",
+  "roof_tar",
+  "trim_stone",
+  "wood"
+ ],
+ "faces": 138,
+ "tris": 236,
+ "glb_kb": 71
+}

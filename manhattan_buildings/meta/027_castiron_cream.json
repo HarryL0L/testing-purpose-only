@@ -1,0 +1,28 @@
+{
+ "id": 27,
+ "key": "castiron_cream",
+ "name": "Cast-iron Loft (Cream)",
+ "category": "Commercial",
+ "description": "6-storey cream cast-iron loft with fire escape.",
+ "file": "models/027_castiron_cream.glb",
+ "size_m": [
+  14.0,
+  32.3,
+  39.3
+ ],
+ "materials": [
+  "store_stone",
+  "brick_red_blank",
+  "castiron_cream",
+  "roof_tar",
+  "trim_stone",
+  "iron",
+  "steel",
+  "wood",
+  "hvac",
+  "dark"
+ ],
+ "faces": 280,
+ "tris": 564,
+ "glb_kb": 107
+}

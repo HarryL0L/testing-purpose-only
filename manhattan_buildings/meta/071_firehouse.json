@@ -1,0 +1,27 @@
+{
+ "id": 71,
+ "key": "firehouse",
+ "name": "Firehouse",
+ "category": "Civic & Institutional",
+ "description": "3-storey firehouse with two apparatus doors.",
+ "file": "models/071_firehouse.glb",
+ "size_m": [
+  13.4,
+  31.7,
+  18.6
+ ],
+ "materials": [
+  "limestone_plain",
+  "brick_red_blank",
+  "brick_red",
+  "roof_tar",
+  "trim_stone",
+  "garage_door",
+  "steel",
+  "awning_blue",
+  "concrete"
+ ],
+ "faces": 57,
+ "tris": 114,
+ "glb_kb": 99
+}

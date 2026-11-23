@@ -1,0 +1,24 @@
+{
+ "id": 69,
+ "key": "hotel_glass",
+ "name": "Modern Glass Hotel",
+ "category": "Retail & Mixed-Use",
+ "description": "30-storey teal glass hotel on a podium.",
+ "file": "models/069_hotel_glass.glb",
+ "size_m": [
+  40.0,
+  39.0,
+  139.6
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "ribbon_dark",
+  "glass_teal",
+  "steel",
+  "sign_white"
+ ],
+ "faces": 30,
+ "tris": 60,
+ "glb_kb": 66
+}

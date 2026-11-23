@@ -1,0 +1,24 @@
+{
+ "id": 15,
+ "key": "federal_shop",
+ "name": "Federal House with Shop",
+ "category": "Residential",
+ "description": "Federal house with a ground-floor shop.",
+ "file": "models/015_federal_shop.glb",
+ "size_m": [
+  8.4,
+  12.6,
+  15.1
+ ],
+ "materials": [
+  "store_brick",
+  "brick_red_blank",
+  "trim_white",
+  "federal",
+  "slate",
+  "glass_plain"
+ ],
+ "faces": 63,
+ "tris": 120,
+ "glb_kb": 86
+}

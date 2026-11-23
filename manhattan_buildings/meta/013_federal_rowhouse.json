@@ -1,0 +1,25 @@
+{
+ "id": 13,
+ "key": "federal_rowhouse",
+ "name": "Federal Rowhouse",
+ "category": "Residential",
+ "description": "2.5-storey Federal-style house, dormers and chimneys.",
+ "file": "models/013_federal_rowhouse.glb",
+ "size_m": [
+  7.9,
+  13.3,
+  10.6
+ ],
+ "materials": [
+  "federal",
+  "brick_red_blank",
+  "trim_white",
+  "slate",
+  "glass_plain",
+  "trim_stone",
+  "green_paint"
+ ],
+ "faces": 74,
+ "tris": 142,
+ "glb_kb": 79
+}

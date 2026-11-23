@@ -1,0 +1,29 @@
+{
+ "id": 30,
+ "key": "warehouse_arched",
+ "name": "Arched Brick Warehouse",
+ "category": "Commercial",
+ "description": "7-storey Romanesque warehouse with loading dock.",
+ "file": "models/030_warehouse_arched.glb",
+ "size_m": [
+  25.7,
+  33.0,
+  37.6
+ ],
+ "materials": [
+  "warehouse_arch",
+  "brick_red_blank",
+  "roof_tar",
+  "trim_stone",
+  "steel",
+  "iron",
+  "garage_door_gray",
+  "concrete",
+  "wood",
+  "hvac",
+  "dark"
+ ],
+ "faces": 148,
+ "tris": 296,
+ "glb_kb": 105
+}

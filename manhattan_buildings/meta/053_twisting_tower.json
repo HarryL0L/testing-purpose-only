@@ -1,0 +1,23 @@
+{
+ "id": 53,
+ "key": "twisting_tower",
+ "name": "Twisting Tower",
+ "category": "Commercial",
+ "description": "Glass tower rotating as it rises.",
+ "file": "models/053_twisting_tower.glb",
+ "size_m": [
+  54.0,
+  54.0,
+  351.0
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "glass_blue",
+  "glass_plain",
+  "steel"
+ ],
+ "faces": 124,
+ "tris": 256,
+ "glb_kb": 57
+}

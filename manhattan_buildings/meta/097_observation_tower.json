@@ -1,0 +1,24 @@
+{
+ "id": 97,
+ "key": "observation_tower",
+ "name": "Observation Supertall",
+ "category": "Landmark-scale",
+ "description": "110-storey tower with cantilevered sky deck.",
+ "file": "models/097_observation_tower.glb",
+ "size_m": [
+  55.0,
+  55.0,
+  546.0
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "glass_blue",
+  "glass_dark",
+  "glass_plain",
+  "steel"
+ ],
+ "faces": 72,
+ "tris": 160,
+ "glb_kb": 63
+}

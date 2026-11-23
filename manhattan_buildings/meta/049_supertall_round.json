@@ -1,0 +1,22 @@
+{
+ "id": 49,
+ "key": "supertall_round",
+ "name": "Cylindrical Supertall",
+ "category": "Commercial",
+ "description": "Round glass tower with crown ring and mast.",
+ "file": "models/049_supertall_round.glb",
+ "size_m": [
+  52.8,
+  52.8,
+  372.0
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "glass_blue",
+  "steel"
+ ],
+ "faces": 90,
+ "tris": 220,
+ "glb_kb": 52
+}

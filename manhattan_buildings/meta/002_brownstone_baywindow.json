@@ -1,0 +1,24 @@
+{
+ "id": 2,
+ "key": "brownstone_baywindow",
+ "name": "Brownstone with Bay Window",
+ "category": "Residential",
+ "description": "Brownstone with a three-sided oriel bay.",
+ "file": "models/002_brownstone_baywindow.glb",
+ "size_m": [
+  7.0,
+  16.4,
+  16.0
+ ],
+ "materials": [
+  "brownstone",
+  "brick_brown_blank",
+  "roof_tar",
+  "trim_dark",
+  "brownstone_plain",
+  "iron"
+ ],
+ "faces": 78,
+ "tris": 156,
+ "glb_kb": 68
+}

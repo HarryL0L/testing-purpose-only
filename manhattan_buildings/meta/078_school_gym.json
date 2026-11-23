@@ -1,0 +1,29 @@
+{
+ "id": 78,
+ "key": "school_gym",
+ "name": "School with Gymnasium",
+ "category": "Civic & Institutional",
+ "description": "L-plan school with barrel-roofed gym.",
+ "file": "models/078_school_gym.glb",
+ "size_m": [
+  60.6,
+  45.0,
+  17.6
+ ],
+ "materials": [
+  "school_brick",
+  "roof_tar",
+  "trim_stone",
+  "brick_red_blank",
+  "corrugated",
+  "limestone_plain",
+  "trim_dark",
+  "steel",
+  "awning_red",
+  "hvac",
+  "dark"
+ ],
+ "faces": 124,
+ "tris": 262,
+ "glb_kb": 110
+}

@@ -1,0 +1,27 @@
+{
+ "id": 60,
+ "key": "restaurant_row",
+ "name": "Restaurant Row Building",
+ "category": "Retail & Mixed-Use",
+ "description": "4-storey restaurant building with red awning.",
+ "file": "models/060_restaurant_row.glb",
+ "size_m": [
+  9.2,
+  18.3,
+  17.4
+ ],
+ "materials": [
+  "store_brick",
+  "brick_yellow_blank",
+  "tenement_yellow",
+  "roof_tar",
+  "trim_dark",
+  "iron",
+  "awning_red",
+  "hvac",
+  "dark"
+ ],
+ "faces": 143,
+ "tris": 294,
+ "glb_kb": 108
+}

@@ -1,0 +1,29 @@
+{
+ "id": 31,
+ "key": "warehouse_brown",
+ "name": "Brown Brick Warehouse",
+ "category": "Commercial",
+ "description": "8-storey industrial loft warehouse.",
+ "file": "models/031_warehouse_brown.glb",
+ "size_m": [
+  30.7,
+  38.0,
+  41.6
+ ],
+ "materials": [
+  "warehouse_brown",
+  "brick_brown_blank",
+  "roof_tar",
+  "trim_stone",
+  "steel",
+  "iron",
+  "garage_door_gray",
+  "concrete",
+  "wood",
+  "hvac",
+  "dark"
+ ],
+ "faces": 148,
+ "tris": 296,
+ "glb_kb": 105
+}

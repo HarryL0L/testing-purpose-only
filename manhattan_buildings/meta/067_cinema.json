@@ -1,0 +1,25 @@
+{
+ "id": 67,
+ "key": "cinema",
+ "name": "Movie Palace",
+ "category": "Retail & Mixed-Use",
+ "description": "Movie palace with large marquee.",
+ "file": "models/067_cinema.glb",
+ "size_m": [
+  27.4,
+  47.6,
+  30.0
+ ],
+ "materials": [
+  "store_stone",
+  "limestone_ornate",
+  "roof_tar",
+  "trim_stone",
+  "brick_brown_blank",
+  "sign_yellow",
+  "sign_red"
+ ],
+ "faces": 51,
+ "tris": 102,
+ "glb_kb": 71
+}

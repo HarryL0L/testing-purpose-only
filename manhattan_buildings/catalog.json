@@ -1,0 +1,2582 @@
+[
+ {
+  "id": 1,
+  "key": "brownstone_classic",
+  "name": "Classic Brownstone",
+  "category": "Residential",
+  "description": "4-storey brownstone rowhouse with stoop and cornice.",
+  "file": "models/001_brownstone_classic.glb",
+  "size_m": [
+   7.0,
+   16.4,
+   16.0
+  ],
+  "materials": [
+   "brownstone",
+   "brick_brown_blank",
+   "roof_tar",
+   "trim_dark",
+   "brownstone_plain",
+   "iron"
+  ],
+  "faces": 74,
+  "tris": 148,
+  "glb_kb": 67
+ },
+ {
+  "id": 2,
+  "key": "brownstone_baywindow",
+  "name": "Brownstone with Bay Window",
+  "category": "Residential",
+  "description": "Brownstone with a three-sided oriel bay.",
+  "file": "models/002_brownstone_baywindow.glb",
+  "size_m": [
+   7.0,
+   16.4,
+   16.0
+  ],
+  "materials": [
+   "brownstone",
+   "brick_brown_blank",
+   "roof_tar",
+   "trim_dark",
+   "brownstone_plain",
+   "iron"
+  ],
+  "faces": 78,
+  "tris": 156,
+  "glb_kb": 68
+ },
+ {
+  "id": 3,
+  "key": "brownstone_mansard",
+  "name": "Mansard Brownstone",
+  "category": "Residential",
+  "description": "Brownstone topped with a slate mansard and dormers.",
+  "file": "models/003_brownstone_mansard.glb",
+  "size_m": [
+   7.0,
+   16.4,
+   17.6
+  ],
+  "materials": [
+   "brownstone",
+   "brick_brown_blank",
+   "roof_tar",
+   "trim_dark",
+   "slate",
+   "trim_white",
+   "glass_plain",
+   "brownstone_plain",
+   "iron"
+  ],
+  "faces": 104,
+  "tris": 204,
+  "glb_kb": 77
+ },
+ {
+  "id": 4,
+  "key": "sandstone_rowhouse",
+  "name": "Sandstone Rowhouse",
+  "category": "Residential",
+  "description": "3-storey light sandstone rowhouse.",
+  "file": "models/004_sandstone_rowhouse.glb",
+  "size_m": [
+   7.0,
+   16.4,
+   12.4
+  ],
+  "materials": [
+   "brownstone_light",
+   "brick_tan_blank",
+   "roof_tar",
+   "trim_stone",
+   "limestone_plain",
+   "iron",
+   "trim_dark"
+  ],
+  "faces": 74,
+  "tris": 148,
+  "glb_kb": 76
+ },
+ {
+  "id": 5,
+  "key": "brownstone_wide",
+  "name": "Wide Brownstone",
+  "category": "Residential",
+  "description": "5-storey double-width brownstone.",
+  "file": "models/005_brownstone_wide.glb",
+  "size_m": [
+   10.0,
+   18.4,
+   19.6
+  ],
+  "materials": [
+   "brownstone",
+   "brick_brown_blank",
+   "roof_tar",
+   "trim_dark",
+   "hvac",
+   "dark",
+   "brownstone_plain",
+   "iron"
+  ],
+  "faces": 88,
+  "tris": 180,
+  "glb_kb": 71
+ },
+ {
+  "id": 6,
+  "key": "sandstone_bay_mansard",
+  "name": "Sandstone Bay & Mansard",
+  "category": "Residential",
+  "description": "Light rowhouse with bay window and mansard roof.",
+  "file": "models/006_sandstone_bay_mansard.glb",
+  "size_m": [
+   7.0,
+   16.4,
+   14.0
+  ],
+  "materials": [
+   "brownstone_light",
+   "brick_tan_blank",
+   "roof_tar",
+   "trim_stone",
+   "slate",
+   "trim_white",
+   "glass_plain",
+   "limestone_plain",
+   "iron",
+   "trim_dark"
+  ],
+  "faces": 108,
+  "tris": 212,
+  "glb_kb": 87
+ },
+ {
+  "id": 7,
+  "key": "tenement_red",
+  "name": "Red Brick Walk-up",
+  "category": "Residential",
+  "description": "5-storey walk-up with storefront and fire escape.",
+  "file": "models/007_tenement_red.glb",
+  "size_m": [
+   9.2,
+   19.9,
+   24.0
+  ],
+  "materials": [
+   "store_mixed",
+   "brick_red_blank",
+   "tenement_red",
+   "roof_tar",
+   "trim_dark",
+   "iron",
+   "hvac",
+   "dark"
+  ],
+  "faces": 193,
+  "tris": 394,
+  "glb_kb": 111
+ },
+ {
+  "id": 8,
+  "key": "tenement_tan",
+  "name": "Tan Walk-up with Awning",
+  "category": "Residential",
+  "description": "6-storey tan brick walk-up with awninged shop.",
+  "file": "models/008_tenement_tan.glb",
+  "size_m": [
+   10.2,
+   20.3,
+   27.3
+  ],
+  "materials": [
+   "store_mixed",
+   "brick_tan_blank",
+   "tenement_tan",
+   "roof_tar",
+   "trim_white",
+   "iron",
+   "awning_red",
+   "hvac",
+   "dark"
+  ],
+  "faces": 227,
+  "tris": 462,
+  "glb_kb": 116
+ },
+ {
+  "id": 9,
+  "key": "tenement_corner_yellow",
+  "name": "Corner Walk-up (Yellow)",
+  "category": "Residential",
+  "description": "Corner walk-up with shopfronts on two streets.",
+  "file": "models/009_tenement_corner_yellow.glb",
+  "size_m": [
+   12.1,
+   22.3,
+   30.6
+  ],
+  "materials": [
+   "store_mixed",
+   "brick_yellow_blank",
+   "tenement_yellow",
+   "roof_tar",
+   "trim_dark",
+   "iron",
+   "awning_green",
+   "steel",
+   "wood",
+   "hvac",
+   "dark"
+  ],
+  "faces": 263,
+  "tris": 530,
+  "glb_kb": 129
+ },
+ {
+  "id": 10,
+  "key": "tenement_narrow",
+  "name": "Narrow Walk-up",
+  "category": "Residential",
+  "description": "Slim 5-storey brown brick walk-up.",
+  "file": "models/010_tenement_narrow.glb",
+  "size_m": [
+   7.7,
+   18.3,
+   24.0
+  ],
+  "materials": [
+   "store_mixed",
+   "brick_brown_blank",
+   "tenement_brown",
+   "roof_tar",
+   "trim_dark",
+   "iron",
+   "awning_blue"
+  ],
+  "faces": 171,
+  "tris": 342,
+  "glb_kb": 99
+ },
+ {
+  "id": 11,
+  "key": "tenement_corner_wide",
+  "name": "Wide Corner Walk-up",
+  "category": "Residential",
+  "description": "Wide 6-storey corner tenement.",
+  "file": "models/011_tenement_corner_wide.glb",
+  "size_m": [
+   15.1,
+   24.3,
+   33.9
+  ],
+  "materials": [
+   "store_mixed",
+   "brick_red_blank",
+   "tenement_red",
+   "roof_tar",
+   "trim_dark",
+   "iron",
+   "awning_black",
+   "steel",
+   "wood",
+   "hvac",
+   "dark"
+  ],
+  "faces": 291,
+  "tris": 586,
+  "glb_kb": 131
+ },
+ {
+  "id": 12,
+  "key": "tenement_oldlaw",
+  "name": "Old-law Tenement",
+  "category": "Residential",
+  "description": "4-storey tenement without fire escape, with shop.",
+  "file": "models/012_tenement_oldlaw.glb",
+  "size_m": [
+   8.7,
+   18.2,
+   20.7
+  ],
+  "materials": [
+   "store_brick",
+   "brick_tan_blank",
+   "tenement_tan",
+   "roof_tar",
+   "trim_dark",
+   "hvac",
+   "dark"
+  ],
+  "faces": 59,
+  "tris": 126,
+  "glb_kb": 92
+ },
+ {
+  "id": 13,
+  "key": "federal_rowhouse",
+  "name": "Federal Rowhouse",
+  "category": "Residential",
+  "description": "2.5-storey Federal-style house, dormers and chimneys.",
+  "file": "models/013_federal_rowhouse.glb",
+  "size_m": [
+   7.9,
+   13.3,
+   10.6
+  ],
+  "materials": [
+   "federal",
+   "brick_red_blank",
+   "trim_white",
+   "slate",
+   "glass_plain",
+   "trim_stone",
+   "green_paint"
+  ],
+  "faces": 74,
+  "tris": 142,
+  "glb_kb": 79
+ },
+ {
+  "id": 14,
+  "key": "federal_threestory",
+  "name": "Federal Townhouse",
+  "category": "Residential",
+  "description": "3-storey Federal townhouse with gable roof.",
+  "file": "models/014_federal_threestory.glb",
+  "size_m": [
+   9.9,
+   14.3,
+   13.6
+  ],
+  "materials": [
+   "federal",
+   "brick_red_blank",
+   "trim_white",
+   "slate",
+   "glass_plain",
+   "trim_stone",
+   "green_paint"
+  ],
+  "faces": 89,
+  "tris": 170,
+  "glb_kb": 81
+ },
+ {
+  "id": 15,
+  "key": "federal_shop",
+  "name": "Federal House with Shop",
+  "category": "Residential",
+  "description": "Federal house with a ground-floor shop.",
+  "file": "models/015_federal_shop.glb",
+  "size_m": [
+   8.4,
+   12.6,
+   15.1
+  ],
+  "materials": [
+   "store_brick",
+   "brick_red_blank",
+   "trim_white",
+   "federal",
+   "slate",
+   "glass_plain"
+  ],
+  "faces": 63,
+  "tris": 120,
+  "glb_kb": 86
+ },
+ {
+  "id": 16,
+  "key": "prewar_apartment",
+  "name": "Prewar Apartment Building",
+  "category": "Residential",
+  "description": "14-storey brick co-op with limestone base.",
+  "file": "models/016_prewar_apartment.glb",
+  "size_m": [
+   31.8,
+   30.9,
+   54.4
+  ],
+  "materials": [
+   "prewar_limestone",
+   "trim_stone",
+   "prewar_brick",
+   "brick_tan_blank",
+   "roof_tar",
+   "steel",
+   "wood",
+   "hvac",
+   "dark",
+   "awning_green",
+   "chrome",
+   "trim_dark"
+  ],
+  "faces": 160,
+  "tris": 328,
+  "glb_kb": 136
+ },
+ {
+  "id": 17,
+  "key": "prewar_shops",
+  "name": "Prewar Apartments over Shops",
+  "category": "Residential",
+  "description": "12-storey apartment block with retail base.",
+  "file": "models/017_prewar_shops.glb",
+  "size_m": [
+   35.8,
+   26.8,
+   52.5
+  ],
+  "materials": [
+   "store_stone",
+   "limestone_plain",
+   "trim_stone",
+   "prewar_limestone",
+   "prewar_brick",
+   "brick_tan_blank",
+   "roof_tar",
+   "steel",
+   "wood",
+   "hvac",
+   "dark"
+  ],
+  "faces": 147,
+  "tris": 302,
+  "glb_kb": 151
+ },
+ {
+  "id": 18,
+  "key": "prewar_penthouse",
+  "name": "Prewar Tower with Penthouse",
+  "category": "Residential",
+  "description": "18-storey prewar tower with setback penthouse.",
+  "file": "models/018_prewar_penthouse.glb",
+  "size_m": [
+   29.8,
+   33.9,
+   75.0
+  ],
+  "materials": [
+   "prewar_limestone",
+   "trim_stone",
+   "brick_tan",
+   "brick_tan_blank",
+   "roof_tar",
+   "steel",
+   "wood",
+   "hvac",
+   "dark",
+   "awning_green",
+   "chrome",
+   "trim_dark"
+  ],
+  "faces": 177,
+  "tris": 362,
+  "glb_kb": 132
+ },
+ {
+  "id": 19,
+  "key": "courtyard_brick",
+  "name": "Courtyard Apartments",
+  "category": "Residential",
+  "description": "U-shaped 10-storey building around a garden court.",
+  "file": "models/019_courtyard_brick.glb",
+  "size_m": [
+   41.4,
+   37.4,
+   41.6
+  ],
+  "materials": [
+   "prewar_limestone",
+   "prewar_brick",
+   "roof_tar",
+   "trim_stone",
+   "brick_red_blank",
+   "steel",
+   "wood",
+   "hvac",
+   "dark",
+   "grass",
+   "iron"
+  ],
+  "faces": 231,
+  "tris": 452,
+  "glb_kb": 142
+ },
+ {
+  "id": 20,
+  "key": "courtyard_limestone",
+  "name": "Limestone Courtyard Building",
+  "category": "Residential",
+  "description": "8-storey limestone/yellow brick court building.",
+  "file": "models/020_courtyard_limestone.glb",
+  "size_m": [
+   47.4,
+   35.4,
+   36.0
+  ],
+  "materials": [
+   "limestone",
+   "brick_yellow",
+   "roof_tar",
+   "trim_stone",
+   "brick_red_blank",
+   "steel",
+   "wood",
+   "hvac",
+   "dark",
+   "grass",
+   "iron"
+  ],
+  "faces": 231,
+  "tris": 452,
+  "glb_kb": 132
+ },
+ {
+  "id": 21,
+  "key": "postwar_whitebrick",
+  "name": "White-brick Apartment Tower",
+  "category": "Residential",
+  "description": "20-storey postwar white-brick with balconies.",
+  "file": "models/021_postwar_whitebrick.glb",
+  "size_m": [
+   40.0,
+   28.0,
+   65.0
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "postwar_white",
+   "brick_white_blank",
+   "trim_white",
+   "hvac",
+   "dark",
+   "trim_dark"
+  ],
+  "faces": 652,
+  "tris": 1316,
+  "glb_kb": 159
+ },
+ {
+  "id": 22,
+  "key": "postwar_tan_setback",
+  "name": "Tan-brick Setback Apartments",
+  "category": "Residential",
+  "description": "16-storey wedding-cake setback apartments.",
+  "file": "models/022_postwar_tan_setback.glb",
+  "size_m": [
+   36.0,
+   30.0,
+   51.0
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "postwar_tan",
+   "brick_tan_blank",
+   "trim_white",
+   "hvac",
+   "dark",
+   "trim_dark"
+  ],
+  "faces": 527,
+  "tris": 1066,
+  "glb_kb": 151
+ },
+ {
+  "id": 23,
+  "key": "project_cross_tower",
+  "name": "Housing Tower (Cross Plan)",
+  "category": "Residential",
+  "description": "14-storey cross-plan public housing tower.",
+  "file": "models/023_project_cross_tower.glb",
+  "size_m": [
+   60,
+   47.0,
+   43.0
+  ],
+  "materials": [
+   "project_brick",
+   "roof_tar",
+   "concrete",
+   "brick_red_blank",
+   "hvac",
+   "dark",
+   "trim_dark",
+   "grass"
+  ],
+  "faces": 86,
+  "tris": 188,
+  "glb_kb": 93
+ },
+ {
+  "id": 24,
+  "key": "project_slab",
+  "name": "Housing Slab",
+  "category": "Residential",
+  "description": "12-storey slab block with stair towers.",
+  "file": "models/024_project_slab.glb",
+  "size_m": [
+   70.0,
+   39.0,
+   37.1
+  ],
+  "materials": [
+   "project_brick",
+   "brick_red_blank",
+   "roof_tar",
+   "concrete",
+   "trim_dark",
+   "grass"
+  ],
+  "faces": 45,
+  "tris": 90,
+  "glb_kb": 85
+ },
+ {
+  "id": 25,
+  "key": "glass_condo",
+  "name": "Glass Condo Tower",
+  "category": "Residential",
+  "description": "34-storey glass condo with continuous balconies.",
+  "file": "models/025_glass_condo.glb",
+  "size_m": [
+   26.4,
+   30.0,
+   125.6
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "glass_resi",
+   "trim_white",
+   "glass_plain",
+   "ribbon_dark",
+   "roof_gravel",
+   "trim_dark"
+  ],
+  "faces": 340,
+  "tris": 680,
+  "glb_kb": 118
+ },
+ {
+  "id": 26,
+  "key": "castiron_white",
+  "name": "Cast-iron Loft (White)",
+  "category": "Commercial",
+  "description": "5-storey arched cast-iron loft building.",
+  "file": "models/026_castiron_white.glb",
+  "size_m": [
+   17.0,
+   32.0,
+   35.1
+  ],
+  "materials": [
+   "store_stone",
+   "brick_red_blank",
+   "castiron_white",
+   "roof_tar",
+   "trim_white",
+   "steel",
+   "wood",
+   "hvac",
+   "dark"
+  ],
+  "faces": 118,
+  "tris": 240,
+  "glb_kb": 83
+ },
+ {
+  "id": 27,
+  "key": "castiron_cream",
+  "name": "Cast-iron Loft (Cream)",
+  "category": "Commercial",
+  "description": "6-storey cream cast-iron loft with fire escape.",
+  "file": "models/027_castiron_cream.glb",
+  "size_m": [
+   14.0,
+   32.3,
+   39.3
+  ],
+  "materials": [
+   "store_stone",
+   "brick_red_blank",
+   "castiron_cream",
+   "roof_tar",
+   "trim_stone",
+   "iron",
+   "steel",
+   "wood",
+   "hvac",
+   "dark"
+  ],
+  "faces": 280,
+  "tris": 564,
+  "glb_kb": 107
+ },
+ {
+  "id": 28,
+  "key": "castiron_gray",
+  "name": "Cast-iron Loft (Gray)",
+  "category": "Commercial",
+  "description": "5-storey gray cast-iron commercial building.",
+  "file": "models/028_castiron_gray.glb",
+  "size_m": [
+   20.0,
+   32.0,
+   35.1
+  ],
+  "materials": [
+   "store_mixed",
+   "brick_red_blank",
+   "castiron_gray",
+   "roof_tar",
+   "trim_dark",
+   "steel",
+   "wood",
+   "hvac",
+   "dark"
+  ],
+  "faces": 118,
+  "tris": 240,
+  "glb_kb": 81
+ },
+ {
+  "id": 29,
+  "key": "castiron_green",
+  "name": "Cast-iron Loft (Green)",
+  "category": "Commercial",
+  "description": "4-storey green-painted cast-iron building.",
+  "file": "models/029_castiron_green.glb",
+  "size_m": [
+   12.0,
+   32.3,
+   24.3
+  ],
+  "materials": [
+   "store_stone",
+   "brick_red_blank",
+   "castiron_green",
+   "roof_tar",
+   "trim_white",
+   "iron",
+   "hvac",
+   "dark"
+  ],
+  "faces": 170,
+  "tris": 348,
+  "glb_kb": 86
+ },
+ {
+  "id": 30,
+  "key": "warehouse_arched",
+  "name": "Arched Brick Warehouse",
+  "category": "Commercial",
+  "description": "7-storey Romanesque warehouse with loading dock.",
+  "file": "models/030_warehouse_arched.glb",
+  "size_m": [
+   25.7,
+   33.0,
+   37.6
+  ],
+  "materials": [
+   "warehouse_arch",
+   "brick_red_blank",
+   "roof_tar",
+   "trim_stone",
+   "steel",
+   "iron",
+   "garage_door_gray",
+   "concrete",
+   "wood",
+   "hvac",
+   "dark"
+  ],
+  "faces": 148,
+  "tris": 296,
+  "glb_kb": 105
+ },
+ {
+  "id": 31,
+  "key": "warehouse_brown",
+  "name": "Brown Brick Warehouse",
+  "category": "Commercial",
+  "description": "8-storey industrial loft warehouse.",
+  "file": "models/031_warehouse_brown.glb",
+  "size_m": [
+   30.7,
+   38.0,
+   41.6
+  ],
+  "materials": [
+   "warehouse_brown",
+   "brick_brown_blank",
+   "roof_tar",
+   "trim_stone",
+   "steel",
+   "iron",
+   "garage_door_gray",
+   "concrete",
+   "wood",
+   "hvac",
+   "dark"
+  ],
+  "faces": 148,
+  "tris": 296,
+  "glb_kb": 105
+ },
+ {
+  "id": 32,
+  "key": "warehouse_loft_shops",
+  "name": "Warehouse Lofts over Shops",
+  "category": "Commercial",
+  "description": "6-storey converted loft with stores.",
+  "file": "models/032_warehouse_loft_shops.glb",
+  "size_m": [
+   22.7,
+   33.0,
+   34.1
+  ],
+  "materials": [
+   "store_brick",
+   "brick_red_blank",
+   "warehouse_arch",
+   "roof_tar",
+   "trim_stone",
+   "steel",
+   "iron",
+   "wood",
+   "hvac",
+   "dark"
+  ],
+  "faces": 137,
+  "tris": 274,
+  "glb_kb": 101
+ },
+ {
+  "id": 33,
+  "key": "early_sky_cupola",
+  "name": "Beaux-Arts Tower with Cupola",
+  "category": "Commercial",
+  "description": "22-storey early skyscraper with domed cupola.",
+  "file": "models/033_early_sky_cupola.glb",
+  "size_m": [
+   32.6,
+   32.6,
+   100.1
+  ],
+  "materials": [
+   "store_stone",
+   "limestone",
+   "trim_stone",
+   "limestone_ornate",
+   "terracotta",
+   "roof_tar",
+   "limestone_plain",
+   "copper",
+   "gold"
+  ],
+  "faces": 177,
+  "tris": 346,
+  "glb_kb": 134
+ },
+ {
+  "id": 34,
+  "key": "early_sky_mansard",
+  "name": "Mansard-crowned Office",
+  "category": "Commercial",
+  "description": "26-storey office with copper mansard crown.",
+  "file": "models/034_early_sky_mansard.glb",
+  "size_m": [
+   36.6,
+   30.6,
+   104.0
+  ],
+  "materials": [
+   "store_stone",
+   "limestone",
+   "trim_stone",
+   "terracotta",
+   "roof_tar",
+   "copper",
+   "trim_white",
+   "glass_plain",
+   "steel",
+   "awning_red",
+   "gold"
+  ],
+  "faces": 114,
+  "tris": 228,
+  "glb_kb": 95
+ },
+ {
+  "id": 35,
+  "key": "early_sky_cornice",
+  "name": "Classic Office Block",
+  "category": "Commercial",
+  "description": "18-storey limestone office with heavy cornice.",
+  "file": "models/035_early_sky_cornice.glb",
+  "size_m": [
+   38.6,
+   32.6,
+   70.2
+  ],
+  "materials": [
+   "store_stone",
+   "limestone",
+   "trim_stone",
+   "brick_tan_blank",
+   "terracotta",
+   "roof_tar",
+   "brick_red_blank",
+   "steel",
+   "wood",
+   "hvac",
+   "dark",
+   "awning_red",
+   "gold"
+  ],
+  "faces": 170,
+  "tris": 348,
+  "glb_kb": 143
+ },
+ {
+  "id": 36,
+  "key": "deco_spire",
+  "name": "Art Deco Spire Tower",
+  "category": "Commercial",
+  "description": "Setback Art Deco tower with stepped crown and spire.",
+  "file": "models/036_deco_spire.glb",
+  "size_m": [
+   40.2,
+   36.3,
+   220.8
+  ],
+  "materials": [
+   "store_stone",
+   "trim_stone",
+   "deco_light",
+   "roof_tar",
+   "steel",
+   "gold"
+  ],
+  "faces": 147,
+  "tris": 286,
+  "glb_kb": 61
+ },
+ {
+  "id": 37,
+  "key": "deco_gold_pyramid",
+  "name": "Art Deco Gold Pyramid",
+  "category": "Commercial",
+  "description": "Art Deco tower with gilded pyramid roof.",
+  "file": "models/037_deco_gold_pyramid.glb",
+  "size_m": [
+   36.2,
+   36.3,
+   168.6
+  ],
+  "materials": [
+   "store_stone",
+   "trim_stone",
+   "deco_gray",
+   "roof_tar",
+   "gold",
+   "steel"
+  ],
+  "faces": 104,
+  "tris": 204,
+  "glb_kb": 56
+ },
+ {
+  "id": 38,
+  "key": "deco_stepped",
+  "name": "Art Deco Ziggurat",
+  "category": "Commercial",
+  "description": "Brick Art Deco tower stepping up in many tiers.",
+  "file": "models/038_deco_stepped.glb",
+  "size_m": [
+   44.2,
+   40.3,
+   158.1
+  ],
+  "materials": [
+   "store_stone",
+   "trim_stone",
+   "deco_brick",
+   "roof_tar",
+   "steel",
+   "gold"
+  ],
+  "faces": 225,
+  "tris": 450,
+  "glb_kb": 82
+ },
+ {
+  "id": 39,
+  "key": "deco_mast",
+  "name": "Art Deco Mast Tower",
+  "category": "Commercial",
+  "description": "Tall Art Deco tower with mooring-mast style crown.",
+  "file": "models/039_deco_mast.glb",
+  "size_m": [
+   50.2,
+   40.3,
+   315.6
+  ],
+  "materials": [
+   "store_stone",
+   "trim_stone",
+   "deco_light",
+   "roof_tar",
+   "chrome",
+   "steel",
+   "gold"
+  ],
+  "faces": 192,
+  "tris": 388,
+  "glb_kb": 68
+ },
+ {
+  "id": 40,
+  "key": "deco_brick_midrise",
+  "name": "Art Deco Brick Midrise",
+  "category": "Commercial",
+  "description": "24-storey brick Art Deco office.",
+  "file": "models/040_deco_brick_midrise.glb",
+  "size_m": [
+   32.2,
+   30.3,
+   102.3
+  ],
+  "materials": [
+   "store_stone",
+   "trim_stone",
+   "deco_brick",
+   "roof_tar",
+   "copper",
+   "steel",
+   "gold"
+  ],
+  "faces": 104,
+  "tris": 204,
+  "glb_kb": 71
+ },
+ {
+  "id": 41,
+  "key": "glass_slab_dark",
+  "name": "Dark Glass Slab on Plaza",
+  "category": "Commercial",
+  "description": "38-storey International Style slab on a plaza.",
+  "file": "models/041_glass_slab_dark.glb",
+  "size_m": [
+   80.0,
+   53.0,
+   169.9
+  ],
+  "materials": [
+   "granite_plain",
+   "concrete",
+   "glass_plain",
+   "lobby_glass",
+   "roof_tar",
+   "steel",
+   "glass_dark",
+   "ribbon_dark",
+   "concrete_dark"
+  ],
+  "faces": 72,
+  "tris": 144,
+  "glb_kb": 85
+ },
+ {
+  "id": 42,
+  "key": "glass_slab_green",
+  "name": "Green Glass Slab",
+  "category": "Commercial",
+  "description": "30-storey green curtain-wall slab with spandrels.",
+  "file": "models/042_glass_slab_green.glb",
+  "size_m": [
+   72.0,
+   44.0,
+   145.6
+  ],
+  "materials": [
+   "lobby_glass",
+   "glass_green",
+   "roof_tar",
+   "ribbon_dark",
+   "concrete_dark"
+  ],
+  "faces": 24,
+  "tris": 48,
+  "glb_kb": 71
+ },
+ {
+  "id": 43,
+  "key": "glass_podium_silver",
+  "name": "Silver Tower on Podium",
+  "category": "Commercial",
+  "description": "44-storey silver curtain wall over a podium.",
+  "file": "models/043_glass_podium_silver.glb",
+  "size_m": [
+   60.0,
+   51.2,
+   209.6
+  ],
+  "materials": [
+   "lobby_glass",
+   "glass_silver",
+   "roof_tar",
+   "ribbon_dark",
+   "concrete_dark"
+  ],
+  "faces": 24,
+  "tris": 48,
+  "glb_kb": 70
+ },
+ {
+  "id": 44,
+  "key": "glass_bronze",
+  "name": "Bronze Glass Tower",
+  "category": "Commercial",
+  "description": "36-storey bronze-tinted glass office.",
+  "file": "models/044_glass_bronze.glb",
+  "size_m": [
+   60.8,
+   59.0,
+   161.9
+  ],
+  "materials": [
+   "granite_plain",
+   "concrete",
+   "glass_plain",
+   "lobby_glass",
+   "roof_tar",
+   "steel",
+   "glass_bronze",
+   "ribbon_dark",
+   "concrete_dark"
+  ],
+  "faces": 72,
+  "tris": 144,
+  "glb_kb": 89
+ },
+ {
+  "id": 45,
+  "key": "postmodern_gable",
+  "name": "Postmodern Gabled Tower",
+  "category": "Commercial",
+  "description": "Pink granite tower with a broken pediment top.",
+  "file": "models/045_postmodern_gable.glb",
+  "size_m": [
+   34.0,
+   34.7,
+   153.2
+  ],
+  "materials": [
+   "store_stone",
+   "granite_plain",
+   "glass_plain",
+   "granite_pink",
+   "roof_tar",
+   "roof_gravel",
+   "dark"
+  ],
+  "faces": 54,
+  "tris": 126,
+  "glb_kb": 70
+ },
+ {
+  "id": 46,
+  "key": "postmodern_pyramid",
+  "name": "Postmodern Pyramid Tower",
+  "category": "Commercial",
+  "description": "Dark granite chamfered tower with pyramid crown.",
+  "file": "models/046_postmodern_pyramid.glb",
+  "size_m": [
+   34.0,
+   34.7,
+   190.5
+  ],
+  "materials": [
+   "store_stone",
+   "granite_plain",
+   "glass_plain",
+   "granite_dark",
+   "roof_tar",
+   "copper",
+   "gold"
+  ],
+  "faces": 39,
+  "tris": 66,
+  "glb_kb": 59
+ },
+ {
+  "id": 47,
+  "key": "postmodern_stepped",
+  "name": "Postmodern Stepped Tower",
+  "category": "Commercial",
+  "description": "Granite tower with stepped crown.",
+  "file": "models/047_postmodern_stepped.glb",
+  "size_m": [
+   30.0,
+   30.7,
+   175.9
+  ],
+  "materials": [
+   "store_stone",
+   "granite_plain",
+   "glass_plain",
+   "granite_pink",
+   "roof_tar"
+  ],
+  "faces": 58,
+  "tris": 124,
+  "glb_kb": 61
+ },
+ {
+  "id": 48,
+  "key": "supertall_tapered",
+  "name": "Tapered Supertall",
+  "category": "Commercial",
+  "description": "100-storey tapering glass supertall with spire.",
+  "file": "models/048_supertall_tapered.glb",
+  "size_m": [
+   60.0,
+   60.0,
+   472.0
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "glass_silver",
+   "steel"
+  ],
+  "faces": 61,
+  "tris": 142,
+  "glb_kb": 50
+ },
+ {
+  "id": 49,
+  "key": "supertall_round",
+  "name": "Cylindrical Supertall",
+  "category": "Commercial",
+  "description": "Round glass tower with crown ring and mast.",
+  "file": "models/049_supertall_round.glb",
+  "size_m": [
+   52.8,
+   52.8,
+   372.0
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "glass_blue",
+   "steel"
+  ],
+  "faces": 90,
+  "tris": 220,
+  "glb_kb": 52
+ },
+ {
+  "id": 50,
+  "key": "supertall_chamfer",
+  "name": "Chamfered Supertall",
+  "category": "Commercial",
+  "description": "Chamfered tower with sloped glass crown.",
+  "file": "models/050_supertall_chamfer.glb",
+  "size_m": [
+   57.6,
+   57.6,
+   402.0
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "glass_dark",
+   "steel"
+  ],
+  "faces": 34,
+  "tris": 76,
+  "glb_kb": 35
+ },
+ {
+  "id": 51,
+  "key": "pencil_glass",
+  "name": "Glass Pencil Tower",
+  "category": "Commercial",
+  "description": "Super-slender 90-storey glass residential tower.",
+  "file": "models/051_pencil_glass.glb",
+  "size_m": [
+   26.0,
+   26.0,
+   329.4
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "glass_resi",
+   "ribbon_dark",
+   "glass_plain"
+  ],
+  "faces": 19,
+  "tris": 38,
+  "glb_kb": 65
+ },
+ {
+  "id": 52,
+  "key": "pencil_terracotta",
+  "name": "Terracotta Pencil Tower",
+  "category": "Commercial",
+  "description": "Slender tower with terracotta piers and setbacks.",
+  "file": "models/052_pencil_terracotta.glb",
+  "size_m": [
+   24.0,
+   24.0,
+   263.5
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "terracotta",
+   "trim_stone",
+   "copper"
+  ],
+  "faces": 118,
+  "tris": 228,
+  "glb_kb": 64
+ },
+ {
+  "id": 53,
+  "key": "twisting_tower",
+  "name": "Twisting Tower",
+  "category": "Commercial",
+  "description": "Glass tower rotating as it rises.",
+  "file": "models/053_twisting_tower.glb",
+  "size_m": [
+   54.0,
+   54.0,
+   351.0
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "glass_blue",
+   "glass_plain",
+   "steel"
+  ],
+  "faces": 124,
+  "tris": 256,
+  "glb_kb": 57
+ },
+ {
+  "id": 54,
+  "key": "ribbon_concrete",
+  "name": "Concrete Ribbon-window Office",
+  "category": "Commercial",
+  "description": "1960s office with strip windows on a podium.",
+  "file": "models/054_ribbon_concrete.glb",
+  "size_m": [
+   55.0,
+   36.0,
+   51.0
+  ],
+  "materials": [
+   "store_modern",
+   "roof_tar",
+   "ribbon_concrete",
+   "concrete",
+   "hvac",
+   "dark"
+  ],
+  "faces": 57,
+  "tris": 126,
+  "glb_kb": 52
+ },
+ {
+  "id": 55,
+  "key": "ribbon_white",
+  "name": "White Panel Office",
+  "category": "Commercial",
+  "description": "1970s white panel office block.",
+  "file": "models/055_ribbon_white.glb",
+  "size_m": [
+   40.0,
+   28.0,
+   62.6
+  ],
+  "materials": [
+   "ribbon_white",
+   "roof_tar",
+   "concrete",
+   "hvac",
+   "dark"
+  ],
+  "faces": 52,
+  "tris": 116,
+  "glb_kb": 46
+ },
+ {
+  "id": 56,
+  "key": "bodega_corner",
+  "name": "Corner Bodega",
+  "category": "Retail & Mixed-Use",
+  "description": "2-storey corner deli/grocery with awnings.",
+  "file": "models/056_bodega_corner.glb",
+  "size_m": [
+   8.8,
+   13.8,
+   12.3
+  ],
+  "materials": [
+   "store_mixed",
+   "brick_yellow_blank",
+   "brick_yellow",
+   "roof_tar",
+   "trim_dark",
+   "awning_green",
+   "sign_red",
+   "hvac",
+   "dark"
+  ],
+  "faces": 64,
+  "tris": 132,
+  "glb_kb": 90
+ },
+ {
+  "id": 57,
+  "key": "bodega_midblock",
+  "name": "Mid-block Shop",
+  "category": "Retail & Mixed-Use",
+  "description": "3-storey mid-block shop with flat above.",
+  "file": "models/057_bodega_midblock.glb",
+  "size_m": [
+   6.2,
+   13.8,
+   12.3
+  ],
+  "materials": [
+   "store_mixed",
+   "brick_red_blank",
+   "brick_red",
+   "roof_tar",
+   "trim_dark",
+   "awning_red",
+   "sign_yellow",
+   "hvac",
+   "dark"
+  ],
+  "faces": 59,
+  "tris": 122,
+  "glb_kb": 88
+ },
+ {
+  "id": 58,
+  "key": "diner",
+  "name": "Chrome Diner",
+  "category": "Retail & Mixed-Use",
+  "description": "Stainless-steel diner with rooftop sign.",
+  "file": "models/058_diner.glb",
+  "size_m": [
+   17.6,
+   9.6,
+   10.2
+  ],
+  "materials": [
+   "chrome",
+   "store_modern",
+   "trim_white",
+   "sign_red",
+   "steel",
+   "sign_white",
+   "concrete"
+  ],
+  "faces": 71,
+  "tris": 150,
+  "glb_kb": 30
+ },
+ {
+  "id": 59,
+  "key": "deli_apartments",
+  "name": "Deli with Apartments",
+  "category": "Retail & Mixed-Use",
+  "description": "3-storey mixed-use deli building.",
+  "file": "models/059_deli_apartments.glb",
+  "size_m": [
+   8.2,
+   16.3,
+   14.1
+  ],
+  "materials": [
+   "store_mixed",
+   "brick_brown_blank",
+   "tenement_brown",
+   "roof_tar",
+   "trim_dark",
+   "awning_green"
+  ],
+  "faces": 37,
+  "tris": 74,
+  "glb_kb": 80
+ },
+ {
+  "id": 60,
+  "key": "restaurant_row",
+  "name": "Restaurant Row Building",
+  "category": "Retail & Mixed-Use",
+  "description": "4-storey restaurant building with red awning.",
+  "file": "models/060_restaurant_row.glb",
+  "size_m": [
+   9.2,
+   18.3,
+   17.4
+  ],
+  "materials": [
+   "store_brick",
+   "brick_yellow_blank",
+   "tenement_yellow",
+   "roof_tar",
+   "trim_dark",
+   "iron",
+   "awning_red",
+   "hvac",
+   "dark"
+  ],
+  "faces": 143,
+  "tris": 294,
+  "glb_kb": 108
+ },
+ {
+  "id": 61,
+  "key": "dept_store",
+  "name": "Department Store",
+  "category": "Retail & Mixed-Use",
+  "description": "9-storey limestone department store with flags.",
+  "file": "models/061_dept_store.glb",
+  "size_m": [
+   62.2,
+   49.6,
+   35.4
+  ],
+  "materials": [
+   "store_lux",
+   "limestone_plain",
+   "trim_stone",
+   "awning_black",
+   "limestone",
+   "limestone_ornate",
+   "roof_tar",
+   "steel",
+   "awning_red",
+   "hvac",
+   "dark"
+  ],
+  "faces": 230,
+  "tris": 476,
+  "glb_kb": 115
+ },
+ {
+  "id": 62,
+  "key": "dept_store_clock",
+  "name": "Department Store with Clock",
+  "category": "Retail & Mixed-Use",
+  "description": "Large store with corner clock tower.",
+  "file": "models/062_dept_store_clock.glb",
+  "size_m": [
+   72.2,
+   53.5,
+   43.1
+  ],
+  "materials": [
+   "store_lux",
+   "limestone_plain",
+   "trim_stone",
+   "awning_black",
+   "terracotta",
+   "limestone_ornate",
+   "roof_tar",
+   "copper",
+   "trim_white",
+   "hvac",
+   "dark"
+  ],
+  "faces": 213,
+  "tris": 450,
+  "glb_kb": 120
+ },
+ {
+  "id": 63,
+  "key": "chain_store",
+  "name": "Chain Pharmacy",
+  "category": "Retail & Mixed-Use",
+  "description": "Modern 2-storey chain store box.",
+  "file": "models/063_chain_store.glb",
+  "size_m": [
+   22.0,
+   26.4,
+   10.2
+  ],
+  "materials": [
+   "store_modern",
+   "concrete",
+   "ribbon_white",
+   "roof_tar",
+   "sign_blue",
+   "hvac",
+   "dark"
+  ],
+  "faces": 76,
+  "tris": 164,
+  "glb_kb": 57
+ },
+ {
+  "id": 64,
+  "key": "bank_portico",
+  "name": "Classical Bank",
+  "category": "Retail & Mixed-Use",
+  "description": "Columned bank with pediment and steps.",
+  "file": "models/064_bank_portico.glb",
+  "size_m": [
+   26.0,
+   36.1,
+   16.5
+  ],
+  "materials": [
+   "limestone_plain",
+   "civic_stone",
+   "roof_gravel",
+   "trim_stone",
+   "gold"
+  ],
+  "faces": 191,
+  "tris": 416,
+  "glb_kb": 73
+ },
+ {
+  "id": 65,
+  "key": "bank_tower",
+  "name": "Bank Tower",
+  "category": "Retail & Mixed-Use",
+  "description": "Bank hall with 12-storey office tower above.",
+  "file": "models/065_bank_tower.glb",
+  "size_m": [
+   30.0,
+   40.8,
+   61.4
+  ],
+  "materials": [
+   "limestone_plain",
+   "civic_stone",
+   "trim_stone",
+   "limestone_ornate",
+   "roof_tar",
+   "steel",
+   "wood",
+   "hvac",
+   "dark",
+   "gold"
+  ],
+  "faces": 274,
+  "tris": 586,
+  "glb_kb": 115
+ },
+ {
+  "id": 66,
+  "key": "theater_marquee",
+  "name": "Broadway Theater",
+  "category": "Retail & Mixed-Use",
+  "description": "Theater with lit marquee, blade sign and fly tower.",
+  "file": "models/066_theater_marquee.glb",
+  "size_m": [
+   23.4,
+   43.6,
+   34.0
+  ],
+  "materials": [
+   "store_stone",
+   "terracotta",
+   "roof_tar",
+   "trim_stone",
+   "brick_brown_blank",
+   "sign_white",
+   "sign_red",
+   "sign_yellow"
+  ],
+  "faces": 51,
+  "tris": 102,
+  "glb_kb": 74
+ },
+ {
+  "id": 67,
+  "key": "cinema",
+  "name": "Movie Palace",
+  "category": "Retail & Mixed-Use",
+  "description": "Movie palace with large marquee.",
+  "file": "models/067_cinema.glb",
+  "size_m": [
+   27.4,
+   47.6,
+   30.0
+  ],
+  "materials": [
+   "store_stone",
+   "limestone_ornate",
+   "roof_tar",
+   "trim_stone",
+   "brick_brown_blank",
+   "sign_yellow",
+   "sign_red"
+  ],
+  "faces": 51,
+  "tris": 102,
+  "glb_kb": 71
+ },
+ {
+  "id": 68,
+  "key": "hotel_mansard",
+  "name": "Grand Hotel",
+  "category": "Retail & Mixed-Use",
+  "description": "24-storey hotel with copper mansard and flags.",
+  "file": "models/068_hotel_mansard.glb",
+  "size_m": [
+   37.6,
+   34.9,
+   93.9
+  ],
+  "materials": [
+   "store_stone",
+   "trim_dark",
+   "gold",
+   "hotel_stone",
+   "roof_tar",
+   "trim_stone",
+   "copper",
+   "trim_white",
+   "glass_plain",
+   "steel",
+   "awning_blue",
+   "awning_red",
+   "awning_green"
+  ],
+  "faces": 163,
+  "tris": 326,
+  "glb_kb": 81
+ },
+ {
+  "id": 69,
+  "key": "hotel_glass",
+  "name": "Modern Glass Hotel",
+  "category": "Retail & Mixed-Use",
+  "description": "30-storey teal glass hotel on a podium.",
+  "file": "models/069_hotel_glass.glb",
+  "size_m": [
+   40.0,
+   39.0,
+   139.6
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "ribbon_dark",
+   "glass_teal",
+   "steel",
+   "sign_white"
+  ],
+  "faces": 30,
+  "tris": 60,
+  "glb_kb": 66
+ },
+ {
+  "id": 70,
+  "key": "nightclub",
+  "name": "Nightclub",
+  "category": "Retail & Mixed-Use",
+  "description": "Dark brick club with neon signs.",
+  "file": "models/070_nightclub.glb",
+  "size_m": [
+   12.0,
+   23.5,
+   11.9
+  ],
+  "materials": [
+   "brick_dark_blank",
+   "brick_dark",
+   "roof_tar",
+   "iron",
+   "awning_black",
+   "sign_blue",
+   "sign_red",
+   "gold"
+  ],
+  "faces": 60,
+  "tris": 120,
+  "glb_kb": 74
+ },
+ {
+  "id": 71,
+  "key": "firehouse",
+  "name": "Firehouse",
+  "category": "Civic & Institutional",
+  "description": "3-storey firehouse with two apparatus doors.",
+  "file": "models/071_firehouse.glb",
+  "size_m": [
+   13.4,
+   31.7,
+   18.6
+  ],
+  "materials": [
+   "limestone_plain",
+   "brick_red_blank",
+   "brick_red",
+   "roof_tar",
+   "trim_stone",
+   "garage_door",
+   "steel",
+   "awning_blue",
+   "concrete"
+  ],
+  "faces": 57,
+  "tris": 114,
+  "glb_kb": 99
+ },
+ {
+  "id": 72,
+  "key": "firehouse_small",
+  "name": "Single-bay Firehouse",
+  "category": "Civic & Institutional",
+  "description": "Narrow firehouse with one red door.",
+  "file": "models/072_firehouse_small.glb",
+  "size_m": [
+   10.4,
+   28.7,
+   21.9
+  ],
+  "materials": [
+   "limestone_plain",
+   "brick_tan_blank",
+   "brick_tan",
+   "roof_tar",
+   "trim_stone",
+   "garage_door",
+   "steel",
+   "awning_blue",
+   "concrete"
+  ],
+  "faces": 52,
+  "tris": 104,
+  "glb_kb": 101
+ },
+ {
+  "id": 73,
+  "key": "police_precinct",
+  "name": "Police Precinct",
+  "category": "Civic & Institutional",
+  "description": "Limestone station house with green lamps.",
+  "file": "models/073_police_precinct.glb",
+  "size_m": [
+   27.8,
+   28.6,
+   22.4
+  ],
+  "materials": [
+   "limestone_plain",
+   "limestone_ornate",
+   "roof_tar",
+   "trim_stone",
+   "green_paint",
+   "iron",
+   "lamp",
+   "steel",
+   "awning_red"
+  ],
+  "faces": 99,
+  "tris": 198,
+  "glb_kb": 62
+ },
+ {
+  "id": 74,
+  "key": "courthouse",
+  "name": "Courthouse",
+  "category": "Civic & Institutional",
+  "description": "Colonnaded courthouse with copper dome.",
+  "file": "models/074_courthouse.glb",
+  "size_m": [
+   74.0,
+   64.8,
+   45.2
+  ],
+  "materials": [
+   "limestone_plain",
+   "civic_stone",
+   "roof_gravel",
+   "trim_stone",
+   "copper"
+  ],
+  "faces": 464,
+  "tris": 978,
+  "glb_kb": 115
+ },
+ {
+  "id": 75,
+  "key": "city_hall",
+  "name": "City Hall",
+  "category": "Civic & Institutional",
+  "description": "Civic hall with wings, portico and cupola.",
+  "file": "models/075_city_hall.glb",
+  "size_m": [
+   80.0,
+   34.0,
+   37.6
+  ],
+  "materials": [
+   "civic_stone",
+   "roof_tar",
+   "trim_stone",
+   "slate",
+   "limestone_plain",
+   "limestone",
+   "trim_white",
+   "copper",
+   "gold"
+  ],
+  "faces": 409,
+  "tris": 880,
+  "glb_kb": 139
+ },
+ {
+  "id": 76,
+  "key": "public_library",
+  "name": "Public Library",
+  "category": "Civic & Institutional",
+  "description": "Beaux-Arts library with grand steps.",
+  "file": "models/076_public_library.glb",
+  "size_m": [
+   94.0,
+   66.8,
+   17.6
+  ],
+  "materials": [
+   "limestone_plain",
+   "civic_stone",
+   "limestone_ornate",
+   "roof_gravel",
+   "trim_stone",
+   "steel",
+   "awning_blue"
+  ],
+  "faces": 296,
+  "tris": 640,
+  "glb_kb": 112
+ },
+ {
+  "id": 77,
+  "key": "school_h",
+  "name": "Public School (H-plan)",
+  "category": "Civic & Institutional",
+  "description": "5-storey H-plan brick school.",
+  "file": "models/077_school_h.glb",
+  "size_m": [
+   70.6,
+   41.0,
+   21.6
+  ],
+  "materials": [
+   "school_brick",
+   "roof_tar",
+   "trim_stone",
+   "limestone_plain",
+   "trim_dark",
+   "steel",
+   "awning_red",
+   "hvac",
+   "dark"
+  ],
+  "faces": 146,
+  "tris": 296,
+  "glb_kb": 84
+ },
+ {
+  "id": 78,
+  "key": "school_gym",
+  "name": "School with Gymnasium",
+  "category": "Civic & Institutional",
+  "description": "L-plan school with barrel-roofed gym.",
+  "file": "models/078_school_gym.glb",
+  "size_m": [
+   60.6,
+   45.0,
+   17.6
+  ],
+  "materials": [
+   "school_brick",
+   "roof_tar",
+   "trim_stone",
+   "brick_red_blank",
+   "corrugated",
+   "limestone_plain",
+   "trim_dark",
+   "steel",
+   "awning_red",
+   "hvac",
+   "dark"
+  ],
+  "faces": 124,
+  "tris": 262,
+  "glb_kb": 110
+ },
+ {
+  "id": 79,
+  "key": "hospital",
+  "name": "Hospital",
+  "category": "Civic & Institutional",
+  "description": "Medical centre with tower, podium and helipad.",
+  "file": "models/079_hospital.glb",
+  "size_m": [
+   90.0,
+   60.0,
+   67.0
+  ],
+  "materials": [
+   "lobby_glass",
+   "hospital_white",
+   "roof_tar",
+   "concrete",
+   "concrete_dark",
+   "trim_white",
+   "sign_red",
+   "sign_blue"
+  ],
+  "faces": 64,
+  "tris": 128,
+  "glb_kb": 64
+ },
+ {
+  "id": 80,
+  "key": "gothic_church",
+  "name": "Gothic Church",
+  "category": "Civic & Institutional",
+  "description": "Twin-spired Gothic Revival church with rose window.",
+  "file": "models/080_gothic_church.glb",
+  "size_m": [
+   26,
+   45.1,
+   50.0
+  ],
+  "materials": [
+   "concrete",
+   "gothic_stone",
+   "slate",
+   "glass_plain",
+   "roof_tar",
+   "trim_stone",
+   "wood"
+  ],
+  "faces": 138,
+  "tris": 236,
+  "glb_kb": 71
+ },
+ {
+  "id": 81,
+  "key": "small_church",
+  "name": "Neighborhood Church",
+  "category": "Civic & Institutional",
+  "description": "Brick church with a single steeple.",
+  "file": "models/081_small_church.glb",
+  "size_m": [
+   12.8,
+   33.5,
+   36.5
+  ],
+  "materials": [
+   "brick_red_blank",
+   "slate",
+   "glass_plain",
+   "trim_stone",
+   "dark",
+   "gold",
+   "red_paint"
+  ],
+  "faces": 55,
+  "tris": 100,
+  "glb_kb": 36
+ },
+ {
+  "id": 82,
+  "key": "synagogue",
+  "name": "Moorish Revival Synagogue",
+  "category": "Civic & Institutional",
+  "description": "Banded facade with twin onion-domed towers.",
+  "file": "models/082_synagogue.glb",
+  "size_m": [
+   24.6,
+   37.3,
+   33.1
+  ],
+  "materials": [
+   "moorish",
+   "brick_tan_blank",
+   "roof_tar",
+   "trim_stone",
+   "copper",
+   "gold",
+   "wood"
+  ],
+  "faces": 228,
+  "tris": 446,
+  "glb_kb": 112
+ },
+ {
+  "id": 83,
+  "key": "museum_modern",
+  "name": "Modern Art Museum",
+  "category": "Civic & Institutional",
+  "description": "Stack of shifted boxes.",
+  "file": "models/083_museum_modern.glb",
+  "size_m": [
+   36.0,
+   32.3,
+   48.0
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "ribbon_white",
+   "roof_gravel",
+   "corrugated",
+   "stucco",
+   "concrete",
+   "sign_white"
+  ],
+  "faces": 40,
+  "tris": 80,
+  "glb_kb": 74
+ },
+ {
+  "id": 84,
+  "key": "post_office",
+  "name": "General Post Office",
+  "category": "Civic & Institutional",
+  "description": "Monumental colonnade on a full-width stair.",
+  "file": "models/084_post_office.glb",
+  "size_m": [
+   112.0,
+   64.7,
+   22.8
+  ],
+  "materials": [
+   "limestone_plain",
+   "civic_stone",
+   "roof_gravel",
+   "trim_stone",
+   "limestone",
+   "steel",
+   "awning_red"
+  ],
+  "faces": 509,
+  "tris": 1138,
+  "glb_kb": 144
+ },
+ {
+  "id": 85,
+  "key": "armory",
+  "name": "Regiment Armory",
+  "category": "Civic & Institutional",
+  "description": "Crenellated brick armory with drill hall.",
+  "file": "models/085_armory.glb",
+  "size_m": [
+   61.0,
+   83.6,
+   26.0
+  ],
+  "materials": [
+   "brick_red",
+   "brick_red_blank",
+   "roof_tar",
+   "wood",
+   "warehouse_arch",
+   "corrugated"
+  ],
+  "faces": 562,
+  "tris": 1138,
+  "glb_kb": 193
+ },
+ {
+  "id": 86,
+  "key": "parking_garage",
+  "name": "Parking Garage",
+  "category": "Industrial & Infrastructure",
+  "description": "7-level open parking structure.",
+  "file": "models/086_parking_garage.glb",
+  "size_m": [
+   44.0,
+   62.0,
+   28.7
+  ],
+  "materials": [
+   "garage_open",
+   "concrete_dark",
+   "concrete",
+   "roof_tar",
+   "sign_blue",
+   "steel",
+   "lamp",
+   "dark"
+  ],
+  "faces": 84,
+  "tris": 168,
+  "glb_kb": 54
+ },
+ {
+  "id": 87,
+  "key": "parking_retail",
+  "name": "Parking over Retail",
+  "category": "Industrial & Infrastructure",
+  "description": "Parking levels over a retail base.",
+  "file": "models/087_parking_retail.glb",
+  "size_m": [
+   40.0,
+   52.0,
+   30.5
+  ],
+  "materials": [
+   "store_modern",
+   "dark",
+   "garage_open",
+   "concrete_dark",
+   "concrete",
+   "roof_tar",
+   "sign_blue",
+   "steel",
+   "lamp"
+  ],
+  "faces": 88,
+  "tris": 176,
+  "glb_kb": 61
+ },
+ {
+  "id": 88,
+  "key": "pier_shed",
+  "name": "Pier Shed",
+  "category": "Industrial & Infrastructure",
+  "description": "Waterfront pier with cast-iron headhouse.",
+  "file": "models/088_pier_shed.glb",
+  "size_m": [
+   48.0,
+   128.4,
+   20.4
+  ],
+  "materials": [
+   "concrete_dark",
+   "concrete",
+   "corrugated",
+   "corrugated_red",
+   "store_stone",
+   "castiron_cream",
+   "roof_tar",
+   "trim_white"
+  ],
+  "faces": 65,
+  "tris": 154,
+  "glb_kb": 85
+ },
+ {
+  "id": 89,
+  "key": "power_plant",
+  "name": "Power Station",
+  "category": "Industrial & Infrastructure",
+  "description": "Brick power station with four smokestacks.",
+  "file": "models/089_power_plant.glb",
+  "size_m": [
+   80.0,
+   70.0,
+   91.0
+  ],
+  "materials": [
+   "warehouse_arch",
+   "roof_tar",
+   "brick_red_blank",
+   "dark",
+   "trim_dark",
+   "corrugated",
+   "steel"
+  ],
+  "faces": 185,
+  "tris": 470,
+  "glb_kb": 104
+ },
+ {
+  "id": 90,
+  "key": "factory_sawtooth",
+  "name": "Sawtooth Factory",
+  "category": "Industrial & Infrastructure",
+  "description": "Factory with sawtooth roof, chimney, water tank.",
+  "file": "models/090_factory_sawtooth.glb",
+  "size_m": [
+   40.0,
+   52.5,
+   45
+  ],
+  "materials": [
+   "warehouse_brown",
+   "brick_brown_blank",
+   "corrugated",
+   "glass_plain",
+   "brick_red_blank",
+   "dark",
+   "steel",
+   "wood",
+   "concrete",
+   "garage_door_gray"
+  ],
+  "faces": 120,
+  "tris": 230,
+  "glb_kb": 119
+ },
+ {
+  "id": 91,
+  "key": "gas_station",
+  "name": "Gas Station",
+  "category": "Industrial & Infrastructure",
+  "description": "Canopy, pumps and convenience shop.",
+  "file": "models/091_gas_station.glb",
+  "size_m": [
+   32,
+   32,
+   11
+  ],
+  "materials": [
+   "concrete",
+   "trim_white",
+   "steel_red",
+   "sign_white",
+   "store_modern",
+   "roof_tar",
+   "steel"
+  ],
+  "faces": 106,
+  "tris": 212,
+  "glb_kb": 42
+ },
+ {
+  "id": 92,
+  "key": "telephone_exchange",
+  "name": "Telephone Exchange",
+  "category": "Industrial & Infrastructure",
+  "description": "Near-windowless setback switching building.",
+  "file": "models/092_telephone_exchange.glb",
+  "size_m": [
+   40.0,
+   40.0,
+   138.5
+  ],
+  "materials": [
+   "store_stone",
+   "telephone_stone",
+   "roof_tar",
+   "trim_stone",
+   "concrete",
+   "steel",
+   "trim_white"
+  ],
+  "faces": 123,
+  "tris": 264,
+  "glb_kb": 68
+ },
+ {
+  "id": 93,
+  "key": "self_storage",
+  "name": "Self-storage",
+  "category": "Industrial & Infrastructure",
+  "description": "Orange panel storage building.",
+  "file": "models/093_self_storage.glb",
+  "size_m": [
+   35.0,
+   50.3,
+   23.8
+  ],
+  "materials": [
+   "store_modern",
+   "concrete",
+   "storage_orange",
+   "roof_tar",
+   "sign_white",
+   "steel"
+  ],
+  "faces": 39,
+  "tris": 78,
+  "glb_kb": 46
+ },
+ {
+  "id": 94,
+  "key": "ferry_terminal",
+  "name": "Ferry Terminal",
+  "category": "Industrial & Infrastructure",
+  "description": "Glass terminal with barrel roof and slips.",
+  "file": "models/094_ferry_terminal.glb",
+  "size_m": [
+   70.0,
+   60.0,
+   21.0
+  ],
+  "materials": [
+   "concrete_dark",
+   "concrete",
+   "glass_teal",
+   "steel",
+   "glass_plain",
+   "sign_blue"
+  ],
+  "faces": 57,
+  "tris": 128,
+  "glb_kb": 55
+ },
+ {
+  "id": 95,
+  "key": "construction_site",
+  "name": "Tower Under Construction",
+  "category": "Industrial & Infrastructure",
+  "description": "Half-built tower with steel frame and crane.",
+  "file": "models/095_construction_site.glb",
+  "size_m": [
+   61.0,
+   38.0,
+   83.0
+  ],
+  "materials": [
+   "glass_blue",
+   "roof_tar",
+   "concrete",
+   "steel_red",
+   "steel_yellow",
+   "steel",
+   "trim_white",
+   "wood"
+  ],
+  "faces": 866,
+  "tris": 1732,
+  "glb_kb": 166
+ },
+ {
+  "id": 96,
+  "key": "arena",
+  "name": "Arena",
+  "category": "Landmark-scale",
+  "description": "Round arena with LED band and shallow dome.",
+  "file": "models/096_arena.glb",
+  "size_m": [
+   110.8,
+   110.8,
+   31.1
+  ],
+  "materials": [
+   "lobby_glass",
+   "ribbon_dark",
+   "sign_blue",
+   "steel",
+   "trim_dark"
+  ],
+  "faces": 276,
+  "tris": 520,
+  "glb_kb": 64
+ },
+ {
+  "id": 97,
+  "key": "observation_tower",
+  "name": "Observation Supertall",
+  "category": "Landmark-scale",
+  "description": "110-storey tower with cantilevered sky deck.",
+  "file": "models/097_observation_tower.glb",
+  "size_m": [
+   55.0,
+   55.0,
+   546.0
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "glass_blue",
+   "glass_dark",
+   "glass_plain",
+   "steel"
+  ],
+  "faces": 72,
+  "tris": 160,
+  "glb_kb": 63
+ },
+ {
+  "id": 98,
+  "key": "gothic_university",
+  "name": "Gothic University Hall",
+  "category": "Landmark-scale",
+  "description": "Collegiate Gothic quad with crenellated tower.",
+  "file": "models/098_gothic_university.glb",
+  "size_m": [
+   70.6,
+   50.3,
+   51.0
+  ],
+  "materials": [
+   "gothic_stone",
+   "slate",
+   "roof_tar",
+   "trim_stone",
+   "wood",
+   "grass"
+  ],
+  "faces": 188,
+  "tris": 354,
+  "glb_kb": 70
+ },
+ {
+  "id": 99,
+  "key": "convention_center",
+  "name": "Convention Center",
+  "category": "Landmark-scale",
+  "description": "Huge glass exhibition hall with steel roof trusses.",
+  "file": "models/099_convention_center.glb",
+  "size_m": [
+   162.0,
+   105.0,
+   27.6
+  ],
+  "materials": [
+   "glass_blue",
+   "steel",
+   "trim_white",
+   "sign_blue"
+  ],
+  "faces": 95,
+  "tris": 190,
+  "glb_kb": 38
+ },
+ {
+  "id": 100,
+  "key": "eco_tower",
+  "name": "Terraced Eco Tower",
+  "category": "Landmark-scale",
+  "description": "Glass tower with planted sky terraces.",
+  "file": "models/100_eco_tower.glb",
+  "size_m": [
+   48.0,
+   48.0,
+   276.0
+  ],
+  "materials": [
+   "lobby_glass",
+   "roof_tar",
+   "glass_green",
+   "grass",
+   "glass_plain",
+   "wood",
+   "steel"
+  ],
+  "faces": 356,
+  "tris": 616,
+  "glb_kb": 94
+ }
+]

@@ -1,0 +1,29 @@
+{
+ "id": 34,
+ "key": "early_sky_mansard",
+ "name": "Mansard-crowned Office",
+ "category": "Commercial",
+ "description": "26-storey office with copper mansard crown.",
+ "file": "models/034_early_sky_mansard.glb",
+ "size_m": [
+  36.6,
+  30.6,
+  104.0
+ ],
+ "materials": [
+  "store_stone",
+  "limestone",
+  "trim_stone",
+  "terracotta",
+  "roof_tar",
+  "copper",
+  "trim_white",
+  "glass_plain",
+  "steel",
+  "awning_red",
+  "gold"
+ ],
+ "faces": 114,
+ "tris": 228,
+ "glb_kb": 95
+}

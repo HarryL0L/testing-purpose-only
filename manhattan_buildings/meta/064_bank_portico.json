@@ -1,0 +1,23 @@
+{
+ "id": 64,
+ "key": "bank_portico",
+ "name": "Classical Bank",
+ "category": "Retail & Mixed-Use",
+ "description": "Columned bank with pediment and steps.",
+ "file": "models/064_bank_portico.glb",
+ "size_m": [
+  26.0,
+  36.1,
+  16.5
+ ],
+ "materials": [
+  "limestone_plain",
+  "civic_stone",
+  "roof_gravel",
+  "trim_stone",
+  "gold"
+ ],
+ "faces": 191,
+ "tris": 416,
+ "glb_kb": 73
+}

@@ -1,0 +1,29 @@
+{
+ "id": 20,
+ "key": "courtyard_limestone",
+ "name": "Limestone Courtyard Building",
+ "category": "Residential",
+ "description": "8-storey limestone/yellow brick court building.",
+ "file": "models/020_courtyard_limestone.glb",
+ "size_m": [
+  47.4,
+  35.4,
+  36.0
+ ],
+ "materials": [
+  "limestone",
+  "brick_yellow",
+  "roof_tar",
+  "trim_stone",
+  "brick_red_blank",
+  "steel",
+  "wood",
+  "hvac",
+  "dark",
+  "grass",
+  "iron"
+ ],
+ "faces": 231,
+ "tris": 452,
+ "glb_kb": 132
+}

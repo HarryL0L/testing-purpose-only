@@ -1,0 +1,23 @@
+{
+ "id": 55,
+ "key": "ribbon_white",
+ "name": "White Panel Office",
+ "category": "Commercial",
+ "description": "1970s white panel office block.",
+ "file": "models/055_ribbon_white.glb",
+ "size_m": [
+  40.0,
+  28.0,
+  62.6
+ ],
+ "materials": [
+  "ribbon_white",
+  "roof_tar",
+  "concrete",
+  "hvac",
+  "dark"
+ ],
+ "faces": 52,
+ "tris": 116,
+ "glb_kb": 46
+}

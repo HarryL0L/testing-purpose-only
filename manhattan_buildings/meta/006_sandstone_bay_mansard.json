@@ -1,0 +1,28 @@
+{
+ "id": 6,
+ "key": "sandstone_bay_mansard",
+ "name": "Sandstone Bay & Mansard",
+ "category": "Residential",
+ "description": "Light rowhouse with bay window and mansard roof.",
+ "file": "models/006_sandstone_bay_mansard.glb",
+ "size_m": [
+  7.0,
+  16.4,
+  14.0
+ ],
+ "materials": [
+  "brownstone_light",
+  "brick_tan_blank",
+  "roof_tar",
+  "trim_stone",
+  "slate",
+  "trim_white",
+  "glass_plain",
+  "limestone_plain",
+  "iron",
+  "trim_dark"
+ ],
+ "faces": 108,
+ "tris": 212,
+ "glb_kb": 87
+}

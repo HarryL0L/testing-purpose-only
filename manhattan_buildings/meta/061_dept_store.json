@@ -1,0 +1,29 @@
+{
+ "id": 61,
+ "key": "dept_store",
+ "name": "Department Store",
+ "category": "Retail & Mixed-Use",
+ "description": "9-storey limestone department store with flags.",
+ "file": "models/061_dept_store.glb",
+ "size_m": [
+  62.2,
+  49.6,
+  35.4
+ ],
+ "materials": [
+  "store_lux",
+  "limestone_plain",
+  "trim_stone",
+  "awning_black",
+  "limestone",
+  "limestone_ornate",
+  "roof_tar",
+  "steel",
+  "awning_red",
+  "hvac",
+  "dark"
+ ],
+ "faces": 230,
+ "tris": 476,
+ "glb_kb": 115
+}

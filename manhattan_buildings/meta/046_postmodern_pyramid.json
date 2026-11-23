@@ -1,0 +1,25 @@
+{
+ "id": 46,
+ "key": "postmodern_pyramid",
+ "name": "Postmodern Pyramid Tower",
+ "category": "Commercial",
+ "description": "Dark granite chamfered tower with pyramid crown.",
+ "file": "models/046_postmodern_pyramid.glb",
+ "size_m": [
+  34.0,
+  34.7,
+  190.5
+ ],
+ "materials": [
+  "store_stone",
+  "granite_plain",
+  "glass_plain",
+  "granite_dark",
+  "roof_tar",
+  "copper",
+  "gold"
+ ],
+ "faces": 39,
+ "tris": 66,
+ "glb_kb": 59
+}

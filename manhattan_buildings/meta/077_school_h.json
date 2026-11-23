@@ -1,0 +1,27 @@
+{
+ "id": 77,
+ "key": "school_h",
+ "name": "Public School (H-plan)",
+ "category": "Civic & Institutional",
+ "description": "5-storey H-plan brick school.",
+ "file": "models/077_school_h.glb",
+ "size_m": [
+  70.6,
+  41.0,
+  21.6
+ ],
+ "materials": [
+  "school_brick",
+  "roof_tar",
+  "trim_stone",
+  "limestone_plain",
+  "trim_dark",
+  "steel",
+  "awning_red",
+  "hvac",
+  "dark"
+ ],
+ "faces": 146,
+ "tris": 296,
+ "glb_kb": 84
+}

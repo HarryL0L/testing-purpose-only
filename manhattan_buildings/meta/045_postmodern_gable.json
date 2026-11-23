@@ -1,0 +1,25 @@
+{
+ "id": 45,
+ "key": "postmodern_gable",
+ "name": "Postmodern Gabled Tower",
+ "category": "Commercial",
+ "description": "Pink granite tower with a broken pediment top.",
+ "file": "models/045_postmodern_gable.glb",
+ "size_m": [
+  34.0,
+  34.7,
+  153.2
+ ],
+ "materials": [
+  "store_stone",
+  "granite_plain",
+  "glass_plain",
+  "granite_pink",
+  "roof_tar",
+  "roof_gravel",
+  "dark"
+ ],
+ "faces": 54,
+ "tris": 126,
+ "glb_kb": 70
+}

@@ -1,0 +1,23 @@
+{
+ "id": 74,
+ "key": "courthouse",
+ "name": "Courthouse",
+ "category": "Civic & Institutional",
+ "description": "Colonnaded courthouse with copper dome.",
+ "file": "models/074_courthouse.glb",
+ "size_m": [
+  74.0,
+  64.8,
+  45.2
+ ],
+ "materials": [
+  "limestone_plain",
+  "civic_stone",
+  "roof_gravel",
+  "trim_stone",
+  "copper"
+ ],
+ "faces": 464,
+ "tris": 978,
+ "glb_kb": 115
+}

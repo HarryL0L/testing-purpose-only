@@ -1,0 +1,23 @@
+{
+ "id": 43,
+ "key": "glass_podium_silver",
+ "name": "Silver Tower on Podium",
+ "category": "Commercial",
+ "description": "44-storey silver curtain wall over a podium.",
+ "file": "models/043_glass_podium_silver.glb",
+ "size_m": [
+  60.0,
+  51.2,
+  209.6
+ ],
+ "materials": [
+  "lobby_glass",
+  "glass_silver",
+  "roof_tar",
+  "ribbon_dark",
+  "concrete_dark"
+ ],
+ "faces": 24,
+ "tris": 48,
+ "glb_kb": 70
+}

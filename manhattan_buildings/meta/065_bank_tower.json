@@ -1,0 +1,28 @@
+{
+ "id": 65,
+ "key": "bank_tower",
+ "name": "Bank Tower",
+ "category": "Retail & Mixed-Use",
+ "description": "Bank hall with 12-storey office tower above.",
+ "file": "models/065_bank_tower.glb",
+ "size_m": [
+  30.0,
+  40.8,
+  61.4
+ ],
+ "materials": [
+  "limestone_plain",
+  "civic_stone",
+  "trim_stone",
+  "limestone_ornate",
+  "roof_tar",
+  "steel",
+  "wood",
+  "hvac",
+  "dark",
+  "gold"
+ ],
+ "faces": 274,
+ "tris": 586,
+ "glb_kb": 115
+}

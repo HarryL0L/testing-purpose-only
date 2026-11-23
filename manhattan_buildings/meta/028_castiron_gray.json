@@ -1,0 +1,27 @@
+{
+ "id": 28,
+ "key": "castiron_gray",
+ "name": "Cast-iron Loft (Gray)",
+ "category": "Commercial",
+ "description": "5-storey gray cast-iron commercial building.",
+ "file": "models/028_castiron_gray.glb",
+ "size_m": [
+  20.0,
+  32.0,
+  35.1
+ ],
+ "materials": [
+  "store_mixed",
+  "brick_red_blank",
+  "castiron_gray",
+  "roof_tar",
+  "trim_dark",
+  "steel",
+  "wood",
+  "hvac",
+  "dark"
+ ],
+ "faces": 118,
+ "tris": 240,
+ "glb_kb": 81
+}

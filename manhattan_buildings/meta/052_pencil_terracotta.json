@@ -1,0 +1,23 @@
+{
+ "id": 52,
+ "key": "pencil_terracotta",
+ "name": "Terracotta Pencil Tower",
+ "category": "Commercial",
+ "description": "Slender tower with terracotta piers and setbacks.",
+ "file": "models/052_pencil_terracotta.glb",
+ "size_m": [
+  24.0,
+  24.0,
+  263.5
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "terracotta",
+  "trim_stone",
+  "copper"
+ ],
+ "faces": 118,
+ "tris": 228,
+ "glb_kb": 64
+}

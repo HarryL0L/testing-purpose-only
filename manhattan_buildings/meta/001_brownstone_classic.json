@@ -1,0 +1,24 @@
+{
+ "id": 1,
+ "key": "brownstone_classic",
+ "name": "Classic Brownstone",
+ "category": "Residential",
+ "description": "4-storey brownstone rowhouse with stoop and cornice.",
+ "file": "models/001_brownstone_classic.glb",
+ "size_m": [
+  7.0,
+  16.4,
+  16.0
+ ],
+ "materials": [
+  "brownstone",
+  "brick_brown_blank",
+  "roof_tar",
+  "trim_dark",
+  "brownstone_plain",
+  "iron"
+ ],
+ "faces": 74,
+ "tris": 148,
+ "glb_kb": 67
+}

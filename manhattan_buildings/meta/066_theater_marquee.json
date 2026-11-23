@@ -1,0 +1,26 @@
+{
+ "id": 66,
+ "key": "theater_marquee",
+ "name": "Broadway Theater",
+ "category": "Retail & Mixed-Use",
+ "description": "Theater with lit marquee, blade sign and fly tower.",
+ "file": "models/066_theater_marquee.glb",
+ "size_m": [
+  23.4,
+  43.6,
+  34.0
+ ],
+ "materials": [
+  "store_stone",
+  "terracotta",
+  "roof_tar",
+  "trim_stone",
+  "brick_brown_blank",
+  "sign_white",
+  "sign_red",
+  "sign_yellow"
+ ],
+ "faces": 51,
+ "tris": 102,
+ "glb_kb": 74
+}

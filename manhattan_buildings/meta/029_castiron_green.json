@@ -1,0 +1,26 @@
+{
+ "id": 29,
+ "key": "castiron_green",
+ "name": "Cast-iron Loft (Green)",
+ "category": "Commercial",
+ "description": "4-storey green-painted cast-iron building.",
+ "file": "models/029_castiron_green.glb",
+ "size_m": [
+  12.0,
+  32.3,
+  24.3
+ ],
+ "materials": [
+  "store_stone",
+  "brick_red_blank",
+  "castiron_green",
+  "roof_tar",
+  "trim_white",
+  "iron",
+  "hvac",
+  "dark"
+ ],
+ "faces": 170,
+ "tris": 348,
+ "glb_kb": 86
+}

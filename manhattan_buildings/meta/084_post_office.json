@@ -1,0 +1,25 @@
+{
+ "id": 84,
+ "key": "post_office",
+ "name": "General Post Office",
+ "category": "Civic & Institutional",
+ "description": "Monumental colonnade on a full-width stair.",
+ "file": "models/084_post_office.glb",
+ "size_m": [
+  112.0,
+  64.7,
+  22.8
+ ],
+ "materials": [
+  "limestone_plain",
+  "civic_stone",
+  "roof_gravel",
+  "trim_stone",
+  "limestone",
+  "steel",
+  "awning_red"
+ ],
+ "faces": 509,
+ "tris": 1138,
+ "glb_kb": 144
+}

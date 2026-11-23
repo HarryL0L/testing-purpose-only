@@ -1,0 +1,27 @@
+{
+ "id": 44,
+ "key": "glass_bronze",
+ "name": "Bronze Glass Tower",
+ "category": "Commercial",
+ "description": "36-storey bronze-tinted glass office.",
+ "file": "models/044_glass_bronze.glb",
+ "size_m": [
+  60.8,
+  59.0,
+  161.9
+ ],
+ "materials": [
+  "granite_plain",
+  "concrete",
+  "glass_plain",
+  "lobby_glass",
+  "roof_tar",
+  "steel",
+  "glass_bronze",
+  "ribbon_dark",
+  "concrete_dark"
+ ],
+ "faces": 72,
+ "tris": 144,
+ "glb_kb": 89
+}

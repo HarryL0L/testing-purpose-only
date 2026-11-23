@@ -1,0 +1,24 @@
+{
+ "id": 85,
+ "key": "armory",
+ "name": "Regiment Armory",
+ "category": "Civic & Institutional",
+ "description": "Crenellated brick armory with drill hall.",
+ "file": "models/085_armory.glb",
+ "size_m": [
+  61.0,
+  83.6,
+  26.0
+ ],
+ "materials": [
+  "brick_red",
+  "brick_red_blank",
+  "roof_tar",
+  "wood",
+  "warehouse_arch",
+  "corrugated"
+ ],
+ "faces": 562,
+ "tris": 1138,
+ "glb_kb": 193
+}

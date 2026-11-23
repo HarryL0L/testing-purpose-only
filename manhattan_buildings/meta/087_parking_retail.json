@@ -1,0 +1,27 @@
+{
+ "id": 87,
+ "key": "parking_retail",
+ "name": "Parking over Retail",
+ "category": "Industrial & Infrastructure",
+ "description": "Parking levels over a retail base.",
+ "file": "models/087_parking_retail.glb",
+ "size_m": [
+  40.0,
+  52.0,
+  30.5
+ ],
+ "materials": [
+  "store_modern",
+  "dark",
+  "garage_open",
+  "concrete_dark",
+  "concrete",
+  "roof_tar",
+  "sign_blue",
+  "steel",
+  "lamp"
+ ],
+ "faces": 88,
+ "tris": 176,
+ "glb_kb": 61
+}

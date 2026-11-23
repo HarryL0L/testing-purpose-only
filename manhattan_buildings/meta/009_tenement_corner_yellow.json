@@ -1,0 +1,29 @@
+{
+ "id": 9,
+ "key": "tenement_corner_yellow",
+ "name": "Corner Walk-up (Yellow)",
+ "category": "Residential",
+ "description": "Corner walk-up with shopfronts on two streets.",
+ "file": "models/009_tenement_corner_yellow.glb",
+ "size_m": [
+  12.1,
+  22.3,
+  30.6
+ ],
+ "materials": [
+  "store_mixed",
+  "brick_yellow_blank",
+  "tenement_yellow",
+  "roof_tar",
+  "trim_dark",
+  "iron",
+  "awning_green",
+  "steel",
+  "wood",
+  "hvac",
+  "dark"
+ ],
+ "faces": 263,
+ "tris": 530,
+ "glb_kb": 129
+}

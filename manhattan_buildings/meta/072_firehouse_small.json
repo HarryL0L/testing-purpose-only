@@ -1,0 +1,27 @@
+{
+ "id": 72,
+ "key": "firehouse_small",
+ "name": "Single-bay Firehouse",
+ "category": "Civic & Institutional",
+ "description": "Narrow firehouse with one red door.",
+ "file": "models/072_firehouse_small.glb",
+ "size_m": [
+  10.4,
+  28.7,
+  21.9
+ ],
+ "materials": [
+  "limestone_plain",
+  "brick_tan_blank",
+  "brick_tan",
+  "roof_tar",
+  "trim_stone",
+  "garage_door",
+  "steel",
+  "awning_blue",
+  "concrete"
+ ],
+ "faces": 52,
+ "tris": 104,
+ "glb_kb": 101
+}

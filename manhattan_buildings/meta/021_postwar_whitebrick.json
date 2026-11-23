@@ -1,0 +1,26 @@
+{
+ "id": 21,
+ "key": "postwar_whitebrick",
+ "name": "White-brick Apartment Tower",
+ "category": "Residential",
+ "description": "20-storey postwar white-brick with balconies.",
+ "file": "models/021_postwar_whitebrick.glb",
+ "size_m": [
+  40.0,
+  28.0,
+  65.0
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "postwar_white",
+  "brick_white_blank",
+  "trim_white",
+  "hvac",
+  "dark",
+  "trim_dark"
+ ],
+ "faces": 652,
+ "tris": 1316,
+ "glb_kb": 159
+}

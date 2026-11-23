@@ -1,0 +1,25 @@
+{
+ "id": 100,
+ "key": "eco_tower",
+ "name": "Terraced Eco Tower",
+ "category": "Landmark-scale",
+ "description": "Glass tower with planted sky terraces.",
+ "file": "models/100_eco_tower.glb",
+ "size_m": [
+  48.0,
+  48.0,
+  276.0
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "glass_green",
+  "grass",
+  "glass_plain",
+  "wood",
+  "steel"
+ ],
+ "faces": 356,
+ "tris": 616,
+ "glb_kb": 94
+}

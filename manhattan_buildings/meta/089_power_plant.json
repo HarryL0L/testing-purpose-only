@@ -1,0 +1,25 @@
+{
+ "id": 89,
+ "key": "power_plant",
+ "name": "Power Station",
+ "category": "Industrial & Infrastructure",
+ "description": "Brick power station with four smokestacks.",
+ "file": "models/089_power_plant.glb",
+ "size_m": [
+  80.0,
+  70.0,
+  91.0
+ ],
+ "materials": [
+  "warehouse_arch",
+  "roof_tar",
+  "brick_red_blank",
+  "dark",
+  "trim_dark",
+  "corrugated",
+  "steel"
+ ],
+ "faces": 185,
+ "tris": 470,
+ "glb_kb": 104
+}

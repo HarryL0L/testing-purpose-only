@@ -1,0 +1,26 @@
+{
+ "id": 79,
+ "key": "hospital",
+ "name": "Hospital",
+ "category": "Civic & Institutional",
+ "description": "Medical centre with tower, podium and helipad.",
+ "file": "models/079_hospital.glb",
+ "size_m": [
+  90.0,
+  60.0,
+  67.0
+ ],
+ "materials": [
+  "lobby_glass",
+  "hospital_white",
+  "roof_tar",
+  "concrete",
+  "concrete_dark",
+  "trim_white",
+  "sign_red",
+  "sign_blue"
+ ],
+ "faces": 64,
+ "tris": 128,
+ "glb_kb": 64
+}

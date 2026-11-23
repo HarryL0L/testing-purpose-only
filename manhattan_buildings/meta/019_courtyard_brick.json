@@ -1,0 +1,29 @@
+{
+ "id": 19,
+ "key": "courtyard_brick",
+ "name": "Courtyard Apartments",
+ "category": "Residential",
+ "description": "U-shaped 10-storey building around a garden court.",
+ "file": "models/019_courtyard_brick.glb",
+ "size_m": [
+  41.4,
+  37.4,
+  41.6
+ ],
+ "materials": [
+  "prewar_limestone",
+  "prewar_brick",
+  "roof_tar",
+  "trim_stone",
+  "brick_red_blank",
+  "steel",
+  "wood",
+  "hvac",
+  "dark",
+  "grass",
+  "iron"
+ ],
+ "faces": 231,
+ "tris": 452,
+ "glb_kb": 142
+}

@@ -1,0 +1,24 @@
+{
+ "id": 94,
+ "key": "ferry_terminal",
+ "name": "Ferry Terminal",
+ "category": "Industrial & Infrastructure",
+ "description": "Glass terminal with barrel roof and slips.",
+ "file": "models/094_ferry_terminal.glb",
+ "size_m": [
+  70.0,
+  60.0,
+  21.0
+ ],
+ "materials": [
+  "concrete_dark",
+  "concrete",
+  "glass_teal",
+  "steel",
+  "glass_plain",
+  "sign_blue"
+ ],
+ "faces": 57,
+ "tris": 128,
+ "glb_kb": 55
+}

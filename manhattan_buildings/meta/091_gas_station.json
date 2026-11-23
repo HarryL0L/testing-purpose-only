@@ -1,0 +1,25 @@
+{
+ "id": 91,
+ "key": "gas_station",
+ "name": "Gas Station",
+ "category": "Industrial & Infrastructure",
+ "description": "Canopy, pumps and convenience shop.",
+ "file": "models/091_gas_station.glb",
+ "size_m": [
+  32,
+  32,
+  11
+ ],
+ "materials": [
+  "concrete",
+  "trim_white",
+  "steel_red",
+  "sign_white",
+  "store_modern",
+  "roof_tar",
+  "steel"
+ ],
+ "faces": 106,
+ "tris": 212,
+ "glb_kb": 42
+}

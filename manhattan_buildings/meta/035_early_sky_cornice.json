@@ -1,0 +1,31 @@
+{
+ "id": 35,
+ "key": "early_sky_cornice",
+ "name": "Classic Office Block",
+ "category": "Commercial",
+ "description": "18-storey limestone office with heavy cornice.",
+ "file": "models/035_early_sky_cornice.glb",
+ "size_m": [
+  38.6,
+  32.6,
+  70.2
+ ],
+ "materials": [
+  "store_stone",
+  "limestone",
+  "trim_stone",
+  "brick_tan_blank",
+  "terracotta",
+  "roof_tar",
+  "brick_red_blank",
+  "steel",
+  "wood",
+  "hvac",
+  "dark",
+  "awning_red",
+  "gold"
+ ],
+ "faces": 170,
+ "tris": 348,
+ "glb_kb": 143
+}

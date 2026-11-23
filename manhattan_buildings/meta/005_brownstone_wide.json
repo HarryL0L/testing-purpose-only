@@ -1,0 +1,26 @@
+{
+ "id": 5,
+ "key": "brownstone_wide",
+ "name": "Wide Brownstone",
+ "category": "Residential",
+ "description": "5-storey double-width brownstone.",
+ "file": "models/005_brownstone_wide.glb",
+ "size_m": [
+  10.0,
+  18.4,
+  19.6
+ ],
+ "materials": [
+  "brownstone",
+  "brick_brown_blank",
+  "roof_tar",
+  "trim_dark",
+  "hvac",
+  "dark",
+  "brownstone_plain",
+  "iron"
+ ],
+ "faces": 88,
+ "tris": 180,
+ "glb_kb": 71
+}

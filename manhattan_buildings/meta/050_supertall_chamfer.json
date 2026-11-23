@@ -1,0 +1,22 @@
+{
+ "id": 50,
+ "key": "supertall_chamfer",
+ "name": "Chamfered Supertall",
+ "category": "Commercial",
+ "description": "Chamfered tower with sloped glass crown.",
+ "file": "models/050_supertall_chamfer.glb",
+ "size_m": [
+  57.6,
+  57.6,
+  402.0
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "glass_dark",
+  "steel"
+ ],
+ "faces": 34,
+ "tris": 76,
+ "glb_kb": 35
+}

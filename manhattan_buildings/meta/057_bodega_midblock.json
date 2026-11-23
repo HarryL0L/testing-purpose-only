@@ -1,0 +1,27 @@
+{
+ "id": 57,
+ "key": "bodega_midblock",
+ "name": "Mid-block Shop",
+ "category": "Retail & Mixed-Use",
+ "description": "3-storey mid-block shop with flat above.",
+ "file": "models/057_bodega_midblock.glb",
+ "size_m": [
+  6.2,
+  13.8,
+  12.3
+ ],
+ "materials": [
+  "store_mixed",
+  "brick_red_blank",
+  "brick_red",
+  "roof_tar",
+  "trim_dark",
+  "awning_red",
+  "sign_yellow",
+  "hvac",
+  "dark"
+ ],
+ "faces": 59,
+ "tris": 122,
+ "glb_kb": 88
+}

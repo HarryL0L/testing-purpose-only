@@ -1,0 +1,30 @@
+{
+ "id": 16,
+ "key": "prewar_apartment",
+ "name": "Prewar Apartment Building",
+ "category": "Residential",
+ "description": "14-storey brick co-op with limestone base.",
+ "file": "models/016_prewar_apartment.glb",
+ "size_m": [
+  31.8,
+  30.9,
+  54.4
+ ],
+ "materials": [
+  "prewar_limestone",
+  "trim_stone",
+  "prewar_brick",
+  "brick_tan_blank",
+  "roof_tar",
+  "steel",
+  "wood",
+  "hvac",
+  "dark",
+  "awning_green",
+  "chrome",
+  "trim_dark"
+ ],
+ "faces": 160,
+ "tris": 328,
+ "glb_kb": 136
+}

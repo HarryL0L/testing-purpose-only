@@ -1,0 +1,31 @@
+{
+ "id": 68,
+ "key": "hotel_mansard",
+ "name": "Grand Hotel",
+ "category": "Retail & Mixed-Use",
+ "description": "24-storey hotel with copper mansard and flags.",
+ "file": "models/068_hotel_mansard.glb",
+ "size_m": [
+  37.6,
+  34.9,
+  93.9
+ ],
+ "materials": [
+  "store_stone",
+  "trim_dark",
+  "gold",
+  "hotel_stone",
+  "roof_tar",
+  "trim_stone",
+  "copper",
+  "trim_white",
+  "glass_plain",
+  "steel",
+  "awning_blue",
+  "awning_red",
+  "awning_green"
+ ],
+ "faces": 163,
+ "tris": 326,
+ "glb_kb": 81
+}

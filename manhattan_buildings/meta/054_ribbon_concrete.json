@@ -1,0 +1,24 @@
+{
+ "id": 54,
+ "key": "ribbon_concrete",
+ "name": "Concrete Ribbon-window Office",
+ "category": "Commercial",
+ "description": "1960s office with strip windows on a podium.",
+ "file": "models/054_ribbon_concrete.glb",
+ "size_m": [
+  55.0,
+  36.0,
+  51.0
+ ],
+ "materials": [
+  "store_modern",
+  "roof_tar",
+  "ribbon_concrete",
+  "concrete",
+  "hvac",
+  "dark"
+ ],
+ "faces": 57,
+ "tris": 126,
+ "glb_kb": 52
+}

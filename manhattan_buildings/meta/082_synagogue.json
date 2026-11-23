@@ -1,0 +1,25 @@
+{
+ "id": 82,
+ "key": "synagogue",
+ "name": "Moorish Revival Synagogue",
+ "category": "Civic & Institutional",
+ "description": "Banded facade with twin onion-domed towers.",
+ "file": "models/082_synagogue.glb",
+ "size_m": [
+  24.6,
+  37.3,
+  33.1
+ ],
+ "materials": [
+  "moorish",
+  "brick_tan_blank",
+  "roof_tar",
+  "trim_stone",
+  "copper",
+  "gold",
+  "wood"
+ ],
+ "faces": 228,
+ "tris": 446,
+ "glb_kb": 112
+}

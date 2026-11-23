@@ -1,0 +1,22 @@
+{
+ "id": 48,
+ "key": "supertall_tapered",
+ "name": "Tapered Supertall",
+ "category": "Commercial",
+ "description": "100-storey tapering glass supertall with spire.",
+ "file": "models/048_supertall_tapered.glb",
+ "size_m": [
+  60.0,
+  60.0,
+  472.0
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "glass_silver",
+  "steel"
+ ],
+ "faces": 61,
+ "tris": 142,
+ "glb_kb": 50
+}

@@ -1,0 +1,23 @@
+{
+ "id": 47,
+ "key": "postmodern_stepped",
+ "name": "Postmodern Stepped Tower",
+ "category": "Commercial",
+ "description": "Granite tower with stepped crown.",
+ "file": "models/047_postmodern_stepped.glb",
+ "size_m": [
+  30.0,
+  30.7,
+  175.9
+ ],
+ "materials": [
+  "store_stone",
+  "granite_plain",
+  "glass_plain",
+  "granite_pink",
+  "roof_tar"
+ ],
+ "faces": 58,
+ "tris": 124,
+ "glb_kb": 61
+}

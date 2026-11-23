@@ -1,0 +1,23 @@
+{
+ "id": 51,
+ "key": "pencil_glass",
+ "name": "Glass Pencil Tower",
+ "category": "Commercial",
+ "description": "Super-slender 90-storey glass residential tower.",
+ "file": "models/051_pencil_glass.glb",
+ "size_m": [
+  26.0,
+  26.0,
+  329.4
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "glass_resi",
+  "ribbon_dark",
+  "glass_plain"
+ ],
+ "faces": 19,
+ "tris": 38,
+ "glb_kb": 65
+}

@@ -1,0 +1,26 @@
+{
+ "id": 70,
+ "key": "nightclub",
+ "name": "Nightclub",
+ "category": "Retail & Mixed-Use",
+ "description": "Dark brick club with neon signs.",
+ "file": "models/070_nightclub.glb",
+ "size_m": [
+  12.0,
+  23.5,
+  11.9
+ ],
+ "materials": [
+  "brick_dark_blank",
+  "brick_dark",
+  "roof_tar",
+  "iron",
+  "awning_black",
+  "sign_blue",
+  "sign_red",
+  "gold"
+ ],
+ "faces": 60,
+ "tris": 120,
+ "glb_kb": 74
+}

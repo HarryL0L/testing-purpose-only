@@ -1,0 +1,27 @@
+{
+ "id": 8,
+ "key": "tenement_tan",
+ "name": "Tan Walk-up with Awning",
+ "category": "Residential",
+ "description": "6-storey tan brick walk-up with awninged shop.",
+ "file": "models/008_tenement_tan.glb",
+ "size_m": [
+  10.2,
+  20.3,
+  27.3
+ ],
+ "materials": [
+  "store_mixed",
+  "brick_tan_blank",
+  "tenement_tan",
+  "roof_tar",
+  "trim_white",
+  "iron",
+  "awning_red",
+  "hvac",
+  "dark"
+ ],
+ "faces": 227,
+ "tris": 462,
+ "glb_kb": 116
+}

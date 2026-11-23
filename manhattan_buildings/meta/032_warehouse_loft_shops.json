@@ -1,0 +1,28 @@
+{
+ "id": 32,
+ "key": "warehouse_loft_shops",
+ "name": "Warehouse Lofts over Shops",
+ "category": "Commercial",
+ "description": "6-storey converted loft with stores.",
+ "file": "models/032_warehouse_loft_shops.glb",
+ "size_m": [
+  22.7,
+  33.0,
+  34.1
+ ],
+ "materials": [
+  "store_brick",
+  "brick_red_blank",
+  "warehouse_arch",
+  "roof_tar",
+  "trim_stone",
+  "steel",
+  "iron",
+  "wood",
+  "hvac",
+  "dark"
+ ],
+ "faces": 137,
+ "tris": 274,
+ "glb_kb": 101
+}

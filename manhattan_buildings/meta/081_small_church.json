@@ -1,0 +1,25 @@
+{
+ "id": 81,
+ "key": "small_church",
+ "name": "Neighborhood Church",
+ "category": "Civic & Institutional",
+ "description": "Brick church with a single steeple.",
+ "file": "models/081_small_church.glb",
+ "size_m": [
+  12.8,
+  33.5,
+  36.5
+ ],
+ "materials": [
+  "brick_red_blank",
+  "slate",
+  "glass_plain",
+  "trim_stone",
+  "dark",
+  "gold",
+  "red_paint"
+ ],
+ "faces": 55,
+ "tris": 100,
+ "glb_kb": 36
+}

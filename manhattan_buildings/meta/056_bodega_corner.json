@@ -1,0 +1,27 @@
+{
+ "id": 56,
+ "key": "bodega_corner",
+ "name": "Corner Bodega",
+ "category": "Retail & Mixed-Use",
+ "description": "2-storey corner deli/grocery with awnings.",
+ "file": "models/056_bodega_corner.glb",
+ "size_m": [
+  8.8,
+  13.8,
+  12.3
+ ],
+ "materials": [
+  "store_mixed",
+  "brick_yellow_blank",
+  "brick_yellow",
+  "roof_tar",
+  "trim_dark",
+  "awning_green",
+  "sign_red",
+  "hvac",
+  "dark"
+ ],
+ "faces": 64,
+ "tris": 132,
+ "glb_kb": 90
+}

@@ -1,0 +1,25 @@
+{
+ "id": 92,
+ "key": "telephone_exchange",
+ "name": "Telephone Exchange",
+ "category": "Industrial & Infrastructure",
+ "description": "Near-windowless setback switching building.",
+ "file": "models/092_telephone_exchange.glb",
+ "size_m": [
+  40.0,
+  40.0,
+  138.5
+ ],
+ "materials": [
+  "store_stone",
+  "telephone_stone",
+  "roof_tar",
+  "trim_stone",
+  "concrete",
+  "steel",
+  "trim_white"
+ ],
+ "faces": 123,
+ "tris": 264,
+ "glb_kb": 68
+}

@@ -1,0 +1,26 @@
+{
+ "id": 7,
+ "key": "tenement_red",
+ "name": "Red Brick Walk-up",
+ "category": "Residential",
+ "description": "5-storey walk-up with storefront and fire escape.",
+ "file": "models/007_tenement_red.glb",
+ "size_m": [
+  9.2,
+  19.9,
+  24.0
+ ],
+ "materials": [
+  "store_mixed",
+  "brick_red_blank",
+  "tenement_red",
+  "roof_tar",
+  "trim_dark",
+  "iron",
+  "hvac",
+  "dark"
+ ],
+ "faces": 193,
+ "tris": 394,
+ "glb_kb": 111
+}

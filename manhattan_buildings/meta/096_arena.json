@@ -1,0 +1,23 @@
+{
+ "id": 96,
+ "key": "arena",
+ "name": "Arena",
+ "category": "Landmark-scale",
+ "description": "Round arena with LED band and shallow dome.",
+ "file": "models/096_arena.glb",
+ "size_m": [
+  110.8,
+  110.8,
+  31.1
+ ],
+ "materials": [
+  "lobby_glass",
+  "ribbon_dark",
+  "sign_blue",
+  "steel",
+  "trim_dark"
+ ],
+ "faces": 276,
+ "tris": 520,
+ "glb_kb": 64
+}

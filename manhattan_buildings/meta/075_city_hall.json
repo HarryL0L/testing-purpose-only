@@ -1,0 +1,27 @@
+{
+ "id": 75,
+ "key": "city_hall",
+ "name": "City Hall",
+ "category": "Civic & Institutional",
+ "description": "Civic hall with wings, portico and cupola.",
+ "file": "models/075_city_hall.glb",
+ "size_m": [
+  80.0,
+  34.0,
+  37.6
+ ],
+ "materials": [
+  "civic_stone",
+  "roof_tar",
+  "trim_stone",
+  "slate",
+  "limestone_plain",
+  "limestone",
+  "trim_white",
+  "copper",
+  "gold"
+ ],
+ "faces": 409,
+ "tris": 880,
+ "glb_kb": 139
+}

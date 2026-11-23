@@ -1,0 +1,27 @@
+{
+ "id": 73,
+ "key": "police_precinct",
+ "name": "Police Precinct",
+ "category": "Civic & Institutional",
+ "description": "Limestone station house with green lamps.",
+ "file": "models/073_police_precinct.glb",
+ "size_m": [
+  27.8,
+  28.6,
+  22.4
+ ],
+ "materials": [
+  "limestone_plain",
+  "limestone_ornate",
+  "roof_tar",
+  "trim_stone",
+  "green_paint",
+  "iron",
+  "lamp",
+  "steel",
+  "awning_red"
+ ],
+ "faces": 99,
+ "tris": 198,
+ "glb_kb": 62
+}

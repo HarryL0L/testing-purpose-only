@@ -1,0 +1,25 @@
+{
+ "id": 58,
+ "key": "diner",
+ "name": "Chrome Diner",
+ "category": "Retail & Mixed-Use",
+ "description": "Stainless-steel diner with rooftop sign.",
+ "file": "models/058_diner.glb",
+ "size_m": [
+  17.6,
+  9.6,
+  10.2
+ ],
+ "materials": [
+  "chrome",
+  "store_modern",
+  "trim_white",
+  "sign_red",
+  "steel",
+  "sign_white",
+  "concrete"
+ ],
+ "faces": 71,
+ "tris": 150,
+ "glb_kb": 30
+}

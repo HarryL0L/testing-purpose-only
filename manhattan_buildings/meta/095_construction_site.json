@@ -1,0 +1,26 @@
+{
+ "id": 95,
+ "key": "construction_site",
+ "name": "Tower Under Construction",
+ "category": "Industrial & Infrastructure",
+ "description": "Half-built tower with steel frame and crane.",
+ "file": "models/095_construction_site.glb",
+ "size_m": [
+  61.0,
+  38.0,
+  83.0
+ ],
+ "materials": [
+  "glass_blue",
+  "roof_tar",
+  "concrete",
+  "steel_red",
+  "steel_yellow",
+  "steel",
+  "trim_white",
+  "wood"
+ ],
+ "faces": 866,
+ "tris": 1732,
+ "glb_kb": 166
+}

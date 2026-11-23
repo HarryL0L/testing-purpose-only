@@ -1,0 +1,27 @@
+{
+ "id": 26,
+ "key": "castiron_white",
+ "name": "Cast-iron Loft (White)",
+ "category": "Commercial",
+ "description": "5-storey arched cast-iron loft building.",
+ "file": "models/026_castiron_white.glb",
+ "size_m": [
+  17.0,
+  32.0,
+  35.1
+ ],
+ "materials": [
+  "store_stone",
+  "brick_red_blank",
+  "castiron_white",
+  "roof_tar",
+  "trim_white",
+  "steel",
+  "wood",
+  "hvac",
+  "dark"
+ ],
+ "faces": 118,
+ "tris": 240,
+ "glb_kb": 83
+}

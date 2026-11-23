@@ -1,0 +1,24 @@
+{
+ "id": 38,
+ "key": "deco_stepped",
+ "name": "Art Deco Ziggurat",
+ "category": "Commercial",
+ "description": "Brick Art Deco tower stepping up in many tiers.",
+ "file": "models/038_deco_stepped.glb",
+ "size_m": [
+  44.2,
+  40.3,
+  158.1
+ ],
+ "materials": [
+  "store_stone",
+  "trim_stone",
+  "deco_brick",
+  "roof_tar",
+  "steel",
+  "gold"
+ ],
+ "faces": 225,
+ "tris": 450,
+ "glb_kb": 82
+}

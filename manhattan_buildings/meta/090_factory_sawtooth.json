@@ -1,0 +1,28 @@
+{
+ "id": 90,
+ "key": "factory_sawtooth",
+ "name": "Sawtooth Factory",
+ "category": "Industrial & Infrastructure",
+ "description": "Factory with sawtooth roof, chimney, water tank.",
+ "file": "models/090_factory_sawtooth.glb",
+ "size_m": [
+  40.0,
+  52.5,
+  45
+ ],
+ "materials": [
+  "warehouse_brown",
+  "brick_brown_blank",
+  "corrugated",
+  "glass_plain",
+  "brick_red_blank",
+  "dark",
+  "steel",
+  "wood",
+  "concrete",
+  "garage_door_gray"
+ ],
+ "faces": 120,
+ "tris": 230,
+ "glb_kb": 119
+}

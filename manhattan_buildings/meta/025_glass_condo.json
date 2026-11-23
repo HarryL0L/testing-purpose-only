@@ -1,0 +1,26 @@
+{
+ "id": 25,
+ "key": "glass_condo",
+ "name": "Glass Condo Tower",
+ "category": "Residential",
+ "description": "34-storey glass condo with continuous balconies.",
+ "file": "models/025_glass_condo.glb",
+ "size_m": [
+  26.4,
+  30.0,
+  125.6
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "glass_resi",
+  "trim_white",
+  "glass_plain",
+  "ribbon_dark",
+  "roof_gravel",
+  "trim_dark"
+ ],
+ "faces": 340,
+ "tris": 680,
+ "glb_kb": 118
+}

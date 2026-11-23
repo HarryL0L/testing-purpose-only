@@ -1,0 +1,29 @@
+{
+ "id": 62,
+ "key": "dept_store_clock",
+ "name": "Department Store with Clock",
+ "category": "Retail & Mixed-Use",
+ "description": "Large store with corner clock tower.",
+ "file": "models/062_dept_store_clock.glb",
+ "size_m": [
+  72.2,
+  53.5,
+  43.1
+ ],
+ "materials": [
+  "store_lux",
+  "limestone_plain",
+  "trim_stone",
+  "awning_black",
+  "terracotta",
+  "limestone_ornate",
+  "roof_tar",
+  "copper",
+  "trim_white",
+  "hvac",
+  "dark"
+ ],
+ "faces": 213,
+ "tris": 450,
+ "glb_kb": 120
+}

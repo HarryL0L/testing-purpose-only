@@ -1,0 +1,26 @@
+{
+ "id": 83,
+ "key": "museum_modern",
+ "name": "Modern Art Museum",
+ "category": "Civic & Institutional",
+ "description": "Stack of shifted boxes.",
+ "file": "models/083_museum_modern.glb",
+ "size_m": [
+  36.0,
+  32.3,
+  48.0
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "ribbon_white",
+  "roof_gravel",
+  "corrugated",
+  "stucco",
+  "concrete",
+  "sign_white"
+ ],
+ "faces": 40,
+ "tris": 80,
+ "glb_kb": 74
+}

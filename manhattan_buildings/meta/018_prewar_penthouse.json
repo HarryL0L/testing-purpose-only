@@ -1,0 +1,30 @@
+{
+ "id": 18,
+ "key": "prewar_penthouse",
+ "name": "Prewar Tower with Penthouse",
+ "category": "Residential",
+ "description": "18-storey prewar tower with setback penthouse.",
+ "file": "models/018_prewar_penthouse.glb",
+ "size_m": [
+  29.8,
+  33.9,
+  75.0
+ ],
+ "materials": [
+  "prewar_limestone",
+  "trim_stone",
+  "brick_tan",
+  "brick_tan_blank",
+  "roof_tar",
+  "steel",
+  "wood",
+  "hvac",
+  "dark",
+  "awning_green",
+  "chrome",
+  "trim_dark"
+ ],
+ "faces": 177,
+ "tris": 362,
+ "glb_kb": 132
+}

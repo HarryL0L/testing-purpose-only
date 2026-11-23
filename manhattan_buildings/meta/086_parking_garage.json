@@ -1,0 +1,26 @@
+{
+ "id": 86,
+ "key": "parking_garage",
+ "name": "Parking Garage",
+ "category": "Industrial & Infrastructure",
+ "description": "7-level open parking structure.",
+ "file": "models/086_parking_garage.glb",
+ "size_m": [
+  44.0,
+  62.0,
+  28.7
+ ],
+ "materials": [
+  "garage_open",
+  "concrete_dark",
+  "concrete",
+  "roof_tar",
+  "sign_blue",
+  "steel",
+  "lamp",
+  "dark"
+ ],
+ "faces": 84,
+ "tris": 168,
+ "glb_kb": 54
+}

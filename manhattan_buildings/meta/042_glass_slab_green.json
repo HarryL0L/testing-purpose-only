@@ -1,0 +1,23 @@
+{
+ "id": 42,
+ "key": "glass_slab_green",
+ "name": "Green Glass Slab",
+ "category": "Commercial",
+ "description": "30-storey green curtain-wall slab with spandrels.",
+ "file": "models/042_glass_slab_green.glb",
+ "size_m": [
+  72.0,
+  44.0,
+  145.6
+ ],
+ "materials": [
+  "lobby_glass",
+  "glass_green",
+  "roof_tar",
+  "ribbon_dark",
+  "concrete_dark"
+ ],
+ "faces": 24,
+ "tris": 48,
+ "glb_kb": 71
+}

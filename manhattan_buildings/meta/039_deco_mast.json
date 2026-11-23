@@ -1,0 +1,25 @@
+{
+ "id": 39,
+ "key": "deco_mast",
+ "name": "Art Deco Mast Tower",
+ "category": "Commercial",
+ "description": "Tall Art Deco tower with mooring-mast style crown.",
+ "file": "models/039_deco_mast.glb",
+ "size_m": [
+  50.2,
+  40.3,
+  315.6
+ ],
+ "materials": [
+  "store_stone",
+  "trim_stone",
+  "deco_light",
+  "roof_tar",
+  "chrome",
+  "steel",
+  "gold"
+ ],
+ "faces": 192,
+ "tris": 388,
+ "glb_kb": 68
+}

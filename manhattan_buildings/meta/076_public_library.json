@@ -1,0 +1,25 @@
+{
+ "id": 76,
+ "key": "public_library",
+ "name": "Public Library",
+ "category": "Civic & Institutional",
+ "description": "Beaux-Arts library with grand steps.",
+ "file": "models/076_public_library.glb",
+ "size_m": [
+  94.0,
+  66.8,
+  17.6
+ ],
+ "materials": [
+  "limestone_plain",
+  "civic_stone",
+  "limestone_ornate",
+  "roof_gravel",
+  "trim_stone",
+  "steel",
+  "awning_blue"
+ ],
+ "faces": 296,
+ "tris": 640,
+ "glb_kb": 112
+}

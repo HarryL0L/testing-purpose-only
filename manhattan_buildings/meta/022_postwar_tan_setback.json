@@ -1,0 +1,26 @@
+{
+ "id": 22,
+ "key": "postwar_tan_setback",
+ "name": "Tan-brick Setback Apartments",
+ "category": "Residential",
+ "description": "16-storey wedding-cake setback apartments.",
+ "file": "models/022_postwar_tan_setback.glb",
+ "size_m": [
+  36.0,
+  30.0,
+  51.0
+ ],
+ "materials": [
+  "lobby_glass",
+  "roof_tar",
+  "postwar_tan",
+  "brick_tan_blank",
+  "trim_white",
+  "hvac",
+  "dark",
+  "trim_dark"
+ ],
+ "faces": 527,
+ "tris": 1066,
+ "glb_kb": 151
+}

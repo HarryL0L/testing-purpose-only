@@ -1,0 +1,24 @@
+{
+ "id": 93,
+ "key": "self_storage",
+ "name": "Self-storage",
+ "category": "Industrial & Infrastructure",
+ "description": "Orange panel storage building.",
+ "file": "models/093_self_storage.glb",
+ "size_m": [
+  35.0,
+  50.3,
+  23.8
+ ],
+ "materials": [
+  "store_modern",
+  "concrete",
+  "storage_orange",
+  "roof_tar",
+  "sign_white",
+  "steel"
+ ],
+ "faces": 39,
+ "tris": 78,
+ "glb_kb": 46
+}

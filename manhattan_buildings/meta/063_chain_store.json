@@ -1,0 +1,25 @@
+{
+ "id": 63,
+ "key": "chain_store",
+ "name": "Chain Pharmacy",
+ "category": "Retail & Mixed-Use",
+ "description": "Modern 2-storey chain store box.",
+ "file": "models/063_chain_store.glb",
+ "size_m": [
+  22.0,
+  26.4,
+  10.2
+ ],
+ "materials": [
+  "store_modern",
+  "concrete",
+  "ribbon_white",
+  "roof_tar",
+  "sign_blue",
+  "hvac",
+  "dark"
+ ],
+ "faces": 76,
+ "tris": 164,
+ "glb_kb": 57
+}

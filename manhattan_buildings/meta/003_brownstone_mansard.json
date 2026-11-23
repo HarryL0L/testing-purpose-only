@@ -1,0 +1,27 @@
+{
+ "id": 3,
+ "key": "brownstone_mansard",
+ "name": "Mansard Brownstone",
+ "category": "Residential",
+ "description": "Brownstone topped with a slate mansard and dormers.",
+ "file": "models/003_brownstone_mansard.glb",
+ "size_m": [
+  7.0,
+  16.4,
+  17.6
+ ],
+ "materials": [
+  "brownstone",
+  "brick_brown_blank",
+  "roof_tar",
+  "trim_dark",
+  "slate",
+  "trim_white",
+  "glass_plain",
+  "brownstone_plain",
+  "iron"
+ ],
+ "faces": 104,
+ "tris": 204,
+ "glb_kb": 77
+}

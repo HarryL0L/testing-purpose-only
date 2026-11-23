@@ -1,0 +1,25 @@
+{
+ "id": 14,
+ "key": "federal_threestory",
+ "name": "Federal Townhouse",
+ "category": "Residential",
+ "description": "3-storey Federal townhouse with gable roof.",
+ "file": "models/014_federal_threestory.glb",
+ "size_m": [
+  9.9,
+  14.3,
+  13.6
+ ],
+ "materials": [
+  "federal",
+  "brick_red_blank",
+  "trim_white",
+  "slate",
+  "glass_plain",
+  "trim_stone",
+  "green_paint"
+ ],
+ "faces": 89,
+ "tris": 170,
+ "glb_kb": 81
+}

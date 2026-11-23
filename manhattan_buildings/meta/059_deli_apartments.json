@@ -1,0 +1,24 @@
+{
+ "id": 59,
+ "key": "deli_apartments",
+ "name": "Deli with Apartments",
+ "category": "Retail & Mixed-Use",
+ "description": "3-storey mixed-use deli building.",
+ "file": "models/059_deli_apartments.glb",
+ "size_m": [
+  8.2,
+  16.3,
+  14.1
+ ],
+ "materials": [
+  "store_mixed",
+  "brick_brown_blank",
+  "tenement_brown",
+  "roof_tar",
+  "trim_dark",
+  "awning_green"
+ ],
+ "faces": 37,
+ "tris": 74,
+ "glb_kb": 80
+}

@@ -1,0 +1,25 @@
+{
+ "id": 40,
+ "key": "deco_brick_midrise",
+ "name": "Art Deco Brick Midrise",
+ "category": "Commercial",
+ "description": "24-storey brick Art Deco office.",
+ "file": "models/040_deco_brick_midrise.glb",
+ "size_m": [
+  32.2,
+  30.3,
+  102.3
+ ],
+ "materials": [
+  "store_stone",
+  "trim_stone",
+  "deco_brick",
+  "roof_tar",
+  "copper",
+  "steel",
+  "gold"
+ ],
+ "faces": 104,
+ "tris": 204,
+ "glb_kb": 71
+}

@@ -1,0 +1,27 @@
+{
+ "id": 41,
+ "key": "glass_slab_dark",
+ "name": "Dark Glass Slab on Plaza",
+ "category": "Commercial",
+ "description": "38-storey International Style slab on a plaza.",
+ "file": "models/041_glass_slab_dark.glb",
+ "size_m": [
+  80.0,
+  53.0,
+  169.9
+ ],
+ "materials": [
+  "granite_plain",
+  "concrete",
+  "glass_plain",
+  "lobby_glass",
+  "roof_tar",
+  "steel",
+  "glass_dark",
+  "ribbon_dark",
+  "concrete_dark"
+ ],
+ "faces": 72,
+ "tris": 144,
+ "glb_kb": 85
+}

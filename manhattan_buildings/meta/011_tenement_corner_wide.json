@@ -1,0 +1,29 @@
+{
+ "id": 11,
+ "key": "tenement_corner_wide",
+ "name": "Wide Corner Walk-up",
+ "category": "Residential",
+ "description": "Wide 6-storey corner tenement.",
+ "file": "models/011_tenement_corner_wide.glb",
+ "size_m": [
+  15.1,
+  24.3,
+  33.9
+ ],
+ "materials": [
+  "store_mixed",
+  "brick_red_blank",
+  "tenement_red",
+  "roof_tar",
+  "trim_dark",
+  "iron",
+  "awning_black",
+  "steel",
+  "wood",
+  "hvac",
+  "dark"
+ ],
+ "faces": 291,
+ "tris": 586,
+ "glb_kb": 131
+}

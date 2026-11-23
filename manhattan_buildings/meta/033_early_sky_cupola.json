@@ -1,0 +1,27 @@
+{
+ "id": 33,
+ "key": "early_sky_cupola",
+ "name": "Beaux-Arts Tower with Cupola",
+ "category": "Commercial",
+ "description": "22-storey early skyscraper with domed cupola.",
+ "file": "models/033_early_sky_cupola.glb",
+ "size_m": [
+  32.6,
+  32.6,
+  100.1
+ ],
+ "materials": [
+  "store_stone",
+  "limestone",
+  "trim_stone",
+  "limestone_ornate",
+  "terracotta",
+  "roof_tar",
+  "limestone_plain",
+  "copper",
+  "gold"
+ ],
+ "faces": 177,
+ "tris": 346,
+ "glb_kb": 134
+}

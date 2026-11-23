@@ -1,0 +1,24 @@
+{
+ "id": 24,
+ "key": "project_slab",
+ "name": "Housing Slab",
+ "category": "Residential",
+ "description": "12-storey slab block with stair towers.",
+ "file": "models/024_project_slab.glb",
+ "size_m": [
+  70.0,
+  39.0,
+  37.1
+ ],
+ "materials": [
+  "project_brick",
+  "brick_red_blank",
+  "roof_tar",
+  "concrete",
+  "trim_dark",
+  "grass"
+ ],
+ "faces": 45,
+ "tris": 90,
+ "glb_kb": 85
+}

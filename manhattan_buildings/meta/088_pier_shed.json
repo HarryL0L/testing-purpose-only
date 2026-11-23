@@ -1,0 +1,26 @@
+{
+ "id": 88,
+ "key": "pier_shed",
+ "name": "Pier Shed",
+ "category": "Industrial & Infrastructure",
+ "description": "Waterfront pier with cast-iron headhouse.",
+ "file": "models/088_pier_shed.glb",
+ "size_m": [
+  48.0,
+  128.4,
+  20.4
+ ],
+ "materials": [
+  "concrete_dark",
+  "concrete",
+  "corrugated",
+  "corrugated_red",
+  "store_stone",
+  "castiron_cream",
+  "roof_tar",
+  "trim_white"
+ ],
+ "faces": 65,
+ "tris": 154,
+ "glb_kb": 85
+}

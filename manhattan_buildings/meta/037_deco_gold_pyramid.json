@@ -1,0 +1,24 @@
+{
+ "id": 37,
+ "key": "deco_gold_pyramid",
+ "name": "Art Deco Gold Pyramid",
+ "category": "Commercial",
+ "description": "Art Deco tower with gilded pyramid roof.",
+ "file": "models/037_deco_gold_pyramid.glb",
+ "size_m": [
+  36.2,
+  36.3,
+  168.6
+ ],
+ "materials": [
+  "store_stone",
+  "trim_stone",
+  "deco_gray",
+  "roof_tar",
+  "gold",
+  "steel"
+ ],
+ "faces": 104,
+ "tris": 204,
+ "glb_kb": 56
+}

@@ -1,0 +1,25 @@
+{
+ "id": 10,
+ "key": "tenement_narrow",
+ "name": "Narrow Walk-up",
+ "category": "Residential",
+ "description": "Slim 5-storey brown brick walk-up.",
+ "file": "models/010_tenement_narrow.glb",
+ "size_m": [
+  7.7,
+  18.3,
+  24.0
+ ],
+ "materials": [
+  "store_mixed",
+  "brick_brown_blank",
+  "tenement_brown",
+  "roof_tar",
+  "trim_dark",
+  "iron",
+  "awning_blue"
+ ],
+ "faces": 171,
+ "tris": 342,
+ "glb_kb": 99
+}

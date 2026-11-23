@@ -1,0 +1,25 @@
+{
+ "id": 4,
+ "key": "sandstone_rowhouse",
+ "name": "Sandstone Rowhouse",
+ "category": "Residential",
+ "description": "3-storey light sandstone rowhouse.",
+ "file": "models/004_sandstone_rowhouse.glb",
+ "size_m": [
+  7.0,
+  16.4,
+  12.4
+ ],
+ "materials": [
+  "brownstone_light",
+  "brick_tan_blank",
+  "roof_tar",
+  "trim_stone",
+  "limestone_plain",
+  "iron",
+  "trim_dark"
+ ],
+ "faces": 74,
+ "tris": 148,
+ "glb_kb": 76
+}
