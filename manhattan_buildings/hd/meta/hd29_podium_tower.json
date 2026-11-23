@@ -1,0 +1,41 @@
+{
+ "id": 29,
+ "key": "podium_tower",
+ "name": "Mixed-Use Podium Tower",
+ "description": "5-storey retail/office podium with a 24-storey residential tower and roof terrace.",
+ "file": "models/hd29_podium_tower.gltf",
+ "size_m": [
+  50.6,
+  42.6,
+  104.7
+ ],
+ "materials": [
+  "hd_granite_black",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_signs",
+  "hd_awning_green",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_awning_navy",
+  "hd_awning_black",
+  "hd_awning_red",
+  "hd_awning_burgundy",
+  "hd_limestone",
+  "hd_metal_alum",
+  "hd_win_office",
+  "hd_roof_gravel",
+  "hd_concrete",
+  "hd_glass_rail",
+  "hd_steel_dark",
+  "hd_brick_gray",
+  "hd_win_res",
+  "hd_roof_membrane",
+  "hd_hvac",
+  "hd_grille",
+  "hd_planter"
+ ],
+ "lod0_tris": 54002,
+ "lod1_tris": 3766,
+ "glb_kb": 4215
+}

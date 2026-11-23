@@ -1,0 +1,30 @@
+{
+ "id": 21,
+ "key": "eighties_bay_window_tower",
+ "name": "1980s Bay-Window Apartment Tower",
+ "description": "35-storey brick tower with full-height projecting bay windows.",
+ "file": "models/hd21_eighties_bay_window_tower.gltf",
+ "size_m": [
+  36.1,
+  33.1,
+  113.1
+ ],
+ "materials": [
+  "hd_limestone",
+  "hd_win_shop",
+  "hd_frame_alum",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_frame_black",
+  "hd_brick_buff",
+  "hd_win_res",
+  "hd_frame_bronze",
+  "hd_roof_membrane",
+  "hd_steel_dark",
+  "hd_hvac",
+  "hd_grille"
+ ],
+ "lod0_tris": 96330,
+ "lod1_tris": 2908,
+ "glb_kb": 7173
+}

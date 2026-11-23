@@ -1,0 +1,29 @@
+{
+ "id": 18,
+ "key": "dark_glass_office",
+ "name": "Dark Glass Corporate Tower",
+ "description": "29-storey dark glass and bronze tower with a colonnaded plaza base.",
+ "file": "models/hd18_dark_glass_office.gltf",
+ "size_m": [
+  63.0,
+  55.0,
+  121.5
+ ],
+ "materials": [
+  "hd_granite_flamed",
+  "hd_granite_black",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_metal_black",
+  "hd_roof_membrane",
+  "hd_limestone",
+  "hd_win_curtain_dark",
+  "hd_spandrel_dark",
+  "hd_frame_bronze"
+ ],
+ "lod0_tris": 10970,
+ "lod1_tris": 6314,
+ "glb_kb": 1170
+}

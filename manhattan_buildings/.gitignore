@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 *.blend1
 hd/textures/
+hd/manhattan_hd_kit.blend

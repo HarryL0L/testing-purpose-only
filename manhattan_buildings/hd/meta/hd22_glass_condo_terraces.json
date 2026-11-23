@@ -1,0 +1,39 @@
+{
+ "id": 22,
+ "key": "glass_condo_terraces",
+ "name": "Glass Condo with Terraces",
+ "description": "31-storey glass condo with wraparound balconies and terraced setbacks.",
+ "file": "models/hd22_glass_condo_terraces.gltf",
+ "size_m": [
+  34.9,
+  31.3,
+  106.7
+ ],
+ "materials": [
+  "hd_metal_black",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_granite_black",
+  "hd_signs",
+  "hd_awning_navy",
+  "hd_awning_green",
+  "hd_awning_red",
+  "hd_awning_black",
+  "hd_awning_burgundy",
+  "hd_limestone",
+  "hd_win_curtain_silver",
+  "hd_spandrel_white",
+  "hd_frame_white",
+  "hd_glass_rail",
+  "hd_steel_dark",
+  "hd_roof_gravel",
+  "hd_concrete",
+  "hd_hvac",
+  "hd_grille"
+ ],
+ "lod0_tris": 13720,
+ "lod1_tris": 6584,
+ "glb_kb": 1389
+}

@@ -1,0 +1,28 @@
+{
+ "id": 30,
+ "key": "civic_setback_tower",
+ "name": "Civic Limestone Setback Tower",
+ "description": "24-storey municipal-style limestone tower with arcaded base and lantern crown.",
+ "file": "models/hd30_civic_setback_tower.gltf",
+ "size_m": [
+  40.7,
+  34.7,
+  121.5
+ ],
+ "materials": [
+  "hd_granite_gray",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_limestone",
+  "hd_limestone_rustic",
+  "hd_win_office",
+  "hd_frame_black",
+  "hd_roof_membrane",
+  "hd_copper"
+ ],
+ "lod0_tris": 76348,
+ "lod1_tris": 2782,
+ "glb_kb": 5716
+}

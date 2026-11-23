@@ -1,0 +1,30 @@
+{
+ "id": 26,
+ "key": "university_hall",
+ "name": "University Hall",
+ "description": "15-storey academic building, brick with a glass curtain-wall side.",
+ "file": "models/hd26_university_hall.gltf",
+ "size_m": [
+  40.4,
+  34.1,
+  64.7
+ ],
+ "materials": [
+  "hd_limestone",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_metal_black",
+  "hd_brick_redbrown",
+  "hd_win_office",
+  "hd_win_curtain_blue",
+  "hd_roof_membrane",
+  "hd_steel_dark",
+  "hd_hvac",
+  "hd_grille"
+ ],
+ "lod0_tris": 42942,
+ "lod1_tris": 1790,
+ "glb_kb": 3073
+}

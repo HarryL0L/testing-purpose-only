@@ -1,0 +1,29 @@
+{
+ "id": 25,
+ "key": "hospital_tower",
+ "name": "Hospital Tower",
+ "description": "20-storey medical tower with ribbon windows, mechanical floor and drop-off canopy.",
+ "file": "models/hd25_hospital_tower.gltf",
+ "size_m": [
+  52.1,
+  34.1,
+  88.0
+ ],
+ "materials": [
+  "hd_metal_black",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_metal_white",
+  "hd_limestone",
+  "hd_brick_buff",
+  "hd_win_office",
+  "hd_frame_alum",
+  "hd_louver_light",
+  "hd_roof_membrane"
+ ],
+ "lod0_tris": 24088,
+ "lod1_tris": 4244,
+ "glb_kb": 1940
+}

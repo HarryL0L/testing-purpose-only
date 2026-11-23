@@ -1,0 +1,29 @@
+{
+ "id": 28,
+ "key": "gothic_apartment_tower",
+ "name": "Gothic Revival Apartment Tower",
+ "description": "21-storey terracotta apartment tower with arched top floors and pinnacled crown.",
+ "file": "models/hd28_gothic_apartment_tower.gltf",
+ "size_m": [
+  31.6,
+  34.3,
+  81.7
+ ],
+ "materials": [
+  "hd_terracotta",
+  "hd_win_shop",
+  "hd_frame_bronze",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_awning_burgundy",
+  "hd_win_res",
+  "hd_frame_brown",
+  "hd_hvac",
+  "hd_grille",
+  "hd_roof_membrane",
+  "hd_copper"
+ ],
+ "lod0_tris": 71096,
+ "lod1_tris": 1790,
+ "glb_kb": 5263
+}

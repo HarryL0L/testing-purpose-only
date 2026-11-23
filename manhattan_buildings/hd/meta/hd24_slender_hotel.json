@@ -1,0 +1,27 @@
+{
+ "id": 24,
+ "key": "slender_hotel",
+ "name": "Slender Hotel Tower",
+ "description": "35-storey white-panel hotel with ribbon windows and a finned crown.",
+ "file": "models/hd24_slender_hotel.gltf",
+ "size_m": [
+  22.6,
+  26.1,
+  124.8
+ ],
+ "materials": [
+  "hd_metal_black",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_limestone",
+  "hd_metal_white",
+  "hd_win_curtain_blue",
+  "hd_frame_alum",
+  "hd_roof_membrane"
+ ],
+ "lod0_tris": 26724,
+ "lod1_tris": 5692,
+ "glb_kb": 2214
+}

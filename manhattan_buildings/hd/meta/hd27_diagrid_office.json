@@ -1,0 +1,27 @@
+{
+ "id": 27,
+ "key": "diagrid_office",
+ "name": "Diagrid Office Tower",
+ "description": "31-storey silver glass tower wrapped in a diagonal steel grid.",
+ "file": "models/hd27_diagrid_office.gltf",
+ "size_m": [
+  35.0,
+  38.5,
+  131.0
+ ],
+ "materials": [
+  "hd_metal_black",
+  "hd_win_shop",
+  "hd_frame_black",
+  "hd_glass_door",
+  "hd_gold",
+  "hd_limestone",
+  "hd_win_curtain_silver",
+  "hd_frame_alum",
+  "hd_roof_membrane",
+  "hd_spandrel_white"
+ ],
+ "lod0_tris": 11668,
+ "lod1_tris": 7148,
+ "glb_kb": 1274
+}

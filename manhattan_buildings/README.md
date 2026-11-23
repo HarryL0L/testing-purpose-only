@@ -8,6 +8,13 @@ generated procedurally with Blender's Python API, so you can tweak and regenerat
 
 ![Contact sheet](contact_sheet.jpg)
 
+## HD Kit (realistic)
+
+The [`hd/`](hd/) folder holds **30 realistic mid/high-rise buildings (51–167 m)** with recessed windows, real
+cornices, storefronts, PBR materials and two LODs each. See [`hd/README.md`](hd/README.md).
+
+![HD overview](hd/overview_hd.jpg)
+
 ## What's included
 
 | Path | Contents |
