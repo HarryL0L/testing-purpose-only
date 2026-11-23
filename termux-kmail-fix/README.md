@@ -137,14 +137,19 @@ exercises real libsecret (0.21.4 here) but not the real kwalletd6 or ksecretd.
 ## Testing on a device
 
 Reset to a fresh profile first. **This deletes your KMail accounts, stored
-passwords and Akonadi cache.** Skip the last line to keep locally stored mail.
+passwords, wallets and Akonadi cache.** Skip the last line to keep locally
+stored mail. Log out of Plasma and run it from the plain Termux shell, so
+nothing is still running that could write its state back.
 
-    akonadictl stop
-    pkill kwalletd6; pkill ksecretd
+    akonadictl stop 2>/dev/null
+    pkill kmail; pkill accountwizard; pkill -f akonadi; pkill kwalletd6; pkill ksecretd
     rm -rf ~/.local/share/kwalletd ~/.config/kwalletrc
-    rm -rf ~/.local/share/akonadi ~/.config/akonadi*
-    rm -f  ~/.config/kmail2rc ~/.config/emailidentities ~/.config/mailtransports ~/.config/specialmailcollectionsrc
-    rm -rf ~/.local/share/local-mail
+    rm -rf ~/.local/share/akonadi ~/.config/akonadi* ~/.cache/akonadi*
+    rm -rf ~/.config/kmail2rc ~/.config/emailidentities ~/.config/mailtransports ~/.config/specialmailcollectionsrc ~/.local/share/kmail2 ~/.cache/kmail2
+    rm -rf ~/.local/share/local-mail ~/.local/share/.local-mail.directory
+
+Check with `ls ~/.local/share/kwalletd ~/.local/share/akonadi`: both should be
+reported as missing.
 
 Then start Plasma, open KMail directly and add an account. Expected with all
 three patches: one dialog for `kdewallet`, Blowfish plus a password creates it,
