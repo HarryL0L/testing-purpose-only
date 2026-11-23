@@ -5,9 +5,10 @@ ReadAlias("default") with "/" and defaultCollection() reports a failure.
 networkWallet() then turns that into a D-Bus error, and that is where
 things go wrong for the first app that touches the wallet:
 
-  - qtkeychain probes KWallet by calling networkWallet(). It takes the
-    error as "KWallet isn't available" and quietly switches to libsecret,
-    which creates a differently named "Default keyring" instead.
+  - qtkeychain asks for the wallet name with networkWallet() before every
+    read or write. With 0.18 the job just ends with this error, so the
+    password is never stored. (0.17 and older were worse: they took the
+    error as "KWallet isn't available" and quietly switched to libsecret.)
   - KWallet::Wallet::NetworkWallet() returns an empty string on the error,
     so libkgapi tries to open a wallet called "" for the Gmail token.
 
