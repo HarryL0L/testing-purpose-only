@@ -71,6 +71,12 @@ internal object LlamaNative {
 
     /** [prompt tok/s, generation tok/s] for pp / tg tokens with n threads; clears the KV cache */
     external fun bench(pp: Int, tg: Int, threads: Int): FloatArray?
+
+    /** Why the last nextToken() / bench() stopped early (e.g. a GPU error), or null. */
+    external fun lastError(): String?
+
+    /** Also writes native log lines to this file (truncated first); "" stops it. */
+    external fun setLogFile(path: String)
     external fun setThreads(threads: Int)
 
     /** [used, total] tokens */

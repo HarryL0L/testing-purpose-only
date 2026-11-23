@@ -75,6 +75,8 @@ class LlamaEngine(context: Context) {
     val state: StateFlow<EngineState> = _state.asStateFlow()
 
     private val nativeLibDir = context.applicationInfo.nativeLibraryDir
+    private val NATIVE_LOG = java.io.File(context.filesDir, "logs/chat_native.log")
+    private val NATIVE_LOG_PREV = java.io.File(context.filesDir, "logs/chat_native.prev.log")
     private var initialized = false
 
     val mediaMarker: String by lazy { LlamaNative.mediaMarker() }
@@ -102,6 +104,13 @@ class LlamaEngine(context: Context) {
     private fun ensureInit() {
         if (!initialized) {
             val d = driverForInit
+            // native log lines also go to a file, so the lines before a crash can be shown on the next
+            // start (the previous run's file is kept as .prev)
+            runCatching {
+                NATIVE_LOG.parentFile?.mkdirs()
+                if (NATIVE_LOG.exists()) NATIVE_LOG.renameTo(NATIVE_LOG_PREV)
+                LlamaNative.setLogFile(NATIVE_LOG.absolutePath)
+            }
             val status = LlamaNative.init(nativeLibDir, d?.dir?.absolutePath, d?.library, vulkanCompatForInit)
             initializedDriverId = d?.id ?: ""
             initializedVulkanCompat = vulkanCompatForInit
@@ -224,7 +233,9 @@ class LlamaEngine(context: Context) {
 
     /** (prompt tok/s, generation tok/s) of the loaded model with [threads], or null */
     suspend fun bench(pp: Int, tg: Int, threads: Int): Pair<Float, Float>? = withContext(dispatcher) {
-        if (!initialized) null else LlamaNative.bench(pp, tg, threads)?.let { it[0] to it[1] }
+        if (!initialized) null
+        else LlamaNative.bench(pp, tg, threads)?.let { it[0] to it[1] }
+            ?: LlamaNative.lastError()?.let { throw EngineException(it) }
     }
 
     suspend fun setThreads(threads: Int) = withContext(dispatcher) { if (initialized) LlamaNative.setThreads(threads) }
@@ -255,6 +266,7 @@ class LlamaEngine(context: Context) {
                 val piece = LlamaNative.nextToken() ?: break
                 if (piece.isNotEmpty()) emit(piece)
             }
+            LlamaNative.lastError()?.let { throw EngineException(it) }
         } finally {
             LlamaNative.finishTurn()
         }

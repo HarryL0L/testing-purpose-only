@@ -255,9 +255,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 append("Last exit: $reason while running on $mode")
                 last.description?.takeIf { it.isNotBlank() }?.let { append(" — ").append(it) }
                 append("\nDevice: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE}")
-                // the native crash report (tombstone) is binary; keep its readable lines
+                // the native crash report (tombstone protobuf): signal, abort message, crashing thread, log tail
                 val trace = runCatching { last.traceInputStream?.use { it.readBytes() } }.getOrNull()
-                if (trace != null) {
+                val summary = trace?.let { io.github.harryl0l.llamachat.data.Tombstone.summarize(it) }
+                if (summary != null) {
+                    append("\n").append(summary)
+                } else if (trace != null) {
                     val lines = String(trace, Charsets.ISO_8859_1).split(Regex("[^\\x20-\\x7e]+"))
                         .filter { l ->
                             val x = l.lowercase()
@@ -266,6 +269,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         .distinct().take(40)
                     if (lines.isNotEmpty()) append("\n").append(lines.joinToString("\n"))
+                }
+                // the chat engine's own log up to the crash (written to a file as it runs): the newest
+                // of this run's and the previous run's file that is not newer than the crash
+                val dir = java.io.File(app.filesDir, "logs")
+                val log = listOf(java.io.File(dir, "chat_native.log"), java.io.File(dir, "chat_native.prev.log"))
+                    .filter { it.exists() && it.length() > 0 && it.lastModified() <= last.timestamp + 5_000 }
+                    .maxByOrNull { it.lastModified() }
+                val tail = log?.let { f -> runCatching { f.readLines().takeLast(30) }.getOrNull() }
+                if (!tail.isNullOrEmpty() && mode != IMAGE_GPU_MARK) {
+                    append("\nChat engine log before the crash:\n").append(tail.joinToString("\n") { it.take(300) })
                 }
             }
         }
@@ -313,6 +326,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     } else ModelSpec(name, model, -1, projector)
                 }
                 prepareGpuDriver()
+                if (BuildConfig.GPU_EXPERIMENTAL && s.gpuMode != io.github.harryl0l.llamachat.engine.GPU_CPU && !model.startsWith("content://")) {
+                    // on the GPU the weights get their own copy in GPU memory (shared with the system):
+                    // a model near the free memory makes the driver fail mid-answer
+                    val size = java.io.File(model).length() + (mmproj?.takeIf { !it.startsWith("content://") }?.let { java.io.File(it).length() } ?: 0L)
+                    val mi = android.app.ActivityManager.MemoryInfo()
+                    getApplication<Application>().getSystemService(android.app.ActivityManager::class.java).getMemoryInfo(mi)
+                    if (size > mi.availMem * 0.8) {
+                        snackbar = "Heads-up: this model needs %.1f GB and %.1f GB is free; on the GPU it may run out of memory. A smaller quantization (e.g. Q4_K_M) is safer."
+                            .format(size / 1e9, mi.availMem / 1e9)
+                    }
+                }
                 markGpuInUse(if (BuildConfig.GPU_EXPERIMENTAL) s.gpuMode else io.github.harryl0l.llamachat.engine.GPU_CPU)
                 engine.load(
                     spec, s.contextSize, s.effectiveThreads, s.sampling, s.systemPrompt, s.thinking, s.repack,

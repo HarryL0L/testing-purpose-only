@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include "chat.h"
@@ -219,7 +220,20 @@ static std::mutex              g_log_mutex;
 static std::deque<std::string> g_log;
 static int64_t                 g_log_seq = 0; // number of lines ever added
 static std::string             g_log_pending;  // a line still being written (continuation logs)
-static int                     g_log_ops_hidden = 0; // collapsed "unsupported op" lines of the vision encoder check
+static int                     g_log_ops_hidden = 0;
+// the same lines, also appended to a file (see setLogFile): plain write()s reach the kernel at once,
+// so the last lines before a native crash survive it and the app can show them on the next start
+static int                     g_log_fd = -1;
+static int64_t                 g_log_file_bytes = 0;
+
+static void log_file_line(const std::string & line) {
+    if (g_log_fd < 0) return;
+    if (g_log_file_bytes > (2 << 20)) { // keep it small: start over at 2 MB
+        if (ftruncate(g_log_fd, 0) == 0) g_log_file_bytes = 0;
+    }
+    std::string l = line + "\n";
+    if (write(g_log_fd, l.data(), l.size()) > 0) g_log_file_bytes += (int64_t) l.size();
+} // collapsed "unsupported op" lines of the vision encoder check
 
 // Keeps the chat log readable: the vision encoder's backend check lists every operation the GPU
 // backend can't run (hundreds of lines); they are counted and replaced by one summary line.
@@ -247,6 +261,7 @@ static void log_text(ggml_log_level level, const char * text) {
     std::lock_guard<std::mutex> lock(g_log_mutex);
     if (level != GGML_LOG_LEVEL_CONT && !g_log_pending.empty()) {
         // a new message while the previous one had no newline yet: finish that one first
+        log_file_line(g_log_pending);
         g_log.push_back(g_log_pending);
         g_log_seq++;
         g_log_pending.clear();
@@ -258,6 +273,7 @@ static void log_text(ggml_log_level level, const char * text) {
     for (const char * c = text; *c; c++) {
         if (*c == '\n') {
             if (!g_log_pending.empty() && g_log_pending != "E " && g_log_pending != "W " && log_keep(g_log_pending)) {
+                log_file_line(g_log_pending);
                 g_log.push_back(g_log_pending);
                 g_log_seq++;
             }
@@ -458,8 +474,7 @@ JNIEXPORT jstring JNICALL JNI_FN(systemInfo)(JNIEnv * env, jobject) {
 // gpu_mode: 0 = CPU only, 1 = Vulkan (whole model on the GPU), 2 = Mali backend (experimental:
 // weights stay in RAM, the large matrix multiplications of prompt / image processing run on the
 // GPU, generation stays on the CPU).
-JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jint fd, jint n_ctx, jint n_threads,
-                                        jboolean repack, jint gpu_mode) {
+static jstring load_impl(JNIEnv * env, jstring jmodel, jint fd, jint n_ctx, jint n_threads, jboolean repack, jint gpu_mode) {
     unload_all();
 
     llama_model_params mparams = llama_model_default_params();
@@ -538,7 +553,7 @@ JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, ji
 
 // Loads the vision projector (mmproj) for the already loaded model.
 // Returns null on success, an error message otherwise (the language model stays loaded).
-JNIEXPORT jstring JNICALL JNI_FN(loadProjector)(JNIEnv * env, jobject, jstring jpath, jint n_threads) {
+static jstring load_projector_impl(JNIEnv * env, jstring jpath, jint n_threads) {
     if (!g_model) return to_jstring(env, "No model loaded");
     if (g_mtmd) { mtmd_free(g_mtmd); g_mtmd = nullptr; }
     const std::string path = jstr(env, jpath);
@@ -562,7 +577,13 @@ JNIEXPORT jstring JNICALL JNI_FN(loadProjector)(JNIEnv * env, jobject, jstring j
 }
 
 JNIEXPORT void JNICALL JNI_FN(unload)(JNIEnv *, jobject) {
-    unload_all();
+    try {
+        unload_all();
+    } catch (const std::exception & e) {
+        // e.g. a lost Vulkan device: keep going, the app still gets to the CPU fallback
+        LOGE("unload: %s", e.what());
+        g_mtmd = nullptr; g_ctx = nullptr; g_model = nullptr; g_vocab = nullptr; g_n_past = 0;
+    }
 }
 
 // bit 0: vision, bit 1: audio, bit 2: video (mtmd suggests a video layout)
@@ -700,7 +721,7 @@ static bool same_unit(const cache_unit & a, const cache_unit & b) {
 // earlier turns differently depending on what follows, e.g. Qwen3.5 stripping reasoning), then
 // only the units after the longest prefix already in the KV cache are evaluated.
 // Returns null on success, an error message otherwise.
-JNIEXPORT jstring JNICALL JNI_FN(prompt)(JNIEnv * env, jobject, jstring jtext) {
+static jstring prompt_impl(JNIEnv * env, jstring jtext) {
     if (!g_ctx) return to_jstring(env, "No model loaded");
 
     const size_t media_before = g_chat_media.size();
@@ -926,7 +947,7 @@ JNIEXPORT jstring JNICALL JNI_FN(prompt)(JNIEnv * env, jobject, jstring jtext) {
 
 // Returns the next piece of text, "" if the token only produced part of a UTF-8 character,
 // or null when generation is over (end-of-generation token, length limit or full context).
-JNIEXPORT jstring JNICALL JNI_FN(nextToken)(JNIEnv * env, jobject) {
+static jstring next_token_impl(JNIEnv * env) {
     if (!g_ctx || g_n_gen >= g_max_gen || g_n_past + 1 >= (llama_pos) llama_n_ctx(g_ctx)) {
         return nullptr;
     }
@@ -1034,7 +1055,7 @@ JNIEXPORT void JNICALL JNI_FN(restoreChat)(JNIEnv * env, jobject, jobjectArray r
 // as for reading a message / image) and generation of tg tokens one by one, with n_threads.
 // Returns [prompt tok/s, generation tok/s] or null. Clears the KV cache: the caller restores the
 // conversation afterwards. The context keeps n_threads until the next call / reload.
-JNIEXPORT jfloatArray JNICALL JNI_FN(bench)(JNIEnv * env, jobject, jint pp, jint tg, jint n_threads) {
+static jfloatArray bench_impl(JNIEnv * env, jint pp, jint tg, jint n_threads) {
     if (!g_ctx || pp < 1 || tg < 1) return nullptr;
     llama_set_n_threads(g_ctx, n_threads, n_threads);
     llama_memory_t mem = llama_get_memory(g_ctx);
@@ -1096,6 +1117,89 @@ JNIEXPORT jstring JNICALL JNI_FN(logs)(JNIEnv * env, jobject, jlong since) {
         }
     }
     return to_jstring(env, out);
+}
+
+// ---- entry points that run the model, guarded: llama_decode doesn't catch exceptions, and a GPU
+// backend throws on errors (Vulkan: out of device memory, device lost). Uncaught, that aborts the
+// app; caught, the user gets the message and can switch to the CPU.
+
+static std::string g_last_error; // why nextToken() / bench() stopped early, "" if they didn't
+
+static std::string guard_message(const char * what, const char * e) {
+    std::string msg = std::string(what) + " failed: " + e;
+    if (strstr(e, "DeviceLost") || strstr(e, "device lost"))
+        msg += " (the GPU driver reset the GPU; try CPU mode, a smaller model or a smaller context)";
+    else if (strstr(e, "OutOfDeviceMemory") || strstr(e, "OutOfHostMemory") || strstr(e, "bad_alloc"))
+        msg += " (out of memory: try a smaller model, a smaller context or CPU mode)";
+    LOGE("%s", msg.c_str());
+    {
+        std::lock_guard<std::mutex> lock(g_log_mutex);
+        log_file_line("E " + msg);
+        g_log.push_back("E " + msg);
+        g_log_seq++;
+    }
+    return msg;
+}
+
+JNIEXPORT jstring JNICALL JNI_FN(load)(JNIEnv * env, jobject, jstring jmodel, jint fd, jint n_ctx, jint n_threads,
+                                        jboolean repack, jint gpu_mode) {
+    try {
+        return load_impl(env, jmodel, fd, n_ctx, n_threads, repack, gpu_mode);
+    } catch (const std::exception & e) {
+        const std::string msg = guard_message("Loading the model", e.what());
+        try { unload_all(); } catch (...) {}
+        return to_jstring(env, msg);
+    }
+}
+
+JNIEXPORT jstring JNICALL JNI_FN(loadProjector)(JNIEnv * env, jobject, jstring jpath, jint n_threads) {
+    try {
+        return load_projector_impl(env, jpath, n_threads);
+    } catch (const std::exception & e) {
+        return to_jstring(env, guard_message("Loading the vision projector", e.what()));
+    }
+}
+
+JNIEXPORT jstring JNICALL JNI_FN(prompt)(JNIEnv * env, jobject, jstring jtext) {
+    g_last_error.clear();
+    try {
+        return prompt_impl(env, jtext);
+    } catch (const std::exception & e) {
+        return to_jstring(env, guard_message("Reading the prompt", e.what()));
+    }
+}
+
+JNIEXPORT jstring JNICALL JNI_FN(nextToken)(JNIEnv * env, jobject) {
+    try {
+        return next_token_impl(env);
+    } catch (const std::exception & e) {
+        g_last_error = guard_message("Generating", e.what());
+        return nullptr;
+    }
+}
+
+JNIEXPORT jfloatArray JNICALL JNI_FN(bench)(JNIEnv * env, jobject, jint pp, jint tg, jint n_threads) {
+    g_last_error.clear();
+    try {
+        return bench_impl(env, pp, tg, n_threads);
+    } catch (const std::exception & e) {
+        g_last_error = guard_message("Benchmark", e.what());
+        return nullptr;
+    }
+}
+
+// The error that ended the last nextToken() / bench() early, or null.
+JNIEXPORT jstring JNICALL JNI_FN(lastError)(JNIEnv * env, jobject) {
+    return g_last_error.empty() ? nullptr : to_jstring(env, g_last_error);
+}
+
+// Also writes the log lines to this file (truncated first). "" stops it.
+JNIEXPORT void JNICALL JNI_FN(setLogFile)(JNIEnv * env, jobject, jstring jpath) {
+    const std::string path = jstr(env, jpath);
+    std::lock_guard<std::mutex> lock(g_log_mutex);
+    if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
+    g_log_file_bytes = 0;
+    if (!path.empty()) g_log_fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0600);
 }
 
 JNIEXPORT jintArray JNICALL JNI_FN(contextUsage)(JNIEnv * env, jobject) {
