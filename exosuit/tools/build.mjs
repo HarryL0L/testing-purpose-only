@@ -1,8 +1,11 @@
 // Build the film bundle.
 //   node tools/build.mjs                      → dist/ (minified: exosuit.js, index.html, artifact.html)
 //   node tools/build.mjs --out=.build/x --dev → unminified dev build
-//   --only=head,arms   keep only these suit regions real; every other region becomes its grey
+//   --only=head,arms   keep only these suit regions real; every other region becomes its
 //                      envelope proxy (isolates you from other people's half-written files)
+//   --stub=kit,post    swap these shared modules for their original placeholders in src/_stubs
+//                      (materials, envmap, kit, hangar, choreo, post, hud) — use when someone
+//                      else's module is mid-edit and breaks your build
 import esbuild from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,12 +14,22 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REGIONS = ['head', 'torso', 'arms', 'hands', 'legs', 'back'];
 
-export async function build({ out = 'dist', dev = false, only = null } = {}) {
+const STUBBABLE = ['materials', 'envmap', 'kit', 'hangar', 'choreo', 'post', 'hud'];
+
+export async function build({ out = 'dist', dev = false, only = null, stub = null } = {}) {
   const outDir = path.resolve(ROOT, out);
   fs.mkdirSync(outDir, { recursive: true });
   const proxyPlugin = {
     name: 'region-proxy',
     setup(b) {
+      if (stub && stub.length) {
+        b.onResolve({ filter: /\/(materials|envmap|kit|hangar|choreo|post|hud)\.js$/ }, (args) => {
+          if (args.importer.includes(path.sep + '_stubs' + path.sep)) return null;
+          const name = path.basename(args.path, '.js');
+          if (!stub.includes(name)) return null;
+          return { path: path.join(ROOT, 'src', '_stubs', name + '.js') };
+        });
+      }
       if (!only) return;
       b.onResolve({ filter: /^\.\/(head|torso|arms|hands|legs|back)\.js$/ }, (args) => {
         if (!args.importer.endsWith(path.join('suit', 'index.js'))) return null;
@@ -65,8 +78,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const a = parseArgs(process.argv.slice(2));
   const only = typeof a.only === 'string' ? a.only.split(',') : null;
   if (only) for (const r of only) if (!REGIONS.includes(r)) { console.error(`unknown region "${r}" — use ${REGIONS.join(', ')}`); process.exit(2); }
+  const stub = typeof a.stub === 'string' ? a.stub.split(',') : null;
+  if (stub) for (const r of stub) if (!STUBBABLE.includes(r)) { console.error(`unknown module "${r}" — use ${STUBBABLE.join(', ')}`); process.exit(2); }
   try {
-    const r = await build({ out: a.out || 'dist', dev: !!a.dev, only });
+    const r = await build({ out: a.out || 'dist', dev: !!a.dev, only, stub });
     console.log(`built ${path.relative(ROOT, r.outDir)}/exosuit.js  ${(r.bytes / 1024).toFixed(0)} KB${only ? '  (real regions: ' + only.join(',') + ')' : ''}`);
   } catch (err) {
     console.error('BUILD FAILED\n' + (err.errors ? err.errors.map((e) => `${e.location ? e.location.file + ':' + e.location.line + ':' + e.location.column + ' ' : ''}${e.text}`).join('\n') : err.stack));

@@ -6,6 +6,8 @@
 //   --t=a,b,c          film times in seconds (default 0). Each becomes one PNG.
 //   --only=head,arms   real suit regions; all others are swapped for grey envelope proxies.
 //                      Omit to build everything for real.
+//   --stub=kit,post    swap shared modules (materials, envmap, kit, hangar, choreo, post, hud) for their
+//                      original placeholders — use when someone else's half-edited file breaks your build
 //   --solo=head        hide every suit region except these.
 //   --cam=az,el,dist,tx,ty,tz,fov   fixed debug camera instead of the film camera. Degrees/metres,
 //                      world space. az 0 = straight in front of the suit (+Z), 90 = suit's left (+X),
@@ -41,7 +43,7 @@ fs.mkdirSync(outDir, { recursive: true });
 
 let built;
 try {
-  built = await build({ out: path.join('.build', a.name), dev: true, only: typeof a.only === 'string' ? a.only.split(',') : null });
+  built = await build({ out: path.join('.build', a.name), dev: true, only: typeof a.only === 'string' ? a.only.split(',') : null, stub: typeof a.stub === 'string' ? a.stub.split(',') : null });
 } catch (err) {
   console.error('BUILD FAILED\n' + (err.errors ? err.errors.map((e) => `${e.location ? e.location.file + ':' + e.location.line + ':' + e.location.column + ' ' : ''}${e.text}`).join('\n') : err.stack));
   process.exit(1);
