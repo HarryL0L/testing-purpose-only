@@ -1,0 +1,18 @@
+<title>Exosuit Showcase</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  :root { --bg: #05070a; --fg: #d7e2ea; --accent: #19f0e0; color-scheme: dark; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); overflow: hidden; }
+  #app { position: relative; height: 100%; display: grid; place-items: center; }
+  #stage { position: absolute; inset: 0; display: grid; place-items: center; }
+  #film { display: block; }
+  #hud { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 12px; padding-block: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  #hud input { flex: 1; min-width: 0; }
+</style>
+<div id="app">
+  <div id="stage"><canvas id="film"></canvas><p id="fallback" hidden>This film needs WebGL, which this browser has turned off.</p></div>
+  <div id="hud"></div>
+</div>
+<script src="exosuit.js"></script>
