@@ -20,7 +20,6 @@ import androidx.compose.material.icons.rounded.Brush
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
@@ -65,8 +64,6 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.ImageSearch
-import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Eject
@@ -128,9 +125,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.harryl0l.llamachat.ChatMessage
 import io.github.harryl0l.llamachat.ChatViewModel
 import io.github.harryl0l.llamachat.Role
-import io.github.harryl0l.llamachat.AttachmentKind
-import io.github.harryl0l.llamachat.searchQueryOf
-import io.github.harryl0l.llamachat.withoutSearchLine
 import io.github.harryl0l.llamachat.engine.EngineState
 
 @Composable
@@ -518,11 +512,8 @@ private fun MessageBubble(msg: ChatMessage, onOpenImage: (Attachment) -> Unit) {
                 }
             }
         }
-        val (thinking, rawAnswer, thinkingOpen) =
+        val (thinking, answer, thinkingOpen) =
             if (isUser || msg.error) Triple(null, msg.text, false) else splitThinking(msg.text)
-        // "Find similar online" replies end with a SEARCH: line, shown as search buttons instead
-        val searchQuery = if (!isUser && !msg.error && !msg.streaming) searchQueryOf(rawAnswer) else null
-        val answer = if (!isUser && !msg.error) withoutSearchLine(rawAnswer) else rawAnswer
         if (thinking != null) ThinkingSection(thinking, active = thinkingOpen && msg.streaming)
         if (isUser && msg.text.isNotEmpty() || !isUser && (answer.isNotEmpty() || (thinking == null && msg.streaming) || msg.error)) {
             val container = when {
@@ -577,52 +568,8 @@ private fun MessageBubble(msg: ChatMessage, onOpenImage: (Attachment) -> Unit) {
                 modifier = Modifier.padding(start = 12.dp, top = 4.dp),
             )
         }
-        if (searchQuery != null) SimilarSearchButtons(searchQuery)
         // what the engine did for this reply (video sampling, vision encoder, prompt, speed); live while it runs
         if (!isUser && msg.log.isNotEmpty()) ImageLog(msg, startOpen = false)
-    }
-}
-
-/**
- * Search buttons for a "Find similar online" reply: the query opens in DuckDuckGo (images or
- * shopping) in the browser. Only these words leave the phone; the photo never does. Images can be
- * saved from the browser (long press).
- */
-@Composable
-private fun SimilarSearchButtons(query: String) {
-    val context = LocalContext.current
-    fun open(url: String) {
-        runCatching {
-            context.startActivity(
-                android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
-    }
-    val q = android.net.Uri.encode(query)
-    Column(Modifier.padding(start = 8.dp, top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            "Search: $query",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = { open("https://duckduckgo.com/?q=$q&ia=images&iax=images") }) {
-                Icon(Icons.Rounded.ImageSearch, null, Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text("Images")
-            }
-            OutlinedButton(onClick = { open("https://duckduckgo.com/?q=$q&ia=shopping&iax=shopping") }) {
-                Icon(Icons.Rounded.ShoppingBag, null, Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text("Shopping")
-            }
-        }
-        Text(
-            "Opens DuckDuckGo with just these words (your photo stays on the phone). Long-press an image there to save it.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -795,16 +742,6 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                     },
                     shape = RoundedCornerShape(16.dp),
                 )
-                if (!vm.imageMode && vm.pendingAttachments.any { it.kind == AttachmentKind.Image }) {
-                    AssistChip(
-                        onClick = { vm.findSimilar() },
-                        enabled = enabled && !vm.generating,
-                        label = { Text("Find similar") },
-                        leadingIcon = { Icon(Icons.Rounded.ImageSearch, null, Modifier.size(FilterChipDefaults.IconSize)) },
-                        shape = RoundedCornerShape(16.dp),
-                    )
-                    Spacer(Modifier.size(8.dp))
-                }
                 if (!vm.imageMode) FilterChip(
                     selected = thinking,
                     onClick = { vm.setThinking(!thinking) },

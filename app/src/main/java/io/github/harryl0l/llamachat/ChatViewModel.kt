@@ -80,25 +80,6 @@ class ImageModelChoice(
     fun sizeFor(chosen: Int): Int = if (chosen in sizes) chosen else defaultSize
 }
 
-/**
- * Added to the user's request for "Find similar online". The SEARCH: line becomes search buttons
- * (see searchQueryOf); everything else is shown as the reply.
- */
-const val FIND_SIMILAR_INSTRUCTION =
-    "Look closely at the main item in the image (for example a bag). In 2-3 short sentences describe what makes it " +
-        "recognizable: type, shape, color, material, texture, hardware, straps, pattern, and any brand name or logo you can " +
-        "actually read (don't guess a brand). Then write one last line that starts with SEARCH: followed by a shopping " +
-        "search query of 5-12 words that would find items that look the same, most distinctive words first, no quotes."
-
-private val SEARCH_LINE = Regex("""(?im)^[\s>*_#-]*search\s*(query)?\s*[:：]\s*\**\s*(.+?)\s*\**\s*$""")
-
-/** The search query of a "Find similar" reply (its SEARCH: line), or null. */
-fun searchQueryOf(reply: String): String? =
-    SEARCH_LINE.findAll(reply).lastOrNull()?.groupValues?.get(2)?.trim()?.trim('"', '`', '*')?.takeIf { it.length >= 3 }
-
-/** The reply without its SEARCH: line. */
-fun withoutSearchLine(reply: String): String = SEARCH_LINE.replace(reply, "").trimEnd()
-
 /** crash-guard marker text for image creation on the GPU */
 private const val IMAGE_GPU_MARK = "Vulkan (image creation)"
 
@@ -1216,24 +1197,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         genJob?.cancel()
     }
 
-    /**
-     * "Find similar online": sends the attached photo with an instruction to describe the item and
-     * end with a SEARCH: line (a shopping-style query). The chat shows that query as buttons that
-     * open DuckDuckGo image / shopping search: only the words go online, never the photo.
-     */
-    fun findSimilar() {
-        if (imageMode || generating) return
-        if (pendingAttachments.none { it.kind == AttachmentKind.Image }) { snackbar = "Attach a photo first"; return }
-        send(findSimilar = true)
-    }
-
-    fun send(findSimilar: Boolean = false) {
+    fun send() {
         if (imageMode) {
             val prompt = input.trim()
             if (prompt.isNotEmpty() && !generating) createImage(prompt)
             return
         }
-        val text = input.trim().let { if (findSimilar && it.isEmpty()) "Find similar looking items online" else it }
+        val text = input.trim()
         val attachments = pendingAttachments.toList()
         if ((text.isEmpty() && attachments.isEmpty()) || generating) return
         val ready = engine.state.value as? EngineState.Ready
@@ -1244,7 +1214,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 chatUnloadedForRoom = false
                 viewModelScope.launch {
                     loadNow(last, settings.value.mmprojPath)
-                    if (engine.state.value is EngineState.Ready) send(findSimilar)
+                    if (engine.state.value is EngineState.Ready) send()
                 }
                 return
             }
@@ -1323,7 +1293,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 user.prompt = text.ifEmpty {
                     if (media.any { it is DecodedMedia.Video }) "Describe this video." else "Describe this image."
                 }
-                if (findSimilar) user.prompt = text + "\n\n" + FIND_SIMILAR_INSTRUCTION
                 persistChat()
 
                 if (media.isEmpty()) reply.status = "Thinking…"
