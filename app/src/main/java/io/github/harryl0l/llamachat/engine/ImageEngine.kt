@@ -72,16 +72,20 @@ class ImageEngine {
         model: File, llm: File?, taesd: File?, threads: Int,
         prompt: String, negative: String, width: Int, height: Int, steps: Int, cfg: Float, seed: Long,
         sampler: Int, scheduler: Int = -1, gpu: Boolean = false,
+        /** photo to edit (FLUX.2 Klein): used as the reference image */
+        ref: io.github.harryl0l.llamachat.media.DecodedMedia.Image? = null,
     ): ImageResult = withContext(dispatcher) {
         val size = maxOf(width, height)
         cancelled = false
         ensureLoaded(model, llm, taesd, threads, gpu, size)
-        var rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler, scheduler)
+        var rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler, scheduler,
+            ref?.rgb, ref?.width ?: 0, ref?.height ?: 0)
         if (rgb == null && onGpu && size > 768 && !flashForLarge && !cancelled) {
             // matmul attention didn't work out for this size (e.g. memory): retry with flash attention
             flashForLarge = true
             ensureLoaded(model, llm, taesd, threads, gpu, size)
-            rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler, scheduler)
+            rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler, scheduler,
+            ref?.rgb, ref?.width ?: 0, ref?.height ?: 0)
         }
         if (rgb == null) throw EngineException(ImageGenNative.lastError().ifEmpty { "Image generation failed" })
         ImageResult(rgb, width, height, onGpu)

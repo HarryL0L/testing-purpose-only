@@ -37,6 +37,7 @@ import io.github.harryl0l.llamachat.engine.ProjectorSpec
 import io.github.harryl0l.llamachat.engine.RestoredMessage
 import io.github.harryl0l.llamachat.media.DecodedMedia
 import io.github.harryl0l.llamachat.media.MediaDecoder
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -75,6 +76,8 @@ class ImageModelChoice(
     val rendersText: Boolean = false,
     /** the chat model is unloaded before creating: both don't fit in memory */
     val unloadsChat: Boolean = false,
+    /** edits photos (an attached photo is the reference image) */
+    val canEdit: Boolean = false,
 ) {
     /** the size to use: the chosen one if this model offers it, else the model's default */
     fun sizeFor(chosen: Int): Int = if (chosen in sizes) chosen else defaultSize
@@ -403,7 +406,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             ImageModelChoice(
                 p.id, p.title, m, repo.imageLlmFile(p), t, p.defaultSteps, p.maxSteps, p.cfgScale, p.sampler, custom = false,
                 scheduler = p.scheduler, sizes = p.sizes, defaultSize = p.defaultSize,
-                rendersText = p.rendersText, unloadsChat = p.unloadsChat,
+                rendersText = p.rendersText, unloadsChat = p.unloadsChat, canEdit = p.canEdit,
             )
         } + repo.customImageModels().map { c ->
             ImageModelChoice(
@@ -468,13 +471,24 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         return all.firstOrNull { it.id == s.imageModel } ?: all.firstOrNull()
     }
 
+    /** Whether the selected image model can edit an attached photo (Create image + photo). */
+    val canEditPhotos: Boolean get() = currentImageModel()?.canEdit == true
+
     private fun createImage(prompt: String) {
         val s = settings.value
         val preset = currentImageModel(s)
         if (preset == null) { snackbar = "Download or import an image model first (Models → Image creation)"; return }
+        // a photo attached in Create image mode: edit it (models that support it, e.g. FLUX.2 Klein)
+        val source = pendingAttachments.firstOrNull { it.kind == AttachmentKind.Image }
+        if (source != null && !preset.canEdit) {
+            snackbar = "${preset.title} can't edit photos: choose FLUX.2 Klein 4B in Models → Image creation"
+            return
+        }
         input = ""
+        pendingAttachments.clear()
         val chatId = currentChatId ?: System.currentTimeMillis().toString().also { currentChatId = it }
-        messages += ChatMessage(nextId++, Role.User, prompt, imageRequest = true)
+        val userMsg = ChatMessage(nextId++, Role.User, prompt, listOfNotNull(source), imageRequest = true)
+        messages += userMsg
         val reply = ChatMessage(nextId++, Role.Assistant, "", imageRequest = true).apply {
             streaming = true
             status = "Loading ${preset.title}…"
@@ -528,12 +542,28 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     reply.addLog(listOf(stamp("unloading the chat model to make room (it reloads on your next chat message)")))
                     unloadChatForRoom()
                 }
+                // photo editing: the photo at about the chosen size, and the result in its shape (long
+                // side = the chosen size, both sides multiples of 16)
+                var outW = size
+                var outH = size
+                val ref = source?.let { src ->
+                    val photo = io.github.harryl0l.llamachat.media.MediaDecoder.decodeImage(getApplication(), src.uri, size * size)
+                    val scale = size.toFloat() / maxOf(photo.width, photo.height)
+                    outW = ((photo.width * scale / 16f).roundToInt() * 16).coerceAtLeast(64)
+                    outH = ((photo.height * scale / 16f).roundToInt() * 16).coerceAtLeast(64)
+                    // keep the photo with the chat, like chat attachments
+                    val saved = chatStore.saveMedia(chatId, photo)
+                    userMsg.savedMedia = listOf(saved)
+                    userMsg.attachments = listOf(saved.toAttachment(chatStore.dir(chatId)))
+                    reply.addLog(listOf(stamp("editing a ${photo.width}×${photo.height} photo → ${outW}×$outH")))
+                    photo
+                }
                 val gpu = BuildConfig.GPU_EXPERIMENTAL && s.imageGpu
                 if (gpu) markImageGpu(true)
                 val img = try {
                     imageEngine.generate(
-                        preset.model, preset.llm, preset.taesd, s.effectiveThreads, prompt, s.imageNegative, size, size,
-                        steps, cfg, seed, sampler, preset.scheduler, gpu,
+                        preset.model, preset.llm, preset.taesd, s.effectiveThreads, prompt, s.imageNegative, outW, outH,
+                        steps, cfg, seed, sampler, preset.scheduler, gpu, ref,
                     )
                 } finally {
                     if (gpu) markImageGpu(false)

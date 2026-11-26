@@ -160,7 +160,8 @@ JNIEXPORT void JNICALL JNI_FN(unload)(JNIEnv *, jobject) {
 // scheduler: a scheduler_t, or -1 for the model's default
 JNIEXPORT jbyteArray JNICALL JNI_FN(generate)(JNIEnv * env, jobject, jstring jprompt, jstring jnegative,
                                                jint width, jint height, jint steps, jfloat cfg, jlong seed,
-                                               jint sampler, jint scheduler) {
+                                               jint sampler, jint scheduler,
+                                               jbyteArray jref, jint ref_w, jint ref_h) {
     if (!g_ctx) { g_error = "No image model loaded"; return nullptr; }
     const std::string prompt = jstr(env, jprompt), negative = jstr(env, jnegative);
 
@@ -184,6 +185,19 @@ JNIEXPORT jbyteArray JNICALL JNI_FN(generate)(JNIEnv * env, jobject, jstring jpr
                                                 ? (scheduler_t) scheduler : sd_get_default_scheduler(g_ctx, method);
     gp.sample_params.sample_steps         = steps;
     gp.sample_params.guidance.txt_cfg     = cfg;
+    // photo editing (FLUX.2 Klein & co.): the photo to edit as a reference image (RGB), or null
+    std::vector<uint8_t> ref_px;
+    sd_image_t ref_img = {};
+    if (jref && ref_w > 0 && ref_h > 0 && env->GetArrayLength(jref) >= ref_w * ref_h * 3) {
+        ref_px.resize((size_t) ref_w * ref_h * 3);
+        env->GetByteArrayRegion(jref, 0, (jsize) ref_px.size(), (jbyte *) ref_px.data());
+        ref_img.width   = (uint32_t) ref_w;
+        ref_img.height  = (uint32_t) ref_h;
+        ref_img.channel = 3;
+        ref_img.data    = ref_px.data();
+        gp.ref_images       = &ref_img;
+        gp.ref_images_count = 1;
+    }
 
     sd_image_generation_result_t * result = nullptr;
     const bool ok = generate_image(g_ctx, &gp, &result);

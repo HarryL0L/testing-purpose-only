@@ -44,6 +44,8 @@ object ImageGenNative {
         sampler: Int,
         /** stable-diffusion.cpp scheduler_t, -1 = the model's default */
         scheduler: Int,
+        /** photo to edit (RGB, refWidth * refHeight * 3) for models that edit with a reference image, or null */
+        refRgb: ByteArray?, refWidth: Int, refHeight: Int,
     ): ByteArray?
 
     /** Quantizes a model file to GGUF (streaming). type: sd_type_t, 8 = Q8_0, 13 = Q5_K. @return null on success, else an error */

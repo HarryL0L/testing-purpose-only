@@ -207,7 +207,7 @@ fun ChatScreen(vm: ChatViewModel, onOpenModels: () -> Unit) {
                 enabled = engineState is EngineState.Ready,
                 canAttach = (engineState as? EngineState.Ready)?.info?.vision == true,
                 onAttach = {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                    picker.launch(PickVisualMediaRequest(if (vm.imageMode) ActivityResultContracts.PickVisualMedia.ImageOnly else ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                 },
             )
         },
@@ -732,7 +732,7 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                     )
                     Spacer(Modifier.size(8.dp))
                 }
-                if (vm.imageMode) AssistChip(
+                if (vm.imageMode && vm.pendingAttachments.isEmpty()) AssistChip(
                     onClick = { vm.improveImagePrompt() },
                     enabled = !vm.promptHelperBusy && !vm.generating && vm.input.isNotBlank(),
                     label = { Text(if (vm.promptHelperBusy) "Writing…" else "Improve prompt") },
@@ -758,6 +758,7 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                 Text(
                     when {
                         vm.imageMode && vm.promptHelperBusy -> "The chat model is rewriting your idea…"
+                        vm.imageMode && vm.pendingAttachments.isNotEmpty() -> "Edits the photo as you describe (runs on this phone)"
                         vm.imageMode -> "Your message becomes an image (runs on this phone)"
                         thinking -> "Reasons before answering (if the model supports it)"
                         else -> "Answers directly"
@@ -771,7 +772,8 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
             Row(verticalAlignment = Alignment.Bottom) {
                 FilledTonalIconButton(
                     onClick = onAttach,
-                    enabled = enabled && canAttach && !vm.generating && !vm.imageMode,
+                    // Create image: a photo to edit, with a model that edits (FLUX.2 Klein)
+                    enabled = !vm.generating && if (vm.imageMode) vm.canEditPhotos else enabled && canAttach,
                     shapes = IconButtonDefaults.shapes(),
                     modifier = Modifier.size(56.dp),
                 ) { Icon(Icons.Rounded.AddPhotoAlternate, "Attach image or video") }
@@ -783,6 +785,7 @@ private fun Composer(vm: ChatViewModel, thinking: Boolean, enabled: Boolean, can
                     placeholder = {
                         Text(
                             when {
+                                vm.imageMode && vm.pendingAttachments.isNotEmpty() -> "Describe the change, e.g. make the jacket red"
                                 vm.imageMode -> "Describe the image to create"
                                 enabled -> "Message"
                                 else -> "Load a model first"

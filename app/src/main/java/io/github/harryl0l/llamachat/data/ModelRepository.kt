@@ -109,6 +109,8 @@ data class ImageModelPreset(
     val rendersText: Boolean = false,
     /** big enough that the chat model is unloaded before creating (both don't fit in memory) */
     val unloadsChat: Boolean = false,
+    /** edits photos: an attached photo is used as the reference image ("make the jacket red") */
+    val canEdit: Boolean = false,
 )
 
 /** An extra model file; with [convertType] >= 0 it's downloaded as [sourceFile] and quantized on the device. */
@@ -207,7 +209,7 @@ val IMAGE_PRESETS = listOf(
         "flux2-klein-4b", "FLUX.2 Klein 4B",
         "Best all-round quality: realistic or any style, good hands and detail, follows long prompts, and writes " +
             "short text correctly (signs, labels). 4 steps; about 3x Anima's time per step, so 512 px is the " +
-            "practical size on a phone (768 for keepers). Q4_0 files from the stable-diffusion.cpp author + " +
+            "practical size on a phone (768 for keepers). Also edits photos: attach one in Create image and describe the change. Q4_0 files from the stable-diffusion.cpp author + " +
             "Qwen3-4B text encoder (4.9 GB). Needs ~5.5 GB RAM: the chat model is unloaded first. Apache 2.0.",
         "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF/resolve/3b1f5a9dc3abb32238b053aeb3d823c30afdacbd/flux-2-klein-4b-Q4_0.gguf?download=true",
         "flux-2-klein-4b-Q4_0.gguf", 2_460_378_560L,
@@ -220,7 +222,7 @@ val IMAGE_PRESETS = listOf(
             "92f4a83cdfe691b216a949f915e47f35f0ed85b833aa03490c719160ac5cdf7a",
         ),
         sizes = listOf(512, 768, 1024), defaultSize = 512,
-        rendersText = true, unloadsChat = true,
+        rendersText = true, unloadsChat = true, canEdit = true,
     ),
 )
 
