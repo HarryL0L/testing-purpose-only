@@ -202,7 +202,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun unloadModel() {
-        stop(); genJob?.join()
+        stop("the chat model was unloaded"); genJob?.join()
         engine.unload()
         markGpuInUse(io.github.harryl0l.llamachat.engine.GPU_CPU)
         imageEngine.unload()
@@ -308,7 +308,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun loadNow(model: String, mmproj: String?) {
         run {
-            stop()
+            stop("a chat model started loading")
             genJob?.join()
             val s = store.current()
             val resolver = getApplication<Application>().contentResolver
@@ -420,7 +420,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteCustomImageModel(choice: ImageModelChoice) {
         if (!choice.custom) return
         viewModelScope.launch {
-            stop(); genJob?.join()
+            stop("the image model was deleted"); genJob?.join()
             imageEngine.unload()
             choice.model.delete()
             if (store.current().imageModel == choice.id) store.update { it.copy(imageModel = null) }
@@ -437,7 +437,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 repo.download(
                     preset,
                     convert = { input, output, type ->
-                        stop(); genJob?.join() // conversion runs on the image engine's thread
+                        stop("a model was being converted"); genJob?.join() // conversion runs on the image engine's thread
                         imageEngine.convert(input, output, type, settings.value.effectiveThreads)
                     },
                     onConverting = { downloads[key] = DownloadState.Running(1f, converting = true) },
@@ -456,7 +456,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteImageModel(preset: ImageModelPreset) {
         viewModelScope.launch {
-            stop(); genJob?.join()
+            stop("an image model was deleted"); genJob?.join()
             imageEngine.unload()
             repo.deleteImageModel(preset)
             imageFilesVersion++
@@ -496,6 +496,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
         messages += reply
         generating = true
+        stopReason = null
         val steps = (if (s.imageSteps > 0) s.imageSteps else preset.defaultSteps).coerceIn(1, preset.maxSteps)
         val cfg = if (s.imageCfg > 0f) s.imageCfg else preset.defaultCfg
         val sampler = if (s.imageSampler >= 0) s.imageSampler else preset.defaultSampler
@@ -584,8 +585,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     if (img.onGpu) " · GPU" else "",
                 )
             } catch (e: CancellationException) {
-                reply.status = "Stopped"
-                reply.addLog(listOf(stamp("stopped")))
+                val why = stopReason
+                reply.status = if (why != null) "Stopped: $why" else "Stopped"
+                reply.addLog(listOf(stamp(if (why != null) "stopped because $why" else "stopped (stop button)")))
             } catch (e: Exception) {
                 reply.error = true
                 reply.status = null
@@ -683,7 +685,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             var temporary = false
             try {
                 if (helper != null) {
-                    stop(); genJob?.join()
+                    stop("the prompt helper started"); genJob?.join()
                     if (wasLoaded) unloadChatForRoom()
                     temporary = true
                     engine.load(
@@ -965,7 +967,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (engine.state.value !is EngineState.Ready) { snackbar = "Load a chat model first"; return }
         if (benchRunning) return
         benchJob = viewModelScope.launch {
-            stop(); genJob?.join()
+            stop("the chat benchmark started"); genJob?.join()
             benchRunning = true
             try {
                 benchStatus = "Warming up…"
@@ -998,7 +1000,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (model == null) { snackbar = "Download or import an image model first"; return }
         if (benchRunning) return
         benchJob = viewModelScope.launch {
-            stop(); genJob?.join()
+            stop("the image benchmark started"); genJob?.join()
             benchRunning = true
             try {
                 val steps = minOf(2, model.defaultSteps)
@@ -1111,7 +1113,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun startNewChat() {
-        stop(); genJob?.join()
+        stop("a new chat was started"); genJob?.join()
         messages.clear()
         pendingAttachments.clear()
         currentChatId = null
@@ -1122,7 +1124,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun openChat(id: String) {
         if (id == currentChatId) return
         viewModelScope.launch {
-            stop(); genJob?.join()
+            stop("another chat was opened"); genJob?.join()
             val chat = chatStore.load(id)
             if (chat == null) { snackbar = "Could not open that chat"; return@launch }
             messages.clear()
@@ -1222,7 +1224,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeAttachment(a: Attachment) { pendingAttachments.remove(a) }
 
-    fun stop() {
+    /** why the running generation was stopped (shown in its log), null for the stop button */
+    private var stopReason: String? = null
+
+    fun stop(reason: String? = null) {
+        if (generating) stopReason = reason
         imageEngine.cancel() // a running image generation only notices this, not coroutine cancellation
         genJob?.cancel()
     }
@@ -1263,6 +1269,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val reply = ChatMessage(nextId++, Role.Assistant, "").apply { streaming = true }
         messages += reply
         generating = true
+        stopReason = null
 
         genJob = viewModelScope.launch {
             val app = getApplication<Application>()

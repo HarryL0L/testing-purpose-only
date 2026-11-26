@@ -87,6 +87,8 @@ class ImageEngine {
             rgb = ImageGenNative.generate(prompt, negative, width, height, steps, cfg, seed, sampler, scheduler,
             ref?.rgb, ref?.width ?: 0, ref?.height ?: 0)
         }
+        // a stop request also ends sampling with an error: report it as a stop, not a failure
+        if (rgb == null && cancelled) throw kotlinx.coroutines.CancellationException("stopped")
         if (rgb == null) throw EngineException(ImageGenNative.lastError().ifEmpty { "Image generation failed" })
         ImageResult(rgb, width, height, onGpu)
     }
